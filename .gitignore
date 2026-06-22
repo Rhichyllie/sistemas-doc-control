@@ -1,0 +1,99 @@
+
+# ============================================================
+# sistemas-doc-control — .gitignore
+# Stack: Bun · Vite · React/TS · Electron · Tauri · Supabase
+# ============================================================
+
+# ── Ambiente / Segredos ─────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+!.env.example          # mantém o exemplo no repo
+
+# ── Dependências ────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ── Build / Dist ────────────────────────────────────────────
+dist/
+dist-ssr/
+build/
+out/
+.output/
+
+# ── Vite ────────────────────────────────────────────────────
+vite.config.ts.timestamp-*
+*.local
+
+# ── Electron ────────────────────────────────────────────────
+electron/dist/
+electron/out/
+release/
+*.exe
+*.dmg
+*.AppImage
+*.snap
+*.deb
+*.rpm
+
+# ── Tauri (Rust) ─────────────────────────────────────────────
+src-tauri/target/
+src-tauri/WixTools/
+*.msi
+*.pkg
+
+# ── Supabase ────────────────────────────────────────────────
+supabase/.branches/
+supabase/.temp/
+# supabase/seed.sql  ← descomente se não quiser versionar seeds
+
+# ── TypeScript ──────────────────────────────────────────────
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# ── Logs ────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+bun-debug.log*
+lerna-debug.log*
+
+# ── Cache ───────────────────────────────────────────────────
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+.prettiercache
+.turbo/
+
+# ── Sistema operacional ─────────────────────────────────────
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ── IDEs / Editores ─────────────────────────────────────────
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.sw?
+*.swp
+
+# ── Testes / Cobertura ──────────────────────────────────────
+coverage/
+.nyc_output/
+cypress/videos/
+cypress/screenshots/
+
+# ── Miscelânea ──────────────────────────────────────────────
+*.orig
+*.bak
+*.tmp
+storybook-static/

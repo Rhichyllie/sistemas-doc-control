@@ -1,0 +1,1 @@
+ALTER TABLE public.document_revisions ADD COLUMN IF NOT EXISTS received_at date;
