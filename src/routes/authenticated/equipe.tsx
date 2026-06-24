@@ -1,160 +1,131 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Edit, Trash2 } from "lucide-react";
-import { useLocalData } from "@/hooks/use-local-data";
-import { useTheme } from "@/contexts/theme-context";
+import { useAuthContext } from "@/contexts/AuthContext";
+import { useTeam } from "@/hooks/useTeam";
+import { USER_ROLES } from "@/lib/constants";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/authenticated/equipe")({ component: EquipePage });
 
-function EquipePage() {
-  const { theme } = useTheme();
-  const { team, createTeamMember, updateTeamMember, deleteTeamMember } = useLocalData();
-  const [openNew, setOpenNew] = useState(false);
-  const [openEdit, setOpenEdit] = useState(false);
-  const [openDelete, setOpenDelete] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<any>(null);
-  const [form, setForm] = useState({ name: "", sector: "", email: "" });
-  const [saving, setSaving] = useState(false);
+type Role = typeof USER_ROLES[number]["value"];
 
-  async function handleCreate() {
-    if (!form.name) {
-      toast.error("Preencha o nome do membro da equipe");
+const roleBadgeClass: Record<Role, string> = {
+  admin: "bg-purple-600 text-white",
+  manager: "bg-blue-600 text-white",
+  approver: "bg-amber-500 text-white",
+  reviewer: "bg-teal-600 text-white",
+  author: "bg-slate-500 text-white",
+  viewer: "bg-muted text-muted-foreground",
+};
+
+function getRoleLabel(role: string) {
+  return USER_ROLES.find((item) => item.value === role)?.label ?? role;
+}
+
+function formatMemberSince(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", { month: "2-digit", year: "numeric", timeZone: "UTC" }).format(new Date(value));
+}
+
+function EquipePage() {
+  const { profile, org } = useAuthContext();
+  const { members, loading, error, updateMemberRole, toggleMemberActive } = useTeam();
+  const isAdmin = profile?.role === "admin";
+  const countsByRole = USER_ROLES.map((role) => ({ ...role, count: members.filter((member) => member.role === role.value).length }));
+
+  async function handleRoleChange(memberId: string, role: Role) {
+    const ok = await updateMemberRole(memberId, role);
+    toast[ok ? "success" : "error"](ok ? "Perfil atualizado" : "Não foi possível atualizar o perfil");
+  }
+
+  async function handleToggleActive(memberId: string, active: boolean) {
+    if (memberId === profile?.id) {
+      toast.error("Você não pode desativar seu próprio usuário");
       return;
     }
-    setSaving(true);
-    try {
-      await createTeamMember({ name: form.name, sector: form.sector, email: form.email });
-      toast.success("Membro da equipe criado com sucesso!");
-      setOpenNew(false);
-      setForm({ name: "", sector: "", email: "" });
-    } catch (err) {
-      toast.error("Erro ao criar membro da equipe.");
-    } finally {
-      setSaving(false);
-    }
-  }
 
-  async function handleEdit() {
-    if (!selectedMember) return;
-    setSaving(true);
-    try {
-      await updateTeamMember(selectedMember.id, { name: form.name, sector: form.sector, email: form.email });
-      toast.success("Membro da equipe atualizado com sucesso!");
-      setOpenEdit(false);
-      setSelectedMember(null);
-    } catch (err) {
-      toast.error("Erro ao atualizar membro da equipe.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDelete() {
-    if (!selectedMember) return;
-    setSaving(true);
-    try {
-      await deleteTeamMember(selectedMember.id);
-      toast.success("Membro da equipe excluído com sucesso!");
-      setOpenDelete(false);
-      setSelectedMember(null);
-    } catch (err: any) {
-      toast.error(err?.message || "Erro ao excluir membro da equipe.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function openEditModal(member: any) {
-    setSelectedMember(member);
-    setForm({
-      name: member.name,
-      sector: member.sector || "",
-      email: member.email || ""
-    });
-    setOpenEdit(true);
-  }
-
-  function openDeleteModal(member: any) {
-    setSelectedMember(member);
-    setOpenDelete(true);
+    const ok = await toggleMemberActive(memberId, active);
+    toast[ok ? "success" : "error"](ok ? `Usuário ${active ? "reativado" : "desativado"}` : "Não foi possível alterar o usuário");
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Equipe</h1>
-          <p className="text-muted-foreground text-sm">Cadastro da equipe do projeto</p>
+          <p className="text-muted-foreground text-sm">{org?.name ?? "Organização"}</p>
         </div>
-        <Dialog open={openNew} onOpenChange={setOpenNew}>
-          <DialogTrigger asChild><Button style={{ backgroundColor: theme.button, color: theme.text }}><Plus className="h-4 w-4 mr-2" />Novo Membro</Button></DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Novo Membro da Equipe</DialogTitle></DialogHeader>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2"><Label>Nome *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-              <div className="col-span-2"><Label>Setor</Label><Input value={form.sector} onChange={(e) => setForm({ ...form, sector: e.target.value })} /></div>
-              <div className="col-span-2"><Label>E-mail</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-            </div>
-            <DialogFooter>
-              <Button variant="secondary" onClick={() => setOpenNew(false)} disabled={saving}>Cancelar</Button>
-              <Button style={{ backgroundColor: theme.button, color: theme.text }} onClick={handleCreate} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Badge variant="secondary">{members.length} membros</Badge>
       </div>
-      <Card className="shadow-md"><CardContent className="p-0">
-        <Table>
-          <TableHeader><TableRow>
-            <TableHead>Nome</TableHead><TableHead>Setor</TableHead><TableHead>E-mail</TableHead><TableHead className="w-32">Ações</TableHead>
-          </TableRow></TableHeader>
-          <TableBody>
-            {team.map((t: any) => (
-              <TableRow key={t.id}>
-                <TableCell className="font-medium">{t.name}</TableCell>
-                <TableCell>{t.sector || "—"}</TableCell>
-                <TableCell>{t.email || "—"}</TableCell>
-                <TableCell className="flex gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => openEditModal(t)}><Edit className="h-3 w-3 mr-1" />Editar</Button>
-                  <Button variant="destructive" size="sm" onClick={() => openDeleteModal(t)}><Trash2 className="h-3 w-3 mr-1" />Excluir</Button>
-                </TableCell>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        {countsByRole.map((role) => (
+          <Card key={role.value}>
+            <CardHeader className="pb-2"><CardTitle className="text-sm">{role.label}</CardTitle></CardHeader>
+            <CardContent><div className="text-2xl font-bold">{role.count}</div></CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {!isAdmin && (
+        <Card>
+          <CardContent className="p-4 text-sm text-muted-foreground">Apenas administradores podem alterar perfis de acesso.</CardContent>
+        </Card>
+      )}
+
+      <Card className="shadow-md">
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nome</TableHead>
+                <TableHead>Perfil</TableHead>
+                <TableHead>Área/Departamento</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Membro desde</TableHead>
+                {isAdmin && <TableHead className="text-right">Ações</TableHead>}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent></Card>
-
-      <Dialog open={openEdit} onOpenChange={setOpenEdit}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Editar Membro da Equipe</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2"><Label>Nome *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-            <div className="col-span-2"><Label>Setor</Label><Input value={form.sector} onChange={(e) => setForm({ ...form, sector: e.target.value })} /></div>
-            <div className="col-span-2"><Label>E-mail</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setOpenEdit(false)} disabled={saving}>Cancelar</Button>
-            <Button style={{ backgroundColor: theme.button, color: theme.text }} onClick={handleEdit} disabled={saving}>{saving ? "Salvando..." : "Salvar Alterações"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={openDelete} onOpenChange={setOpenDelete}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Excluir Membro da Equipe</DialogTitle></DialogHeader>
-          <p>Você tem certeza que deseja excluir o membro {selectedMember?.name}? Esta ação é irreversível!</p>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setOpenDelete(false)} disabled={saving}>Cancelar</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={saving}>{saving ? "Excluindo..." : "Excluir"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </TableHeader>
+            <TableBody>
+              {loading && <TableRow><TableCell colSpan={isAdmin ? 6 : 5} className="text-center py-8">Carregando equipe...</TableCell></TableRow>}
+              {error && !loading && <TableRow><TableCell colSpan={isAdmin ? 6 : 5} className="text-center text-destructive py-8">{error}</TableCell></TableRow>}
+              {!loading && !error && members.length === 0 && <TableRow><TableCell colSpan={isAdmin ? 6 : 5} className="text-center text-muted-foreground py-8">Nenhum membro encontrado</TableCell></TableRow>}
+              {!loading && !error && members.map((member) => (
+                <TableRow key={member.id}>
+                  <TableCell className="font-medium">{member.full_name}</TableCell>
+                  <TableCell><Badge className={roleBadgeClass[member.role]}>{getRoleLabel(member.role)}</Badge></TableCell>
+                  <TableCell>{member.department || "—"}</TableCell>
+                  <TableCell><Badge variant={member.active ? "secondary" : "destructive"}>{member.active ? "Ativo" : "Inativo"}</Badge></TableCell>
+                  <TableCell>{formatMemberSince(member.created_at)}</TableCell>
+                  {isAdmin && (
+                    <TableCell>
+                      <div className="flex justify-end gap-2">
+                        <Select value={member.role} onValueChange={(value) => handleRoleChange(member.id, value as Role)}>
+                          <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {USER_ROLES.map((role) => <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          variant={member.active ? "destructive" : "outline"}
+                          disabled={member.id === profile?.id}
+                          onClick={() => handleToggleActive(member.id, !member.active)}
+                        >
+                          {member.active ? "Desativar" : "Reativar"}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }

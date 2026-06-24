@@ -1,42 +1,36 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { LayoutDashboard, FolderKanban, FileStack, Layers, Users, Search, LogOut, Settings, Upload, UserCheck, Palette, Download, DatabaseZap, GitBranch } from "lucide-react";
+import { LayoutDashboard, FileStack, Users, LogOut, Settings, Palette, Download, DatabaseZap, GitBranch, Bell, ClipboardList, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/hooks/use-auth";
-import { NotificationPanel } from "./notifications-panel";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { useTheme, themeColors } from "@/contexts/theme-context";
 import { useLocalData } from "@/hooks/use-local-data";
+import { useNotifications } from "@/hooks/useNotifications";
+import { useDashboard } from "@/hooks/useDashboard";
+import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 
 const nav = [
-  {
-    section: "Principal",
-    items: [
-      { to: "/authenticated/dashboard",  label: "Dashboard",  icon: LayoutDashboard },
-      { to: "/authenticated/documents",  label: "Documentos", icon: FileStack },
-    ]
-  },
-  {
-    section: "Cadastros",
-    items: [
-      { to: "/authenticated/projects",    label: "Projetos",    icon: FolderKanban },
-      { to: "/authenticated/disciplines", label: "Disciplinas", icon: Layers },
-      { to: "/authenticated/projetistas", label: "Projetistas", icon: UserCheck },
-      { to: "/authenticated/equipe", label: "Equipe", icon: Users },
-      { to: "/authenticated/fluxo-de-aprovacao", label: "Fluxo de Aprovação", icon: GitBranch },
-    ]
-  },
+  { to: "/authenticated/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/authenticated/documents", label: "Documentos", icon: FileStack },
+  { to: "/authenticated/fluxo-de-aprovacao", label: "Fila de Aprovação", icon: GitBranch, badge: "approval" },
+  { to: "/authenticated/trilha-de-auditoria", label: "Trilha de Auditoria", icon: ClipboardList },
+  { to: "/authenticated/equipe", label: "Equipe", icon: Users },
+  { to: "/authenticated/configuracoes", label: "Configurações", icon: Settings, managerOnly: true },
 ];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, profile, signOut } = useAuthContext();
   const { theme, setTheme } = useTheme();
   const { exportData, importData } = useLocalData();
+  const { notifications, unreadCount, loading: notificationsLoading, markAllRead } = useNotifications();
+  const { metrics } = useDashboard();
 
   // Company settings
   const [openSettings, setOpenSettings] = useState(false);
@@ -101,8 +95,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   async function handleLogout() {
-    await logout();
-    navigate({ to: "/auth", replace: true });
+    await signOut();
+    navigate({ to: "/login", replace: true });
   }
 
   return (
@@ -247,44 +241,43 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-<nav className="flex-1 p-3 space-y-4">
-  {nav.map(group => (
-    <div key={group.section}>
-      <p className="text-[10px] font-semibold uppercase tracking-widest px-3 mb-1"
-        style={{ color: theme.text + "55" }}>
-        {group.section}
-      </p>
-      <div className="space-y-0.5">
-        {group.items.map(item => {
-          const active = pathname.startsWith(item.to);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
-              style={{
-                color: active ? theme.text : theme.text + "99",
-                backgroundColor: active ? "rgba(255,255,255,0.18)" : "transparent",
-                fontWeight: active ? 500 : 400,
-              }}
-              onMouseEnter={e => { if (!active) e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)"; }}
-              onMouseLeave={e => { if (!active) e.currentTarget.style.backgroundColor = "transparent"; }}
-            >
-              <Icon className="h-4 w-4 flex-shrink-0" />
-              {item.label}
-            </Link>
-          );
-        })}
-      </div>
-    </div>
-  ))}
+<nav className="flex-1 p-3 space-y-1">
+  {nav
+    .filter(item => !item.managerOnly || profile?.role === "admin" || profile?.role === "manager")
+    .map(item => {
+      const active = pathname.startsWith(item.to);
+      const Icon = item.icon;
+      const pendingCount = item.badge === "approval" ? (metrics?.pending_my_action ?? 0) : 0;
+      return (
+        <Link
+          key={item.to}
+          to={item.to}
+          className="flex items-center justify-between gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
+          style={{
+            color: active ? theme.text : theme.text + "99",
+            backgroundColor: active ? "rgba(255,255,255,0.18)" : "transparent",
+            fontWeight: active ? 500 : 400,
+          }}
+          onMouseEnter={e => { if (!active) e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)"; }}
+          onMouseLeave={e => { if (!active) e.currentTarget.style.backgroundColor = "transparent"; }}
+        >
+          <span className="flex items-center gap-2.5">
+            <Icon className="h-4 w-4 flex-shrink-0" />
+            {item.label}
+          </span>
+          {pendingCount > 0 && <Badge variant="destructive" className="h-5 min-w-5 px-1 text-[10px]">{pendingCount}</Badge>}
+        </Link>
+      );
+    })}
 </nav>
         <div className="p-3 border-t border-white/20">
           <div className="px-2 py-2 text-xs">
             <div className="font-medium truncate" style={{ color: theme.text }}>{user?.user_metadata?.full_name || user?.email}</div>
             <div className="truncate" style={{ color: theme.text + "99" }}>{user?.email}</div>
           </div>
+          <Button asChild variant="ghost" size="sm" className="w-full justify-start hover:bg-white/20" style={{ color: theme.text }}>
+            <Link to="/authenticated/meu-perfil"><UserCircle className="h-4 w-4 mr-2" /> Meu Perfil</Link>
+          </Button>
           <Button 
             variant="ghost" 
             size="sm" 
@@ -440,7 +433,46 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </DialogContent>
             </Dialog>
 
-            <NotificationPanel />
+            <Popover onOpenChange={(open) => { if (open) markAllRead(); }}>
+              <PopoverTrigger asChild>
+                <Button variant="secondary" size="icon" className="relative bg-white/90 text-gray-800 hover:bg-white shadow-md hover:shadow-lg transition-all" aria-label="Notificações">
+                  <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <Badge className="absolute -right-2 -top-2 h-5 min-w-5 px-1 text-[10px]" variant="destructive">
+                      {unreadCount}
+                    </Badge>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-80">
+                <div className="space-y-3">
+                  <div>
+                    <div className="font-semibold">Notificações</div>
+                    <div className="text-xs text-muted-foreground">Últimas atualizações do workflow</div>
+                  </div>
+                  <div className="space-y-2">
+                    {notificationsLoading ? (
+                      <p className="text-sm text-muted-foreground">Carregando notificações...</p>
+                    ) : notifications.slice(0, 5).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Nenhuma notificação recente.</p>
+                    ) : (
+                      notifications.slice(0, 5).map((notification) => (
+                        <div key={notification.id} className="rounded-md border p-2">
+                          <div className="text-sm font-medium">{notification.title}</div>
+                          {notification.body && <div className="text-xs text-muted-foreground line-clamp-2">{notification.body}</div>}
+                          <div className="text-[10px] text-muted-foreground mt-1">
+                            {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "UTC" }).format(new Date(notification.created_at))}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <Button asChild variant="secondary" className="w-full">
+                    <Link to="/authenticated/fluxo-de-aprovacao">Ver tudo</Link>
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
           </header>
         </div>
         <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">{children}</div>
