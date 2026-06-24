@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { LayoutDashboard, FolderKanban, FileStack, Layers, Users, Search, LogOut, Settings, Upload, UserCheck, Palette, Download, DatabaseZap, GitBranch } from "lucide-react";
+import { LayoutDashboard, FolderKanban, FileStack, Layers, Users, LogOut, Settings, UserCheck, Palette, Download, DatabaseZap, GitBranch, Bell, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/hooks/use-auth";
-import { NotificationPanel } from "./notifications-panel";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { useTheme, themeColors } from "@/contexts/theme-context";
 import { useLocalData } from "@/hooks/use-local-data";
+import { useNotifications } from "@/hooks/useNotifications";
+import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 
 const nav = [
@@ -27,6 +29,7 @@ const nav = [
       { to: "/authenticated/projetistas", label: "Projetistas", icon: UserCheck },
       { to: "/authenticated/equipe", label: "Equipe", icon: Users },
       { to: "/authenticated/fluxo-de-aprovacao", label: "Fluxo de Aprovação", icon: GitBranch },
+      { to: "/authenticated/trilha-de-auditoria", label: "Trilha de Auditoria", icon: ClipboardList },
     ]
   },
 ];
@@ -34,9 +37,10 @@ const nav = [
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, signOut } = useAuthContext();
   const { theme, setTheme } = useTheme();
   const { exportData, importData } = useLocalData();
+  const { notifications, unreadCount, loading: notificationsLoading, markAllRead } = useNotifications();
 
   // Company settings
   const [openSettings, setOpenSettings] = useState(false);
@@ -101,8 +105,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   async function handleLogout() {
-    await logout();
-    navigate({ to: "/auth", replace: true });
+    await signOut();
+    navigate({ to: "/login", replace: true });
   }
 
   return (
@@ -440,7 +444,46 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </DialogContent>
             </Dialog>
 
-            <NotificationPanel />
+            <Popover onOpenChange={(open) => { if (open) markAllRead(); }}>
+              <PopoverTrigger asChild>
+                <Button variant="secondary" size="icon" className="relative bg-white/90 text-gray-800 hover:bg-white shadow-md hover:shadow-lg transition-all" aria-label="Notificações">
+                  <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <Badge className="absolute -right-2 -top-2 h-5 min-w-5 px-1 text-[10px]" variant="destructive">
+                      {unreadCount}
+                    </Badge>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-80">
+                <div className="space-y-3">
+                  <div>
+                    <div className="font-semibold">Notificações</div>
+                    <div className="text-xs text-muted-foreground">Últimas atualizações do workflow</div>
+                  </div>
+                  <div className="space-y-2">
+                    {notificationsLoading ? (
+                      <p className="text-sm text-muted-foreground">Carregando notificações...</p>
+                    ) : notifications.slice(0, 5).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Nenhuma notificação recente.</p>
+                    ) : (
+                      notifications.slice(0, 5).map((notification) => (
+                        <div key={notification.id} className="rounded-md border p-2">
+                          <div className="text-sm font-medium">{notification.title}</div>
+                          {notification.body && <div className="text-xs text-muted-foreground line-clamp-2">{notification.body}</div>}
+                          <div className="text-[10px] text-muted-foreground mt-1">
+                            {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "UTC" }).format(new Date(notification.created_at))}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <Button asChild variant="secondary" className="w-full">
+                    <Link to="/authenticated/fluxo-de-aprovacao">Ver tudo</Link>
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
           </header>
         </div>
         <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">{children}</div>

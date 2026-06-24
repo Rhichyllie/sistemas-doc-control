@@ -13,9 +13,6 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
     "electron:build": "npm run build && electron-builder",
     "electron:build:win": "npm run build && electron-builder --win --publish never"
@@ -38,7 +35,6 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
-    "@lovable.dev/cloud-auth-js": "^1.1.2",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-aspect-ratio": "^1.1.8",
@@ -97,8 +93,6 @@
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@tanstack/router-plugin": "^1.168.18",
-    "@tauri-apps/api": "^2.11.0",
-    "@tauri-apps/cli": "^2.11.2",
     "@types/node": "^22.16.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

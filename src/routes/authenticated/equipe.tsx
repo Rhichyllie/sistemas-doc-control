@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { requirePermission } from "./-route-guards";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,12 @@ import { useLocalData } from "@/hooks/use-local-data";
 import { useTheme } from "@/contexts/theme-context";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/authenticated/equipe")({ component: EquipePage });
+export const Route = createFileRoute("/authenticated/equipe")({
+  beforeLoad: async ({ location }) => {
+    await requirePermission(location.href, "settings:users");
+  },
+  component: EquipePage,
+});
 
 function EquipePage() {
   const { theme } = useTheme();

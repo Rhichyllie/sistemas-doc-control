@@ -1,13 +1,10 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { AppLayout } from "@/components/app-layout";
-import { getAuthState } from "@/hooks/use-auth";
+import { requireAuthenticated } from "./-route-guards";
 
 export const Route = createFileRoute("/authenticated")({
-  beforeLoad: () => {
-    const authState = getAuthState();
-    if (!authState.isAuthenticated) {
-      throw redirect({ to: "/auth" });
-    }
+  beforeLoad: async ({ location }) => {
+    await requireAuthenticated(location.href);
   },
   component: () => (
     <AppLayout>
