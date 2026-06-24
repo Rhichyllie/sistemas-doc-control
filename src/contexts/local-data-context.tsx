@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
+import { supabase } from "@/lib/supabase";
+import { useAuthContext } from "@/contexts/AuthContext";
 
 export interface Discipline {
   id: string;
@@ -213,7 +213,7 @@ interface LocalDataContextType {
 const LocalDataContext = createContext<LocalDataContextType | undefined>(undefined);
 
 export function LocalDataProvider({ children }: { children: ReactNode }) {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, profile } = useAuthContext();
   const [disciplines, setDisciplinesState] = useState<Discipline[]>([]);
   const [projects, setProjectsState] = useState<Project[]>([]);
   const [documents, setDocumentsState] = useState<Document[]>([]);
@@ -234,16 +234,8 @@ export function LocalDataProvider({ children }: { children: ReactNode }) {
     if (!isAuthenticated) return;
     setLoading(true);
     try {
-      // Verificar se o usuário atual é admin
-      if (user) {
-        const { data: roleData } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", user.id)
-          .eq("role", "admin")
-          .maybeSingle();
-        setIsAdmin(!!roleData);
-      }
+      // P-3: AuthContext is the single auth source; role comes from public.profiles.
+      setIsAdmin(profile?.role === "admin");
 
       const [discRes, projRes, projetRes, teamRes, docRes, revRes, notifRes, activitiesRes] = await Promise.all([
         supabase.from("disciplines").select("*").order("name"),
@@ -344,7 +336,7 @@ revsByDoc[rev.document_id].push({
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, profile?.role]);
 
   useEffect(() => {
     if (!isAuthenticated) return;

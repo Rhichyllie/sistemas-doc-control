@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { FileStack, CheckCircle2, XCircle } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuthContext } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 type AuthTab = "signin" | "signup" | "reset-email" | "new-password";
 
@@ -24,12 +24,13 @@ const getPasswordRequirements = (password: string) => {
 
 export function AuthPage() {
   const navigate = useNavigate();
-  const { login, signup, resetPassword } = useAuth();
+  const { signIn, signup, resetPassword } = useAuthContext();
   const [loading, setLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [activeTab, setActiveTab] = useState<AuthTab>("signup");
+  const [activeTab, setActiveTab] = useState<AuthTab>("signin");
   const [newPassword, setNewPassword] = useState("");
   const passwordRequirements = getPasswordRequirements(password);
   const newPasswordRequirements = getPasswordRequirements(newPassword);
@@ -47,10 +48,13 @@ export function AuthPage() {
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const result = await login(email, password);
+    setAuthError("");
+    const { error } = await signIn(email, password);
     setLoading(false);
-    if (!result.success) {
-      return toast.error(result.error || "Credenciais inválidas");
+    if (error) {
+      const message = error.message.includes("Invalid login credentials") ? "E-mail ou senha incorretos" : error.message;
+      setAuthError(message);
+      return toast.error(message);
     }
     toast.success("Bem-vindo!");
     navigate({ to: "/authenticated/dashboard" });
@@ -133,8 +137,9 @@ export function AuthPage() {
                     required 
                   />
                 </div>
+                {authError && <p className="text-sm text-destructive">{authError}</p>}
                 <Button type="submit" className="w-full" disabled={loading}>
-                  Entrar
+                  {loading ? "Entrando..." : "Entrar"}
                 </Button>
               </form>
             </TabsContent>

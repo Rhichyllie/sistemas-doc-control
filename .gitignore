@@ -40,8 +40,6 @@ release/
 *.rpm
 
 # ── Tauri (Rust) ─────────────────────────────────────────────
-src-tauri/target/
-src-tauri/WixTools/
 *.msi
 *.pkg
 
@@ -97,3 +95,4 @@ cypress/screenshots/
 *.bak
 *.tmp
 storybook-static/
+src-tauri/

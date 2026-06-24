@@ -8,7 +8,7 @@ export function createNotification(
   document?: Document
 ): AppNotification {
   return {
-    id: "notif_" + Date.now() + "_" + Math.random().toString(36).substring(2, 11),
+    id: `notif_${Date.now()}_${crypto.randomUUID()}`,
     type,
     title,
     message,
