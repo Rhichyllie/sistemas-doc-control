@@ -1,0 +1,3 @@
+﻿[functions.review-alerts]
+verify_jwt = false
+schedule = "0 7 * * *"
