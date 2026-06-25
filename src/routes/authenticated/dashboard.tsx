@@ -98,6 +98,11 @@ function Dashboard() {
         <MetricCard icon={<FileText className="h-5 w-5" />} label="Criados (últimos 30 dias)" value={metrics.recent_created} />
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <MetricCard icon={<ListChecks className="h-5 w-5" />} label="Etapas de aprovação pendentes" value={metrics.pending_approval_steps} />
+        <MetricCard icon={<AlertTriangle className="h-5 w-5" />} label="Etapas de aprovação atrasadas" value={metrics.overdue_approval_steps} />
+      </div>
+
       {metrics.expiring_30_days > 0 && (
         <Card>
           <CardHeader>

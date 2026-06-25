@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,7 +12,7 @@ import { ArrowLeft, Download } from "lucide-react";
 import { DOC_STATUS, DOC_TYPES, USER_ROLES } from "@/lib/constants";
 import { supabase } from "@/lib/supabase";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useApprovalFlow } from "@/hooks/useApprovalFlow";
+import { useApprovalFlow, type WorkflowStepInput } from "@/hooks/useApprovalFlow";
 import { ApprovalStep, useDocument } from "@/hooks/useDocument";
 import { toast } from "sonner";
 
@@ -24,6 +25,14 @@ interface ProfileOption {
   full_name: string;
   role: string;
 }
+
+const DEFAULT_WORKFLOW_STEPS: WorkflowStepInput[] = [
+  { step: 1, step_label: "Revisão Técnica", required_role: "reviewer", assignee_id: null, due_days: 2, escalation_user_id: null },
+  { step: 2, step_label: "Aprovação Final", required_role: "approver", assignee_id: null, due_days: 2, escalation_user_id: null },
+];
+
+const WORKFLOW_ROLES = ["reviewer", "approver", "manager", "admin"];
+const DUE_DAY_OPTIONS = [1, 2, 3, 5, 7, 10, 15];
 
 function getStatusMeta(status: string) {
   return DOC_STATUS.find((item) => item.value === status);
@@ -51,6 +60,11 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value));
 }
 
+function getDaysUntilDue(value: string | null) {
+  if (!value) return null;
+  return Math.ceil((new Date(value).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+}
+
 function formatFileSize(size: number | null) {
   if (!size) return "—";
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
@@ -73,9 +87,10 @@ function getStepCircleClass(status: string) {
 }
 
 function stepMatchesDocumentStatus(step: ApprovalStep, documentStatus: string) {
-  if (step.step === 1) return documentStatus === "in_review";
-  if (step.step === 2) return documentStatus === "pending_approval";
-  return true;
+  if (documentStatus === "published" || documentStatus === "draft" || documentStatus === "obsolete") return true;
+  if (step.started_at) return true;
+  if (step.required_role === "approver") return documentStatus === "pending_approval";
+  return documentStatus === "in_review";
 }
 
 function DocumentDetailPage() {
@@ -85,8 +100,7 @@ function DocumentDetailPage() {
   const { submitForReview, actOnStep, obsoleteDocument, loading: actionLoading, error: actionError } = useApprovalFlow();
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [obsoleteDialogOpen, setObsoleteDialogOpen] = useState(false);
-  const [selectedReviewer, setSelectedReviewer] = useState("any");
-  const [selectedApprover, setSelectedApprover] = useState("any");
+  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStepInput[]>(DEFAULT_WORKFLOW_STEPS);
   const [profileOptions, setProfileOptions] = useState<ProfileOption[]>([]);
   const [stepAction, setStepAction] = useState<{ step: ApprovalStep; action: "approve" | "reject" } | null>(null);
   const [stepComment, setStepComment] = useState("");
@@ -100,7 +114,7 @@ function DocumentDetailPage() {
         .select("id, full_name, role")
         .eq("org_id", profile.org_id)
         .eq("active", true)
-        .in("role", ["reviewer", "approver"])
+        .in("role", WORKFLOW_ROLES)
         .order("full_name", { ascending: true });
 
       setProfileOptions((data ?? []) as ProfileOption[]);
@@ -127,15 +141,55 @@ function DocumentDetailPage() {
     if (!document) return;
     const success = await submitForReview({
       documentId: document.id,
-      reviewerId: selectedReviewer === "any" ? undefined : selectedReviewer,
-      approverId: selectedApprover === "any" ? undefined : selectedApprover,
+      steps: workflowSteps.map((step, index) => ({
+        ...step,
+        step: index + 1,
+        assignee_id: step.assignee_id || null,
+        escalation_user_id: step.escalation_user_id || null,
+        due_days: step.due_days ?? null,
+      })),
     });
 
     if (success) {
       toast.success("Documento enviado para revisão");
       setSubmitDialogOpen(false);
+      setWorkflowSteps(DEFAULT_WORKFLOW_STEPS);
       await refetch();
     }
+  }
+
+  function updateWorkflowStep(index: number, updates: Partial<WorkflowStepInput>) {
+    setWorkflowSteps((steps) =>
+      steps.map((step, currentIndex) => currentIndex === index ? { ...step, ...updates } : step),
+    );
+  }
+
+  function addWorkflowStep() {
+    setWorkflowSteps((steps) => [
+      ...steps,
+      {
+        step: steps.length + 1,
+        step_label: `Etapa ${steps.length + 1}`,
+        required_role: "reviewer",
+        assignee_id: null,
+        due_days: 2,
+        escalation_user_id: null,
+      },
+    ]);
+  }
+
+  function removeWorkflowStep(index: number) {
+    setWorkflowSteps((steps) => steps.filter((_, currentIndex) => currentIndex !== index).map((step, nextIndex) => ({ ...step, step: nextIndex + 1 })));
+  }
+
+  function moveWorkflowStep(index: number, direction: -1 | 1) {
+    setWorkflowSteps((steps) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= steps.length) return steps;
+      const next = [...steps];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next.map((step, currentIndex) => ({ ...step, step: currentIndex + 1 }));
+    });
   }
 
   async function handleObsoleteDocument() {
@@ -183,14 +237,13 @@ function DocumentDetailPage() {
     (["admin", "manager", "author"].includes(profile.role)) &&
     (profile.id === document.author_id || isManager);
   const canObsolete = document.status === "published" && isManager;
-  const reviewerOptions = profileOptions.filter((option) => option.role === "reviewer");
-  const approverOptions = profileOptions.filter((option) => option.role === "approver");
 
   function canActOnStep(step: ApprovalStep) {
     if (!profile) return false;
     const assignedToUser = step.assignee_id === profile.id;
     const unassignedMatchingRole = !step.assignee_id && step.required_role === profile.role;
-    return step.status === "pending" && stepMatchesDocumentStatus(step, document.status) && (assignedToUser || unassignedMatchingRole || isManager);
+    const authorFinalApproval = step.required_role === "approver" && document.author_id === profile.id && !isManager;
+    return step.status === "pending" && stepMatchesDocumentStatus(step, document.status) && !authorFinalApproval && (assignedToUser || unassignedMatchingRole || isManager);
   }
 
   return (
@@ -276,72 +329,127 @@ function DocumentDetailPage() {
       <Card className="shadow-md">
         <CardHeader><CardTitle>Fluxo de Aprovação</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          {document.approval_steps.map((step) => (
-            <div key={step.id} className="border rounded-md p-3 flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-semibold ${getStepCircleClass(step.status)}`}>
-                  {step.step}
-                </div>
-                <div>
-                  <div className="font-medium">{step.step_label}</div>
-                  <div className="text-sm text-muted-foreground">
-                    Papel: {getRoleLabel(step.required_role)} · Responsável: {step.assignee?.full_name ?? `Qualquer ${getRoleLabel(step.required_role)}`}
+          {document.approval_steps.map((step) => {
+            const daysUntilDue = getDaysUntilDue(step.due_at);
+            const overdue = step.status === "pending" && daysUntilDue !== null && daysUntilDue < 0;
+
+            return (
+              <div key={step.id} className="border rounded-md p-3 flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-semibold ${getStepCircleClass(step.status)}`}>
+                    {step.step}
                   </div>
-                  {step.decided_at && (
+                  <div>
+                    <div className="font-medium">{step.step_label}</div>
+                    <div className="text-sm text-muted-foreground">
+                      Papel: {getRoleLabel(step.required_role)} · Responsável: {step.assignee?.full_name ?? `Qualquer ${getRoleLabel(step.required_role)}`}
+                    </div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      Decidido por {step.decider?.full_name ?? "—"} em {formatDateTime(step.decided_at)}
+                      Prazo: {formatDateTime(step.due_at)} {step.due_days ? `(${step.due_days} dias)` : ""}
+                      {overdue && <Badge variant="destructive" className="ml-2">Atrasado</Badge>}
+                      {!overdue && daysUntilDue !== null && step.status === "pending" && (
+                        <Badge variant="outline" className="ml-2">{daysUntilDue === 0 ? "vence hoje" : `${daysUntilDue} dias`}</Badge>
+                      )}
+                    </div>
+                    {step.started_at && <div className="text-xs text-muted-foreground mt-1">Iniciado em {formatDateTime(step.started_at)}</div>}
+                    {step.decided_at && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Decidido por {step.decider?.full_name ?? "—"} em {formatDateTime(step.decided_at)}
+                      </div>
+                    )}
+                    {step.comment && <p className="text-sm mt-2">{step.comment}</p>}
+                  </div>
+                </div>
+                <div className="text-right space-y-2">
+                  <Badge variant="outline">{step.status}</Badge>
+                  {canActOnStep(step) && (
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" onClick={() => { setStepAction({ step, action: "approve" }); setStepComment(""); setValidationError(null); }}>Aprovar</Button>
+                      <Button size="sm" variant="destructive" onClick={() => { setStepAction({ step, action: "reject" }); setStepComment(""); setValidationError(null); }}>Rejeitar</Button>
                     </div>
                   )}
-                  {step.comment && <p className="text-sm mt-2">{step.comment}</p>}
                 </div>
               </div>
-              <div className="text-right space-y-2">
-                <Badge variant="outline">{step.status}</Badge>
-                {canActOnStep(step) && (
-                  <div className="flex justify-end gap-2">
-                    <Button size="sm" onClick={() => { setStepAction({ step, action: "approve" }); setStepComment(""); setValidationError(null); }}>Aprovar</Button>
-                    <Button size="sm" variant="destructive" onClick={() => { setStepAction({ step, action: "reject" }); setStepComment(""); setValidationError(null); }}>Rejeitar</Button>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {!document.approval_steps.length && <p className="text-muted-foreground">Nenhuma etapa de aprovação registrada.</p>}
         </CardContent>
       </Card>
 
       <Dialog open={submitDialogOpen} onOpenChange={setSubmitDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Enviar para Revisão</DialogTitle>
+            <DialogTitle>Configurar Fluxo de Aprovação</DialogTitle>
             <DialogDescription>{document.code ?? "Gerando..."} — {document.title}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <div className="text-sm font-medium mb-2">Revisor</div>
-              <Select value={selectedReviewer} onValueChange={setSelectedReviewer}>
-                <SelectTrigger><SelectValue placeholder="Qualquer revisor" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Qualquer revisor</SelectItem>
-                  {reviewerOptions.map((option) => <SelectItem key={option.id} value={option.id}>{option.full_name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <div className="text-sm font-medium mb-2">Aprovador</div>
-              <Select value={selectedApprover} onValueChange={setSelectedApprover}>
-                <SelectTrigger><SelectValue placeholder="Qualquer aprovador" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Qualquer aprovador</SelectItem>
-                  {approverOptions.map((option) => <SelectItem key={option.id} value={option.id}>{option.full_name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-2">
+            {workflowSteps.map((step, index) => {
+              const assignableUsers = profileOptions.filter((option) => option.role === step.required_role);
+
+              return (
+                <div key={index} className="rounded-md border p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-medium">Etapa {index + 1}</div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" disabled={index === 0} onClick={() => moveWorkflowStep(index, -1)}>Subir</Button>
+                      <Button size="sm" variant="outline" disabled={index === workflowSteps.length - 1} onClick={() => moveWorkflowStep(index, 1)}>Descer</Button>
+                      <Button size="sm" variant="destructive" disabled={workflowSteps.length === 1} onClick={() => removeWorkflowStep(index)}>Remover</Button>
+                    </div>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div>
+                      <div className="text-sm font-medium mb-2">Nome da etapa</div>
+                      <Input value={step.step_label} onChange={(event) => updateWorkflowStep(index, { step_label: event.target.value })} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium mb-2">Papel obrigatório</div>
+                      <Select value={step.required_role} onValueChange={(value) => updateWorkflowStep(index, { required_role: value, assignee_id: null })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {WORKFLOW_ROLES.map((role) => <SelectItem key={role} value={role}>{getRoleLabel(role)}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium mb-2">Responsável</div>
+                      <Select value={step.assignee_id ?? "any"} onValueChange={(value) => updateWorkflowStep(index, { assignee_id: value === "any" ? null : value })}>
+                        <SelectTrigger><SelectValue placeholder="Qualquer usuário com este papel" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="any">Qualquer usuário com este papel</SelectItem>
+                          {assignableUsers.map((option) => <SelectItem key={option.id} value={option.id}>{option.full_name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      {!assignableUsers.length && <p className="text-xs text-muted-foreground mt-1">Qualquer usuário com este papel poderá agir.</p>}
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium mb-2">Prazo da etapa</div>
+                      <Select value={String(step.due_days ?? 2)} onValueChange={(value) => updateWorkflowStep(index, { due_days: Number(value) })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {DUE_DAY_OPTIONS.map((days) => <SelectItem key={days} value={String(days)}>{days} dias</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <div className="text-sm font-medium mb-2">Escalonamento opcional</div>
+                      <Select value={step.escalation_user_id ?? "none"} onValueChange={(value) => updateWorkflowStep(index, { escalation_user_id: value === "none" ? null : value })}>
+                        <SelectTrigger><SelectValue placeholder="Nenhum escalonamento" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Nenhum escalonamento</SelectItem>
+                          {profileOptions.map((option) => <SelectItem key={option.id} value={option.id}>{option.full_name} · {getRoleLabel(option.role)}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <Button variant="outline" onClick={addWorkflowStep}>Adicionar etapa</Button>
             {actionError && <p className="text-sm text-destructive">{actionError}</p>}
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setSubmitDialogOpen(false)}>Cancelar</Button>
-            <Button disabled={actionLoading} onClick={handleSubmitForReview}>{actionLoading ? "Enviando..." : "Confirmar envio"}</Button>
+            <Button disabled={actionLoading} onClick={handleSubmitForReview}>{actionLoading ? "Enviando..." : "Enviar para Revisão"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

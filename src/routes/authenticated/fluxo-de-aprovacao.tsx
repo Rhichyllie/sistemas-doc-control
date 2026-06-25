@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useApprovalFlow } from "@/hooks/useApprovalFlow";
 import { QueueItem, useApprovalQueue } from "@/hooks/useApprovalQueue";
-import { DOC_TYPES } from "@/lib/constants";
+import { DOC_STATUS, DOC_TYPES, USER_ROLES } from "@/lib/constants";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/authenticated/fluxo-de-aprovacao")({
@@ -24,7 +24,16 @@ function getDocTypeLabel(docType: string) {
   return DOC_TYPES.find((item) => item.value === docType)?.label ?? docType;
 }
 
-function formatDateTime(value: string) {
+function getStatusLabel(status: string) {
+  return DOC_STATUS.find((item) => item.value === status)?.label ?? status;
+}
+
+function getRoleLabel(role: string) {
+  return USER_ROLES.find((item) => item.value === role)?.label ?? role;
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return "—";
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",
     timeStyle: "short",
@@ -116,6 +125,9 @@ function ApprovalFlowPage() {
                     <TableHead>Tipo</TableHead>
                     <TableHead>Área</TableHead>
                     <TableHead>Etapa</TableHead>
+                    <TableHead>Responsável</TableHead>
+                    <TableHead>Prazo</TableHead>
+                    <TableHead>Status doc.</TableHead>
                     <TableHead>Autor</TableHead>
                     <TableHead>Aguardando desde</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
@@ -132,7 +144,20 @@ function ApprovalFlowPage() {
                       </TableCell>
                       <TableCell><Badge variant="outline">{getDocTypeLabel(item.doc_type)}</Badge></TableCell>
                       <TableCell>{item.area}</TableCell>
-                      <TableCell>{item.step_label}</TableCell>
+                      <TableCell>
+                        <div className="font-medium">{item.step_label}</div>
+                        <div className="text-xs text-muted-foreground">{getRoleLabel(item.required_role)}</div>
+                      </TableCell>
+                      <TableCell>{item.assignee_name ?? `Qualquer ${getRoleLabel(item.required_role)}`}</TableCell>
+                      <TableCell>
+                        <div>{formatDateTime(item.due_at)}</div>
+                        {item.overdue ? (
+                          <Badge variant="destructive">Atrasado</Badge>
+                        ) : item.days_until_due !== null ? (
+                          <span className="text-xs text-muted-foreground">{item.days_until_due === 0 ? "vence hoje" : `${item.days_until_due} dias`}</span>
+                        ) : null}
+                      </TableCell>
+                      <TableCell><Badge variant="secondary">{getStatusLabel(item.doc_status)}</Badge></TableCell>
                       <TableCell>{item.author_name ?? "—"}</TableCell>
                       <TableCell>{formatDateTime(item.created_at)}</TableCell>
                       <TableCell className="text-right">

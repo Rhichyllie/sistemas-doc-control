@@ -8,6 +8,10 @@ export interface QueueItem {
   step_label: string
   required_role: string
   assignee_id: string | null
+  assignee_name: string | null
+  due_at: string | null
+  days_until_due: number | null
+  overdue: boolean
   created_at: string
   documentId: string
   code: string | null
@@ -25,7 +29,9 @@ interface QueueRow {
   step_label: string
   required_role: string
   assignee_id: string | null
+  due_at: string | null
   created_at: string
+  assignee?: { full_name: string } | { full_name: string }[] | null
   documents?: {
     id: string
     code: string | null
@@ -52,10 +58,9 @@ function first<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : value
 }
 
-function isStepActiveForDocument(step: number, documentStatus: string) {
-  if (step === 1) return documentStatus === 'in_review'
-  if (step === 2) return documentStatus === 'pending_approval'
-  return true
+function getDaysUntilDue(value: string | null) {
+  if (!value) return null
+  return Math.ceil((new Date(value).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
 }
 
 export function useApprovalQueue() {
@@ -83,7 +88,9 @@ export function useApprovalQueue() {
           step_label,
           required_role,
           assignee_id,
+          due_at,
           created_at,
+          assignee:profiles!approval_flows_assignee_id_fkey (full_name),
           documents (
             id,
             code,
@@ -97,7 +104,7 @@ export function useApprovalQueue() {
         `)
         .eq('org_id', profile.org_id)
         .eq('status', 'pending')
-        .order('created_at', { ascending: true })
+        .order('step', { ascending: true })
 
       if (!['admin', 'manager'].includes(profile.role)) {
         query = query
@@ -112,6 +119,8 @@ export function useApprovalQueue() {
         .map((row) => {
           const document = first(row.documents)
           const author = first(document?.author)
+          const assignee = first(row.assignee)
+          const daysUntilDue = getDaysUntilDue(row.due_at)
 
           return {
             stepId: row.id,
@@ -119,6 +128,10 @@ export function useApprovalQueue() {
             step_label: row.step_label,
             required_role: row.required_role,
             assignee_id: row.assignee_id,
+            assignee_name: assignee?.full_name ?? null,
+            due_at: row.due_at,
+            days_until_due: daysUntilDue,
+            overdue: daysUntilDue !== null && daysUntilDue < 0,
             created_at: row.created_at,
             documentId: document?.id ?? '',
             code: document?.code ?? null,
@@ -130,7 +143,7 @@ export function useApprovalQueue() {
             org_id: document?.org_id ?? profile.org_id,
           }
         })
-        .filter((item) => item.documentId && isStepActiveForDocument(item.step, item.doc_status))
+        .filter((item) => item.documentId)
 
       setQueue(items)
     } catch (err: unknown) {

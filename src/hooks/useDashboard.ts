@@ -12,6 +12,8 @@ export interface DashboardMetrics {
   expiring_30_days: number
   expiring_7_days: number
   pending_my_action: number
+  pending_approval_steps: number
+  overdue_approval_steps: number
   recent_published: number
   recent_created: number
   by_type: { doc_type: string; count: number }[]
@@ -72,6 +74,28 @@ export function useDashboard() {
             .or(`assignee_id.eq.${profile.id},assignee_id.is.null`)
         }
 
+        let pendingStepsQuery = supabase
+          .from('approval_flows')
+          .select('id', { count: 'exact', head: true })
+          .eq('org_id', orgId)
+          .eq('status', 'pending')
+
+        let overdueStepsQuery = supabase
+          .from('approval_flows')
+          .select('id', { count: 'exact', head: true })
+          .eq('org_id', orgId)
+          .eq('status', 'pending')
+          .lt('due_at', now.toISOString())
+
+        if (!['admin', 'manager'].includes(profile.role)) {
+          pendingStepsQuery = pendingStepsQuery
+            .eq('required_role', profile.role)
+            .or(`assignee_id.eq.${profile.id},assignee_id.is.null`)
+          overdueStepsQuery = overdueStepsQuery
+            .eq('required_role', profile.role)
+            .or(`assignee_id.eq.${profile.id},assignee_id.is.null`)
+        }
+
         const [
           totalRes,
           draftRes,
@@ -82,6 +106,8 @@ export function useDashboard() {
           exp30Res,
           exp7Res,
           myQueueRes,
+          pendingStepsRes,
+          overdueStepsRes,
           recentPubRes,
           recentNewRes,
           byTypeRes,
@@ -100,6 +126,8 @@ export function useDashboard() {
             .eq('org_id', orgId).eq('status', 'published')
             .lte('next_review_at', in7.toISOString().split('T')[0]).gte('next_review_at', today),
           myQueueQuery,
+          pendingStepsQuery,
+          overdueStepsQuery,
           supabase.from('documents').select('id', { count: 'exact', head: true })
             .eq('org_id', orgId).eq('status', 'published').gte('published_at', ago30.toISOString()),
           supabase.from('documents').select('id', { count: 'exact', head: true })
@@ -124,6 +152,8 @@ export function useDashboard() {
             expiring_30_days: exp30Res.count ?? 0,
             expiring_7_days: exp7Res.count ?? 0,
             pending_my_action: myQueueRes.count ?? 0,
+            pending_approval_steps: pendingStepsRes.count ?? 0,
+            overdue_approval_steps: overdueStepsRes.count ?? 0,
             recent_published: recentPubRes.count ?? 0,
             recent_created: recentNewRes.count ?? 0,
             by_type: byType,

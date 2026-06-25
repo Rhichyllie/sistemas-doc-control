@@ -19,6 +19,11 @@ export interface ApprovalStep {
   id: string
   assignee_id: string | null
   decided_by: string | null
+  due_at: string | null
+  due_days: number | null
+  started_at: string | null
+  completed_at: string | null
+  escalation_user_id: string | null
   created_at: string
   step: number
   step_label: string

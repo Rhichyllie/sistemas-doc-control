@@ -29,8 +29,18 @@ interface ActOnStepInput {
   comment?: string
 }
 
+export interface WorkflowStepInput {
+  step: number
+  step_label: string
+  required_role: string
+  assignee_id?: string | null
+  due_days?: number | null
+  escalation_user_id?: string | null
+}
+
 interface SubmitForReviewInput {
   documentId: string
+  steps?: WorkflowStepInput[]
   reviewerId?: string
   approverId?: string
 }
@@ -51,6 +61,8 @@ export function useApprovalFlow() {
 
     try {
       const now = new Date().toISOString()
+      const workflowSteps = normalizeWorkflowSteps(input)
+
       const { error: updateError } = await supabase
         .from('documents')
         .update({ status: 'in_review', updated_at: now })
@@ -69,26 +81,22 @@ export function useApprovalFlow() {
 
       if (deleteError) throw deleteError
 
-      const { error: stepsError } = await supabase.from('approval_flows').insert([
-        {
+      const { error: stepsError } = await supabase.from('approval_flows').insert(
+        workflowSteps.map((step, index) => ({
           document_id: input.documentId,
           org_id: profile.org_id,
-          step: 1,
-          step_label: 'Revisão Técnica',
-          required_role: 'reviewer',
-          assignee_id: input.reviewerId ?? null,
+          step: step.step,
+          step_label: step.step_label,
+          required_role: step.required_role,
+          assignee_id: step.assignee_id ?? null,
           status: 'pending',
-        },
-        {
-          document_id: input.documentId,
-          org_id: profile.org_id,
-          step: 2,
-          step_label: 'Aprovação',
-          required_role: 'approver',
-          assignee_id: input.approverId ?? null,
-          status: 'pending',
-        },
-      ])
+          due_days: step.due_days ?? null,
+          due_at: buildDueAt(now, step.due_days),
+          started_at: index === 0 ? now : null,
+          escalation_user_id: step.escalation_user_id ?? null,
+          metadata: { sequential: true },
+        })),
+      )
 
       if (stepsError) throw stepsError
 
@@ -101,10 +109,11 @@ export function useApprovalFlow() {
         new_status: 'in_review',
       })
 
-      if (input.reviewerId) {
-        await notifyUsers(input.documentId, [input.reviewerId], 'approval_required', 'Documento aguarda sua revisão técnica')
+      const firstStep = workflowSteps[0]
+      if (firstStep.assignee_id) {
+        await notifyUsers(input.documentId, [firstStep.assignee_id], 'approval_required', `Documento aguarda ${firstStep.step_label}`)
       } else {
-        await notifyByRole(input.documentId, 'reviewer', 'approval_required', 'Documento aguarda sua revisão técnica')
+        await notifyByRole(input.documentId, firstStep.required_role as FlowRole, 'approval_required', `Documento aguarda ${firstStep.step_label}`)
       }
 
       return true
@@ -128,6 +137,33 @@ export function useApprovalFlow() {
     try {
       const now = new Date().toISOString()
       const nextStepStatus = input.action === 'approve' ? 'approved' : 'rejected'
+
+      const { data: pendingStep, error: pendingStepError } = await supabase
+        .from('approval_flows')
+        .select('step, document_id, required_role')
+        .eq('id', input.stepId)
+        .eq('org_id', profile.org_id)
+        .eq('status', 'pending')
+        .single()
+
+      if (pendingStepError) throw pendingStepError
+
+      const { data: doc } = await supabase
+        .from('documents')
+        .select('author_id, status')
+        .eq('id', input.documentId)
+        .eq('org_id', profile.org_id)
+        .single()
+
+      if (
+        input.action === 'approve' &&
+        pendingStep.required_role === 'approver' &&
+        doc?.author_id === profile.id &&
+        !['admin', 'manager'].includes(profile.role)
+      ) {
+        throw new Error('O autor não pode aprovar a etapa final do próprio documento.')
+      }
+
       const { data: step, error: stepError } = await supabase
         .from('approval_flows')
         .update({
@@ -135,11 +171,12 @@ export function useApprovalFlow() {
           comment: input.comment ?? null,
           decided_by: profile.id,
           decided_at: now,
+          completed_at: now,
         })
         .eq('id', input.stepId)
         .eq('org_id', profile.org_id)
         .eq('status', 'pending')
-        .select('step, document_id')
+        .select('step, document_id, required_role')
         .single()
 
       if (stepError) throw stepError
@@ -153,7 +190,7 @@ export function useApprovalFlow() {
 
         await supabase
           .from('approval_flows')
-          .update({ status: 'skipped' })
+          .update({ status: 'skipped', completed_at: now })
           .eq('document_id', input.documentId)
           .eq('org_id', profile.org_id)
           .eq('status', 'pending')
@@ -176,10 +213,27 @@ export function useApprovalFlow() {
         return true
       }
 
-      if (step.step === 1) {
+      const { data: nextStep } = await supabase
+        .from('approval_flows')
+        .select('id, step, step_label, required_role, assignee_id')
+        .eq('document_id', input.documentId)
+        .eq('org_id', profile.org_id)
+        .eq('status', 'pending')
+        .order('step', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+      if (nextStep) {
+        await supabase
+          .from('approval_flows')
+          .update({ started_at: now })
+          .eq('id', nextStep.id)
+          .is('started_at', null)
+
+        const nextDocumentStatus = documentStatusForRole(nextStep.required_role)
         await supabase
           .from('documents')
-          .update({ status: 'pending_approval', updated_at: now })
+          .update({ status: nextDocumentStatus, updated_at: now })
           .eq('id', input.documentId)
           .eq('org_id', profile.org_id)
 
@@ -187,26 +241,18 @@ export function useApprovalFlow() {
           document_id: input.documentId,
           org_id: profile.org_id,
           user_id: profile.id,
-          action: 'review_approved',
-          old_status: 'in_review',
-          new_status: 'pending_approval',
+          action: 'step_approved',
+          old_status: doc?.status ?? null,
+          new_status: nextDocumentStatus,
+          metadata: { step: step.step, next_step: nextStep.step },
         })
 
-        const { data: nextStep } = await supabase
-          .from('approval_flows')
-          .select('assignee_id')
-          .eq('document_id', input.documentId)
-          .eq('org_id', profile.org_id)
-          .eq('step', 2)
-          .eq('status', 'pending')
-          .maybeSingle()
-
         if (nextStep?.assignee_id) {
-          await notifyUsers(input.documentId, [nextStep.assignee_id], 'approval_required', 'Documento aguarda sua aprovação final')
+          await notifyUsers(input.documentId, [nextStep.assignee_id], 'approval_required', `Documento aguarda ${nextStep.step_label}`)
         } else {
-          await notifyByRole(input.documentId, 'approver', 'approval_required', 'Documento aguarda sua aprovação final')
+          await notifyByRole(input.documentId, nextStep.required_role as FlowRole, 'approval_required', `Documento aguarda ${nextStep.step_label}`)
         }
-      } else if (step.step === 2) {
+      } else {
         await supabase
           .from('documents')
           .update({ status: 'published', published_at: now, updated_at: now })
@@ -218,8 +264,9 @@ export function useApprovalFlow() {
           org_id: profile.org_id,
           user_id: profile.id,
           action: 'approved_and_published',
-          old_status: 'pending_approval',
+          old_status: doc?.status ?? null,
           new_status: 'published',
+          metadata: { step: step.step },
         })
 
         await notifyDocumentAuthor(input.documentId, 'document_approved', 'Seu documento foi aprovado e publicado')
@@ -323,4 +370,56 @@ export function useApprovalFlow() {
   }
 
   return { submitForReview, actOnStep, obsoleteDocument, loading, error }
+}
+
+function normalizeWorkflowSteps(input: SubmitForReviewInput): WorkflowStepInput[] {
+  const steps = input.steps?.length
+    ? input.steps
+    : [
+        {
+          step: 1,
+          step_label: 'Revisão Técnica',
+          required_role: 'reviewer',
+          assignee_id: input.reviewerId ?? null,
+        },
+        {
+          step: 2,
+          step_label: 'Aprovação',
+          required_role: 'approver',
+          assignee_id: input.approverId ?? null,
+        },
+      ]
+
+  const normalized = steps
+    .map((step) => ({
+      ...step,
+      step_label: step.step_label?.trim(),
+      required_role: step.required_role?.trim(),
+      assignee_id: step.assignee_id || null,
+      escalation_user_id: step.escalation_user_id || null,
+      due_days: step.due_days ?? null,
+    }))
+    .sort((a, b) => a.step - b.step)
+
+  if (!normalized.length) throw new Error('Configure pelo menos uma etapa de aprovação.')
+
+  for (const [index, step] of normalized.entries()) {
+    if (!step.step_label) throw new Error(`Informe o nome da etapa ${index + 1}.`)
+    if (!step.required_role) throw new Error(`Informe o papel obrigatório da etapa ${index + 1}.`)
+    step.step = index + 1
+  }
+
+  return normalized
+}
+
+function buildDueAt(nowIso: string, dueDays?: number | null) {
+  if (!dueDays) return null
+  const due = new Date(nowIso)
+  due.setDate(due.getDate() + dueDays)
+  return due.toISOString()
+}
+
+function documentStatusForRole(role: string) {
+  if (role === 'approver') return 'pending_approval'
+  return 'in_review'
 }
