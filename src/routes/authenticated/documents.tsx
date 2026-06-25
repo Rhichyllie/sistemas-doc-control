@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, Outlet, useLocation } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +51,16 @@ function addMonths(months: number) {
 }
 
 function DocumentsPage() {
+  const location = useLocation();
+
+  if (location.pathname !== "/authenticated/documents") {
+    return <Outlet />;
+  }
+
+  return <DocumentsListPage />;
+}
+
+function DocumentsListPage() {
   const navigate = useNavigate();
   const { theme } = useTheme();
   const { org } = useAuthContext();
