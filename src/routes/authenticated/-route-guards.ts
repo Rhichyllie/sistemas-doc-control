@@ -16,19 +16,39 @@ export async function requireAuthenticated(locationHref: string) {
 
   const { data: profile, error } = await supabase
     .from('profiles')
-    .select('id, role, active')
+    .select('id, role, active, org_id')
     .eq('id', session.user.id)
-    .single()
+    .maybeSingle()
 
-  if (error || !profile?.active) {
-    await supabase.auth.signOut()
+  if (error) {
     throw redirect({
       to: '/login',
-      search: { redirect: locationHref } as never,
+      search: { redirect: locationHref, setup: 'profile-read-error' } as never,
     })
   }
 
-  return { session, profile: profile as Pick<UserProfile, 'id' | 'role' | 'active'> }
+  if (!profile) {
+    throw redirect({
+      to: '/login',
+      search: { redirect: locationHref, setup: 'missing-profile' } as never,
+    })
+  }
+
+  if (profile.active === false) {
+    throw redirect({
+      to: '/login',
+      search: { redirect: locationHref, setup: 'inactive-user' } as never,
+    })
+  }
+
+  if (!profile.org_id || !profile.role) {
+    throw redirect({
+      to: '/login',
+      search: { redirect: locationHref, setup: 'invalid-profile' } as never,
+    })
+  }
+
+  return { session, profile: profile as Pick<UserProfile, 'id' | 'role' | 'active'> & { org_id: string } }
 }
 
 export async function requireRole(locationHref: string, roles: UserProfile['role'][]) {
