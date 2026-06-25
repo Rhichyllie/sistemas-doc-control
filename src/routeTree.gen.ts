@@ -16,11 +16,13 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedTrilhaDeAuditoriaRouteImport } from './routes/authenticated/trilha-de-auditoria'
 import { Route as AuthenticatedProjetistasRouteImport } from './routes/authenticated/projetistas'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/authenticated/projects'
+import { Route as AuthenticatedMeuPerfilRouteImport } from './routes/authenticated/meu-perfil'
 import { Route as AuthenticatedFluxoDeAprovacaoRouteImport } from './routes/authenticated/fluxo-de-aprovacao'
 import { Route as AuthenticatedEquipeRouteImport } from './routes/authenticated/equipe'
 import { Route as AuthenticatedDocumentsRouteImport } from './routes/authenticated/documents'
 import { Route as AuthenticatedDisciplinesRouteImport } from './routes/authenticated/disciplines'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/authenticated/dashboard'
+import { Route as AuthenticatedConfiguracoesRouteImport } from './routes/authenticated/configuracoes'
 import { Route as AuthenticatedDocumentsDocumentIdRouteImport } from './routes/authenticated/documents.$documentId'
 
 const LoginRoute = LoginRouteImport.update({
@@ -60,6 +62,11 @@ const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
   path: '/projects',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedMeuPerfilRoute = AuthenticatedMeuPerfilRouteImport.update({
+  id: '/meu-perfil',
+  path: '/meu-perfil',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedFluxoDeAprovacaoRoute =
   AuthenticatedFluxoDeAprovacaoRouteImport.update({
     id: '/fluxo-de-aprovacao',
@@ -87,6 +94,12 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedConfiguracoesRoute =
+  AuthenticatedConfiguracoesRouteImport.update({
+    id: '/configuracoes',
+    path: '/configuracoes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDocumentsDocumentIdRoute =
   AuthenticatedDocumentsDocumentIdRouteImport.update({
     id: '/$documentId',
@@ -99,11 +112,13 @@ export interface FileRoutesByFullPath {
   '/authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/login': typeof LoginRoute
+  '/authenticated/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/authenticated/disciplines': typeof AuthenticatedDisciplinesRoute
   '/authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
   '/authenticated/equipe': typeof AuthenticatedEquipeRoute
   '/authenticated/fluxo-de-aprovacao': typeof AuthenticatedFluxoDeAprovacaoRoute
+  '/authenticated/meu-perfil': typeof AuthenticatedMeuPerfilRoute
   '/authenticated/projects': typeof AuthenticatedProjectsRoute
   '/authenticated/projetistas': typeof AuthenticatedProjetistasRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
@@ -114,11 +129,13 @@ export interface FileRoutesByTo {
   '/authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/login': typeof LoginRoute
+  '/authenticated/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/authenticated/disciplines': typeof AuthenticatedDisciplinesRoute
   '/authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
   '/authenticated/equipe': typeof AuthenticatedEquipeRoute
   '/authenticated/fluxo-de-aprovacao': typeof AuthenticatedFluxoDeAprovacaoRoute
+  '/authenticated/meu-perfil': typeof AuthenticatedMeuPerfilRoute
   '/authenticated/projects': typeof AuthenticatedProjectsRoute
   '/authenticated/projetistas': typeof AuthenticatedProjetistasRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
@@ -130,11 +147,13 @@ export interface FileRoutesById {
   '/authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/login': typeof LoginRoute
+  '/authenticated/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/authenticated/disciplines': typeof AuthenticatedDisciplinesRoute
   '/authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
   '/authenticated/equipe': typeof AuthenticatedEquipeRoute
   '/authenticated/fluxo-de-aprovacao': typeof AuthenticatedFluxoDeAprovacaoRoute
+  '/authenticated/meu-perfil': typeof AuthenticatedMeuPerfilRoute
   '/authenticated/projects': typeof AuthenticatedProjectsRoute
   '/authenticated/projetistas': typeof AuthenticatedProjetistasRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
@@ -147,11 +166,13 @@ export interface FileRouteTypes {
     | '/authenticated'
     | '/auth'
     | '/login'
+    | '/authenticated/configuracoes'
     | '/authenticated/dashboard'
     | '/authenticated/disciplines'
     | '/authenticated/documents'
     | '/authenticated/equipe'
     | '/authenticated/fluxo-de-aprovacao'
+    | '/authenticated/meu-perfil'
     | '/authenticated/projects'
     | '/authenticated/projetistas'
     | '/authenticated/trilha-de-auditoria'
@@ -162,11 +183,13 @@ export interface FileRouteTypes {
     | '/authenticated'
     | '/auth'
     | '/login'
+    | '/authenticated/configuracoes'
     | '/authenticated/dashboard'
     | '/authenticated/disciplines'
     | '/authenticated/documents'
     | '/authenticated/equipe'
     | '/authenticated/fluxo-de-aprovacao'
+    | '/authenticated/meu-perfil'
     | '/authenticated/projects'
     | '/authenticated/projetistas'
     | '/authenticated/trilha-de-auditoria'
@@ -177,11 +200,13 @@ export interface FileRouteTypes {
     | '/authenticated'
     | '/auth'
     | '/login'
+    | '/authenticated/configuracoes'
     | '/authenticated/dashboard'
     | '/authenticated/disciplines'
     | '/authenticated/documents'
     | '/authenticated/equipe'
     | '/authenticated/fluxo-de-aprovacao'
+    | '/authenticated/meu-perfil'
     | '/authenticated/projects'
     | '/authenticated/projetistas'
     | '/authenticated/trilha-de-auditoria'
@@ -246,6 +271,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/authenticated/meu-perfil': {
+      id: '/authenticated/meu-perfil'
+      path: '/meu-perfil'
+      fullPath: '/authenticated/meu-perfil'
+      preLoaderRoute: typeof AuthenticatedMeuPerfilRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/authenticated/fluxo-de-aprovacao': {
       id: '/authenticated/fluxo-de-aprovacao'
       path: '/fluxo-de-aprovacao'
@@ -281,6 +313,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/authenticated/configuracoes': {
+      id: '/authenticated/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/authenticated/configuracoes'
+      preLoaderRoute: typeof AuthenticatedConfiguracoesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/authenticated/documents/$documentId': {
       id: '/authenticated/documents/$documentId'
       path: '/$documentId'
@@ -307,22 +346,26 @@ const AuthenticatedDocumentsRouteWithChildren =
   )
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedConfiguracoesRoute: typeof AuthenticatedConfiguracoesRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDisciplinesRoute: typeof AuthenticatedDisciplinesRoute
   AuthenticatedDocumentsRoute: typeof AuthenticatedDocumentsRouteWithChildren
   AuthenticatedEquipeRoute: typeof AuthenticatedEquipeRoute
   AuthenticatedFluxoDeAprovacaoRoute: typeof AuthenticatedFluxoDeAprovacaoRoute
+  AuthenticatedMeuPerfilRoute: typeof AuthenticatedMeuPerfilRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
   AuthenticatedProjetistasRoute: typeof AuthenticatedProjetistasRoute
   AuthenticatedTrilhaDeAuditoriaRoute: typeof AuthenticatedTrilhaDeAuditoriaRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedConfiguracoesRoute: AuthenticatedConfiguracoesRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDisciplinesRoute: AuthenticatedDisciplinesRoute,
   AuthenticatedDocumentsRoute: AuthenticatedDocumentsRouteWithChildren,
   AuthenticatedEquipeRoute: AuthenticatedEquipeRoute,
   AuthenticatedFluxoDeAprovacaoRoute: AuthenticatedFluxoDeAprovacaoRoute,
+  AuthenticatedMeuPerfilRoute: AuthenticatedMeuPerfilRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,
   AuthenticatedProjetistasRoute: AuthenticatedProjetistasRoute,
   AuthenticatedTrilhaDeAuditoriaRoute: AuthenticatedTrilhaDeAuditoriaRoute,
