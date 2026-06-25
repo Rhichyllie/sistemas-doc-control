@@ -9,11 +9,15 @@ import { supabase } from '@/lib/supabase'
 // - src/contexts/local-data-context.tsx needs user/isAuthenticated/roles to load data.
 // - src/routes/authenticated/route.tsx is the shared TanStack layout for protected routes.
 
+const VALID_ROLES = ['admin', 'manager', 'approver', 'reviewer', 'author', 'viewer'] as const
+
+type ValidRole = (typeof VALID_ROLES)[number]
+
 export interface UserProfile {
   id: string
   org_id: string
   full_name: string
-  role: 'admin' | 'manager' | 'approver' | 'reviewer' | 'author' | 'viewer'
+  role: ValidRole
   department: string | null
   avatar_url: string | null
   active: boolean
@@ -40,6 +44,7 @@ interface AuthContextValue {
   profile: UserProfile | null
   org: OrgInfo | null
   loading: boolean
+  authError: string | null
   role: UserProfile['role'] | null
   roles: UserProfile['role'][]
   isAuthenticated: boolean
@@ -55,14 +60,29 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+function toError(message: string): Error {
+  return new Error(message)
+}
+
+function isValidRole(role: unknown): role is ValidRole {
+  return typeof role === 'string' && VALID_ROLES.includes(role as ValidRole)
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [org, setOrg] = useState<OrgInfo | null>(null)
   const [loading, setLoading] = useState(true)
+  const [authError, setAuthError] = useState<string | null>(null)
 
-  async function loadProfileAndOrg(userId: string) {
+  function clearProfileState(message?: string) {
+    setProfile(null)
+    setOrg(null)
+    setAuthError(message ?? null)
+  }
+
+  async function loadProfileAndOrg(userId: string): Promise<{ error: Error | null }> {
     const { data: profileData, error } = await supabase
       .from('profiles')
       .select(`
@@ -72,72 +92,153 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         )
       `)
       .eq('id', userId)
-      .single()
+      .maybeSingle()
 
-    if (error || !profileData) {
-      console.error('Failed to load profile:', error)
-      setProfile(null)
-      setOrg(null)
-      return
+    if (error) {
+      const message = `Não foi possível carregar o perfil do usuário: ${error.message}`
+      console.error('[auth] Failed to load profile:', error)
+      clearProfileState(message)
+      return { error: toError(message) }
     }
 
-    setProfile({
-      id: profileData.id,
-      org_id: profileData.org_id,
-      full_name: profileData.full_name,
-      role: profileData.role as UserProfile['role'],
-      department: profileData.department,
-      avatar_url: profileData.avatar_url,
-      active: profileData.active,
-    })
+    if (!profileData) {
+      const message = 'Usuário autenticado, mas perfil interno não configurado. Verifique public.profiles.'
+      clearProfileState(message)
+      return { error: toError(message) }
+    }
+
+    if (profileData.active === false) {
+      const message = 'Usuário inativo. Solicite reativação ao administrador.'
+      clearProfileState(message)
+      return { error: toError(message) }
+    }
+
+    if (!profileData.org_id) {
+      const message = 'Perfil sem organização vinculada.'
+      clearProfileState(message)
+      return { error: toError(message) }
+    }
+
+    if (!isValidRole(profileData.role)) {
+      const message = 'Perfil sem papel de acesso válido.'
+      clearProfileState(message)
+      return { error: toError(message) }
+    }
 
     const orgData = Array.isArray(profileData.organizations)
       ? profileData.organizations[0]
       : profileData.organizations
-    if (orgData) setOrg(orgData as OrgInfo)
+
+    const normalizedProfile: UserProfile = {
+      id: profileData.id,
+      org_id: profileData.org_id,
+      full_name: profileData.full_name,
+      role: profileData.role,
+      department: profileData.department,
+      avatar_url: profileData.avatar_url,
+      active: profileData.active !== false,
+    }
+
+    setProfile(normalizedProfile)
+    setOrg(orgData ? (orgData as OrgInfo) : null)
+    setAuthError(null)
+
+    if (import.meta.env.DEV) {
+      console.log('[auth] profile loaded', {
+        hasProfile: true,
+        hasOrg: !!orgData,
+        role: normalizedProfile.role,
+      })
+    }
+
+    return { error: null }
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    let mounted = true
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return
       setSession(session)
       setUser(session?.user ?? null)
+
       if (session?.user) {
-        loadProfileAndOrg(session.user.id).finally(() => setLoading(false))
+        await loadProfileAndOrg(session.user.id)
       } else {
-        setProfile(null)
-        setOrg(null)
-        setLoading(false)
+        clearProfileState()
       }
+
+      if (mounted) setLoading(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        setLoading(true)
         setSession(session)
         setUser(session?.user ?? null)
+
+        if (import.meta.env.DEV) {
+          console.log('[auth] state changed', {
+            event: _event,
+            hasSession: !!session,
+            hasUser: !!session?.user,
+          })
+        }
+
         if (session?.user) {
           await loadProfileAndOrg(session.user.id)
         } else {
-          setProfile(null)
-          setOrg(null)
+          clearProfileState()
         }
+
         setLoading(false)
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   async function signIn(email: string, password: string) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    return { error: error as Error | null }
+    setLoading(true)
+    setAuthError(null)
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
+    if (error) {
+      const message = translateAuthError(error.message)
+      setLoading(false)
+      setAuthError(message)
+      return { error: toError(message) }
+    }
+
+    if (!data.session || !data.user) {
+      const message = 'Login aceito, mas a sessão não foi criada. Tente novamente.'
+      setLoading(false)
+      setAuthError(message)
+      return { error: toError(message) }
+    }
+
+    setSession(data.session)
+    setUser(data.user)
+
+    const profileResult = await loadProfileAndOrg(data.user.id)
+    setLoading(false)
+
+    if (profileResult.error) {
+      return profileResult
+    }
+
+    return { error: null }
   }
 
   async function signOut() {
     await supabase.auth.signOut()
     setUser(null)
     setSession(null)
-    setProfile(null)
-    setOrg(null)
+    clearProfileState()
   }
 
   function hasRole(roles: UserProfile['role'][]): boolean {
@@ -147,7 +248,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function login(email: string, password: string): Promise<LegacyResult<User>> {
     const { error } = await signIn(email, password)
-    if (error) return { success: false, error: translateAuthError(error.message) }
+    if (error) return { success: false, error: error.message }
     return { success: true, user }
   }
 
@@ -181,9 +282,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profile,
     org,
     loading,
+    authError,
     role,
     roles: role ? [role] : [],
-    isAuthenticated: !!session,
+    isAuthenticated: !!session && !!profile,
     signIn,
     signOut,
     hasRole,
