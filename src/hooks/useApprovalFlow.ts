@@ -1,6 +1,7 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthContext } from '@/contexts/AuthContext'
+import { getErrorMessage } from '@/lib/errorUtils'
 
 /*
  * P-5 workflow findings before implementation:
@@ -10,9 +11,9 @@ import { useAuthContext } from '@/contexts/AuthContext'
  * - src/routes/authenticated/documents.$documentId.tsx showed real document detail data, versions,
  *   file download, and a raw approval steps list, but it had no wired approve/reject, submit, or
  *   obsolete workflow actions.
- * - supabase/seed.sql creates approval_flows demo rows for document 0005 with step 1 "Revisão Técnica"
+ * - supabase/seed.sql creates approval_flows demo rows for document 0005 with step 1 "RevisÃ£o TÃ©cnica"
  *   assigned to the reviewer and pending, and document 0006 with step 1 approved plus step 2
- *   "Aprovação" assigned to the approver and pending.
+ *   "AprovaÃ§Ã£o" assigned to the approver and pending.
  * - Manual flow check: draft -> submitForReview() -> in_review; in_review -> actOnStep(approve, step=1)
  *   -> pending_approval; pending_approval -> actOnStep(approve, step=2) -> published; any step ->
  *   actOnStep(reject) -> draft; published -> obsoleteDocument() -> obsolete.
@@ -52,7 +53,7 @@ export function useApprovalFlow() {
 
   async function submitForReview(input: SubmitForReviewInput): Promise<boolean> {
     if (!profile) {
-      setError('Usuário não autenticado')
+      setError('UsuÃ¡rio nÃ£o autenticado')
       return false
     }
 
@@ -118,7 +119,7 @@ export function useApprovalFlow() {
 
       return true
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao submeter para revisão')
+      setError(err instanceof Error ? err.message : 'Erro ao submeter para revisÃ£o')
       return false
     } finally {
       setLoading(false)
@@ -127,7 +128,7 @@ export function useApprovalFlow() {
 
   async function actOnStep(input: ActOnStepInput): Promise<boolean> {
     if (!profile) {
-      setError('Usuário não autenticado')
+      setError('UsuÃ¡rio nÃ£o autenticado')
       return false
     }
 
@@ -136,32 +137,41 @@ export function useApprovalFlow() {
 
     try {
       const now = new Date().toISOString()
+      if (input.action === 'reject' && !input.comment?.trim()) {
+        throw new Error('Informe o motivo da rejeição.')
+      }
       const nextStepStatus = input.action === 'approve' ? 'approved' : 'rejected'
 
       const { data: pendingStep, error: pendingStepError } = await supabase
         .from('approval_flows')
-        .select('step, document_id, required_role')
+        .select('step, document_id, required_role, status')
         .eq('id', input.stepId)
         .eq('org_id', profile.org_id)
         .eq('status', 'pending')
         .single()
 
       if (pendingStepError) throw pendingStepError
+      if (!pendingStep || pendingStep.status !== 'pending') throw new Error('Esta etapa não está pendente.')
 
-      const { data: doc } = await supabase
+      const { data: doc, error: docError } = await supabase
         .from('documents')
         .select('author_id, status')
         .eq('id', input.documentId)
         .eq('org_id', profile.org_id)
         .single()
 
+      if (docError) throw docError
+      if (!doc || BLOCKED_DOCUMENT_STATUSES.includes(doc.status)) {
+        throw new Error('Este documento não está em fluxo de aprovação ativo.')
+      }
+
       if (
         input.action === 'approve' &&
         pendingStep.required_role === 'approver' &&
-        doc?.author_id === profile.id &&
+        doc.author_id === profile.id &&
         !['admin', 'manager'].includes(profile.role)
       ) {
-        throw new Error('O autor não pode aprovar a etapa final do próprio documento.')
+        throw new Error('O autor nÃ£o pode aprovar a etapa final do prÃ³prio documento.')
       }
 
       const { data: step, error: stepError } = await supabase
@@ -176,7 +186,7 @@ export function useApprovalFlow() {
         .eq('id', input.stepId)
         .eq('org_id', profile.org_id)
         .eq('status', 'pending')
-        .select('step, document_id, required_role')
+        .select('step, document_id, required_role, status')
         .single()
 
       if (stepError) throw stepError
@@ -242,7 +252,7 @@ export function useApprovalFlow() {
           org_id: profile.org_id,
           user_id: profile.id,
           action: 'step_approved',
-          old_status: doc?.status ?? null,
+          old_status: doc.status,
           new_status: nextDocumentStatus,
           metadata: { step: step.step, next_step: nextStep.step },
         })
@@ -264,7 +274,7 @@ export function useApprovalFlow() {
           org_id: profile.org_id,
           user_id: profile.id,
           action: 'approved_and_published',
-          old_status: doc?.status ?? null,
+          old_status: doc.status,
           new_status: 'published',
           metadata: { step: step.step },
         })
@@ -274,7 +284,7 @@ export function useApprovalFlow() {
 
       return true
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao processar aprovação')
+      setError(err instanceof Error ? err.message : 'Erro ao processar aprovaÃ§Ã£o')
       return false
     } finally {
       setLoading(false)
@@ -283,7 +293,7 @@ export function useApprovalFlow() {
 
   async function obsoleteDocument(documentId: string): Promise<boolean> {
     if (!profile) {
-      setError('Usuário não autenticado')
+      setError('UsuÃ¡rio nÃ£o autenticado')
       return false
     }
 
@@ -312,7 +322,7 @@ export function useApprovalFlow() {
 
       return true
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao tornar documento obsoleto')
+      setError(getErrorMessage(err, 'Erro ao tornar documento obsoleto'))
       return false
     } finally {
       setLoading(false)
@@ -357,13 +367,13 @@ export function useApprovalFlow() {
       .eq('org_id', profile.org_id)
       .single()
 
-    const notifications = userIds.map((userId) => ({
+    const notifications = [...new Set(userIds)].map((userId) => ({
       org_id: profile.org_id,
       user_id: userId,
       document_id: documentId,
       type,
       title,
-      body: doc ? `${doc.code ?? ''} — ${doc.title}` : '',
+      body: doc ? `${doc.code ?? ''} â€” ${doc.title}` : '',
     }))
 
     await supabase.from('notifications').insert(notifications)
@@ -378,13 +388,13 @@ function normalizeWorkflowSteps(input: SubmitForReviewInput): WorkflowStepInput[
     : [
         {
           step: 1,
-          step_label: 'Revisão Técnica',
+          step_label: 'RevisÃ£o TÃ©cnica',
           required_role: 'reviewer',
           assignee_id: input.reviewerId ?? null,
         },
         {
           step: 2,
-          step_label: 'Aprovação',
+          step_label: 'AprovaÃ§Ã£o',
           required_role: 'approver',
           assignee_id: input.approverId ?? null,
         },
@@ -401,11 +411,11 @@ function normalizeWorkflowSteps(input: SubmitForReviewInput): WorkflowStepInput[
     }))
     .sort((a, b) => a.step - b.step)
 
-  if (!normalized.length) throw new Error('Configure pelo menos uma etapa de aprovação.')
+  if (!normalized.length) throw new Error('Configure pelo menos uma etapa de aprovaÃ§Ã£o.')
 
   for (const [index, step] of normalized.entries()) {
     if (!step.step_label) throw new Error(`Informe o nome da etapa ${index + 1}.`)
-    if (!step.required_role) throw new Error(`Informe o papel obrigatório da etapa ${index + 1}.`)
+    if (!step.required_role) throw new Error(`Informe o papel obrigatÃ³rio da etapa ${index + 1}.`)
     step.step = index + 1
   }
 
@@ -423,3 +433,4 @@ function documentStatusForRole(role: string) {
   if (role === 'approver') return 'pending_approval'
   return 'in_review'
 }
+

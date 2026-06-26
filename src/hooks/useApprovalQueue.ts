@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback } from 'react'
+﻿import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthContext } from '@/contexts/AuthContext'
+import { getErrorMessage } from '@/lib/errorUtils'
 
 export interface QueueItem {
   stepId: string
@@ -147,7 +148,7 @@ export function useApprovalQueue() {
 
       setQueue(items)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar fila')
+      setError(getErrorMessage(err, 'Erro ao carregar fila'))
     } finally {
       setLoading(false)
     }
@@ -159,3 +160,4 @@ export function useApprovalQueue() {
 
   return { queue, loading, error, refetch: fetchQueue }
 }
+
