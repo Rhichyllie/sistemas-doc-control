@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthContext } from '@/contexts/AuthContext'
+import type { WorkflowAssignmentType } from '@/lib/workflowCompatibility'
+import { isWorkflowFoundationUnavailable } from '@/lib/workflowCompatibility'
 import type { Document } from './useDocuments'
 
 export interface DocumentVersion {
@@ -17,7 +19,10 @@ export interface DocumentVersion {
 
 export interface ApprovalStep {
   id: string
+  assignment_type?: WorkflowAssignmentType | null
   assignee_id: string | null
+  assignee_user_id?: string | null
+  assignee_group_id?: string | null
   decided_by: string | null
   due_at: string | null
   due_days: number | null
@@ -30,8 +35,12 @@ export interface ApprovalStep {
   required_role: string
   status: string
   comment: string | null
+  instructions?: string | null
+  metadata?: Record<string, unknown>
   decided_at: string | null
   assignee?: { full_name: string }
+  assignee_user?: { full_name: string }
+  assignee_group?: { name: string }
   decider?: { full_name: string }
 }
 
@@ -80,22 +89,36 @@ export function useDocument(documentId: string | undefined) {
 
       if (versionsError) throw versionsError
 
-      const { data: steps, error: stepsError } = await supabase
+      let stepsResult = await supabase
         .from('approval_flows')
         .select(`
           *,
           assignee:profiles!approval_flows_assignee_id_fkey (full_name),
+          assignee_user:profiles!approval_flows_assignee_user_id_fkey (full_name),
+          assignee_group:approval_groups!approval_flows_assignee_group_id_fkey (name),
           decider:profiles!approval_flows_decided_by_fkey (full_name)
         `)
         .eq('document_id', documentId)
         .order('step', { ascending: true })
 
-      if (stepsError) throw stepsError
+      if (stepsResult.error && isWorkflowFoundationUnavailable(stepsResult.error)) {
+        stepsResult = await supabase
+          .from('approval_flows')
+          .select(`
+            *,
+            assignee:profiles!approval_flows_assignee_id_fkey (full_name),
+            decider:profiles!approval_flows_decided_by_fkey (full_name)
+          `)
+          .eq('document_id', documentId)
+          .order('step', { ascending: true })
+      }
+
+      if (stepsResult.error) throw stepsResult.error
 
       setDocument({
         ...(doc as Document),
         versions: (versions ?? []) as DocumentVersion[],
-        approval_steps: (steps ?? []) as ApprovalStep[],
+        approval_steps: (stepsResult.data ?? []) as unknown as ApprovalStep[],
       })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar documento')

@@ -20,6 +20,8 @@ import { ApprovalStep, useDocument } from "@/hooks/useDocument";
 import { useAuditTrail } from "@/hooks/useAuditTrail";
 import { mapAuditEntriesToRecentActivities } from "@/hooks/useOperationalCockpit";
 import { RecentActivityList } from "@/components/operational/RecentActivityList";
+import { formatDueLabel, getDueStatus } from "@/lib/workflowDates";
+import type { WorkflowAssignmentType } from "@/lib/workflowCompatibility";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/authenticated/documents/$documentId")({
@@ -27,11 +29,9 @@ export const Route = createFileRoute("/authenticated/documents/$documentId")({
 });
 
 const DEFAULT_WORKFLOW_STEPS: WorkflowStepInput[] = [
-  { step: 1, step_label: "Revisão Técnica", required_role: "reviewer", assignment_type: "role", assignee_id: null, assignee_user_id: null, due_days: 2, escalation_user_id: null },
-  { step: 2, step_label: "Aprovação Final", required_role: "approver", assignment_type: "role", assignee_id: null, assignee_user_id: null, due_days: 2, escalation_user_id: null },
+  { step: 1, step_label: "Revisão Técnica", required_role: "reviewer", assignment_type: "role", assignee_id: null, assignee_user_id: null, due_mode: "days", due_days: 2, due_at: null, escalation_user_id: null },
+  { step: 2, step_label: "Aprovação Final", required_role: "approver", assignment_type: "role", assignee_id: null, assignee_user_id: null, due_mode: "days", due_days: 2, due_at: null, escalation_user_id: null },
 ];
-
-const DUE_DAY_OPTIONS = [1, 2, 3, 5, 7, 10, 15];
 
 function getStatusMeta(status: string) {
   return DOC_STATUS.find((item) => item.value === status);
@@ -59,11 +59,6 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value));
 }
 
-function getDaysUntilDue(value: string | null) {
-  if (!value) return null;
-  return Math.ceil((new Date(value).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-}
-
 function formatFileSize(size: number | null) {
   if (!size) return "—";
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
@@ -86,10 +81,34 @@ function getStepCircleClass(status: string) {
 }
 
 function stepMatchesDocumentStatus(step: ApprovalStep, documentStatus: string) {
-  if (documentStatus === "published" || documentStatus === "draft" || documentStatus === "obsolete") return true;
+  if (!["in_review", "pending_approval"].includes(documentStatus)) return false;
   if (step.started_at) return true;
   if (step.required_role === "approver") return documentStatus === "pending_approval";
   return documentStatus === "in_review";
+}
+
+function getStepAssignmentType(step: ApprovalStep): WorkflowAssignmentType {
+  if (step.assignment_type === "group" || step.assignee_group_id) return "group";
+  if (step.assignment_type === "user" || step.assignee_user_id || step.assignee_id) return "user";
+  return "role";
+}
+
+function getStepAssignmentLabel(step: ApprovalStep) {
+  const assignmentType = getStepAssignmentType(step);
+  if (assignmentType === "group") {
+    return `Grupo: ${step.assignee_group?.name ?? "não identificado"}`;
+  }
+  if (assignmentType === "user") {
+    return `Usuário: ${step.assignee_user?.full_name ?? step.assignee?.full_name ?? "não identificado"}`;
+  }
+  return `Papel: ${getRoleLabel(step.required_role)}`;
+}
+
+function getAssignmentTypeLabel(step: ApprovalStep) {
+  const assignmentType = getStepAssignmentType(step);
+  if (assignmentType === "group") return "Grupo";
+  if (assignmentType === "user") return "Usuário";
+  return "Papel";
 }
 
 function DocumentDetailPage() {
@@ -101,6 +120,7 @@ function DocumentDetailPage() {
   const {
     users: workflowUsers,
     groups: workflowGroups,
+    groupMembers: workflowGroupMembers,
     roles: workflowRoles,
     isLoading: actorsLoading,
     error: actorsError,
@@ -178,7 +198,9 @@ function DocumentDetailPage() {
         assignee_id: null,
         assignee_user_id: null,
         assignee_group_id: null,
+        due_mode: "days",
         due_days: 2,
+        due_at: null,
         escalation_user_id: null,
       },
     ]);
@@ -243,13 +265,36 @@ function DocumentDetailPage() {
     (["admin", "manager", "author"].includes(profile.role)) &&
     (profile.id === document.author_id || isManager);
   const canObsolete = document.status === "published" && isManager;
+  const currentPendingStep = [...document.approval_steps]
+    .filter((step) => step.status === "pending")
+    .sort((left, right) => {
+      if (Boolean(left.started_at) !== Boolean(right.started_at)) {
+        return left.started_at ? -1 : 1;
+      }
+      return left.step - right.step;
+    })[0] ?? null;
 
   function canActOnStep(step: ApprovalStep) {
     if (!profile) return false;
-    const assignedToUser = step.assignee_id === profile.id;
-    const unassignedMatchingRole = !step.assignee_id && step.required_role === profile.role;
+    const assignmentType = getStepAssignmentType(step);
+    const assignedToUser =
+      assignmentType === "user" &&
+      (step.assignee_user_id ?? step.assignee_id) === profile.id;
+    const assignedToGroup =
+      assignmentType === "group" &&
+      !!step.assignee_group_id &&
+      workflowGroupMembers.some(
+        (member) =>
+          member.group_id === step.assignee_group_id &&
+          member.user_id === profile.id &&
+          member.is_active,
+      );
+    const matchingRole = assignmentType === "role" && step.required_role === profile.role;
     const authorFinalApproval = step.required_role === "approver" && document?.author_id === profile.id && !isManager;
-    return step.status === "pending" && stepMatchesDocumentStatus(step, document?.status ?? "") && !authorFinalApproval && (assignedToUser || unassignedMatchingRole || isManager);
+    return step.id === currentPendingStep?.id &&
+      stepMatchesDocumentStatus(step, document?.status ?? "") &&
+      !authorFinalApproval &&
+      (assignedToUser || assignedToGroup || matchingRole || isManager);
   }
 
   return (
@@ -279,6 +324,48 @@ function DocumentDetailPage() {
           </p>
         </CardContent>
       </Card>
+
+      {(["in_review", "pending_approval"].includes(document.status) || currentPendingStep) && (
+        <Card className="border-primary/25 shadow-md">
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle>Tramitação Atual</CardTitle>
+              <Badge style={{ backgroundColor: status?.color, color: "white" }}>
+                {status?.label ?? document.status}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {currentPendingStep ? (
+              <div className="grid gap-4 text-sm md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <div className="text-muted-foreground">Etapa atual</div>
+                  <div className="font-medium">{currentPendingStep.step}. {currentPendingStep.step_label}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Tipo de atribuição</div>
+                  <div className="font-medium">{getAssignmentTypeLabel(currentPendingStep)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Responsável atual</div>
+                  <div className="font-medium">{getStepAssignmentLabel(currentPendingStep)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Prazo</div>
+                  <div className="font-medium">{formatDueLabel(currentPendingStep.due_at)}</div>
+                  {getDueStatus(currentPendingStep.due_at) === "overdue" && (
+                    <Badge variant="destructive" className="mt-1">Vencido</Badge>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-muted-foreground">
+                O documento está em fluxo, mas nenhuma etapa pendente foi encontrada.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="shadow-md">
         <CardHeader><CardTitle>Metadados</CardTitle></CardHeader>
@@ -336,27 +423,35 @@ function DocumentDetailPage() {
         <CardHeader><CardTitle>Fluxo de Aprovação</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           {document.approval_steps.map((step) => {
-            const daysUntilDue = getDaysUntilDue(step.due_at);
-            const overdue = step.status === "pending" && daysUntilDue !== null && daysUntilDue < 0;
+            const isCurrentStep = step.id === currentPendingStep?.id;
+            const overdue = isCurrentStep && getDueStatus(step.due_at) === "overdue";
+            const dueMode =
+              step.metadata?.due_mode === "date"
+                ? "Data manual"
+                : step.metadata?.due_mode === "days"
+                  ? "Prazo calculado"
+                  : "Origem do prazo não informada";
 
             return (
-              <div key={step.id} className="border rounded-md p-3 flex items-start justify-between gap-4">
+              <div key={step.id} className={`border rounded-md p-3 flex items-start justify-between gap-4 ${isCurrentStep ? "border-primary/40 bg-primary/[0.02]" : ""}`}>
                 <div className="flex items-start gap-3">
                   <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-semibold ${getStepCircleClass(step.status)}`}>
                     {step.step}
                   </div>
                   <div>
-                    <div className="font-medium">{step.step_label}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-medium">{step.step_label}</div>
+                      {isCurrentStep && <Badge>Etapa atual</Badge>}
+                      <Badge variant="outline">{getAssignmentTypeLabel(step)}</Badge>
+                    </div>
                     <div className="text-sm text-muted-foreground">
-                      Papel: {getRoleLabel(step.required_role)} · Responsável: {step.assignee?.full_name ?? `Qualquer ${getRoleLabel(step.required_role)}`}
+                      {getStepAssignmentLabel(step)} · Fallback: {getRoleLabel(step.required_role)}
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      Prazo: {formatDateTime(step.due_at)} {step.due_days ? `(${step.due_days} dias)` : ""}
+                      Prazo: {formatDateTime(step.due_at)} · {formatDueLabel(step.due_at)} · {dueMode}
                       {overdue && <Badge variant="destructive" className="ml-2">Atrasado</Badge>}
-                      {!overdue && daysUntilDue !== null && step.status === "pending" && (
-                        <Badge variant="outline" className="ml-2">{daysUntilDue === 0 ? "vence hoje" : `${daysUntilDue} dias`}</Badge>
-                      )}
                     </div>
+                    {step.instructions && <p className="text-sm mt-2">{step.instructions}</p>}
                     {step.started_at && <div className="text-xs text-muted-foreground mt-1">Iniciado em {formatDateTime(step.started_at)}</div>}
                     {step.decided_at && (
                       <div className="text-xs text-muted-foreground mt-1">
@@ -367,7 +462,9 @@ function DocumentDetailPage() {
                   </div>
                 </div>
                 <div className="text-right space-y-2">
-                  <Badge variant="outline">{step.status}</Badge>
+                  <Badge variant="outline">
+                    {step.status === "pending" && !isCurrentStep ? "aguardando" : step.status}
+                  </Badge>
                   {canActOnStep(step) && (
                     <div className="flex justify-end gap-2">
                       <Button size="sm" onClick={() => { setStepAction({ step, action: "approve" }); setStepComment(""); setValidationError(null); }}>Aprovar</Button>
@@ -430,15 +527,6 @@ function DocumentDetailPage() {
                       compatibilityMessage={actorsCompatibilityMessage}
                       onChange={(updates) => updateWorkflowStep(index, updates)}
                     />
-                    <div>
-                      <div className="text-sm font-medium mb-2">Prazo da etapa</div>
-                      <Select value={String(step.due_days ?? 2)} onValueChange={(value) => updateWorkflowStep(index, { due_days: Number(value) })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {DUE_DAY_OPTIONS.map((days) => <SelectItem key={days} value={String(days)}>{days} dias</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
                     <div className="md:col-span-2">
                       <div className="text-sm font-medium mb-2">Escalonamento opcional</div>
                       <Select value={step.escalation_user_id ?? "none"} onValueChange={(value) => updateWorkflowStep(index, { escalation_user_id: value === "none" ? null : value })}>

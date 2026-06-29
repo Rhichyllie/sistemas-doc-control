@@ -1,7 +1,8 @@
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import type { WorkflowStepInput } from '@/hooks/useApprovalFlow'
+import type { WorkflowDueMode, WorkflowStepInput } from '@/hooks/useApprovalFlow'
 import type { ApprovalGroup, WorkflowActorUser } from '@/hooks/useWorkflowActors'
 import type { WorkflowAssignmentType } from '@/lib/workflowCompatibility'
 
@@ -36,6 +37,7 @@ export function WorkflowStepRoutingFields({
   onChange,
 }: WorkflowStepRoutingFieldsProps) {
   const assignmentType = assignmentTypeFor(step)
+  const dueMode: WorkflowDueMode = step.due_mode ?? (step.due_at ? 'date' : 'days')
 
   function changeAssignmentType(nextType: WorkflowAssignmentType) {
     onChange({
@@ -43,6 +45,14 @@ export function WorkflowStepRoutingFields({
       assignee_id: null,
       assignee_user_id: null,
       assignee_group_id: null,
+    })
+  }
+
+  function changeDueMode(nextMode: WorkflowDueMode) {
+    onChange({
+      due_mode: nextMode,
+      due_days: nextMode === 'days' ? step.due_days ?? 2 : null,
+      due_at: nextMode === 'date' ? step.due_at ?? null : null,
     })
   }
 
@@ -145,6 +155,53 @@ export function WorkflowStepRoutingFields({
           placeholder="Orientações opcionais para quem receber esta etapa."
         />
       </div>
+
+      <div>
+        <div className="mb-2 text-sm font-medium">Modo de prazo</div>
+        <Select value={dueMode} onValueChange={(value) => changeDueMode(value as WorkflowDueMode)}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="days">Por quantidade de dias</SelectItem>
+            <SelectItem value="date">Por data específica</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {dueMode === 'days' ? (
+        <div>
+          <div className="mb-2 text-sm font-medium">Quantidade de dias</div>
+          <Input
+            type="number"
+            min={0}
+            step={1}
+            value={step.due_days ?? 2}
+            onChange={(event) => onChange({
+              due_mode: 'days',
+              due_days: event.target.value === '' ? null : Number(event.target.value),
+              due_at: null,
+            })}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Prazo calculado a partir do momento do envio.
+          </p>
+        </div>
+      ) : (
+        <div>
+          <div className="mb-2 text-sm font-medium">Data específica</div>
+          <Input
+            type="date"
+            value={step.due_at?.slice(0, 10) ?? ''}
+            onChange={(event) => onChange({
+              due_mode: 'date',
+              due_days: null,
+              due_at: event.target.value || null,
+            })}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Data definida manualmente; calendário útil não é aplicado nesta fase.
+          </p>
+        </div>
+      )}
     </>
   )
 }

@@ -15,6 +15,7 @@ import { useAuthContext } from '@/contexts/AuthContext'
 import { useApprovalFlow } from '@/hooks/useApprovalFlow'
 import { type QueueItem, useApprovalQueue } from '@/hooks/useApprovalQueue'
 import { DOC_STATUS, DOC_TYPES, USER_ROLES } from '@/lib/constants'
+import { formatDueLabel } from '@/lib/workflowDates'
 import { toast } from 'sonner'
 
 export const Route = createFileRoute('/authenticated/fluxo-de-aprovacao')({
@@ -54,22 +55,11 @@ function getAssignmentDescription(item: QueueItem) {
   return `Atribuído ao papel: ${getRoleLabel(item.required_role)}`
 }
 
-function getSlaDescription(item: QueueItem) {
-  if (!item.due_at || item.days_until_due === null) return 'Sem prazo definido'
-  if (item.days_until_due < 0) {
-    const overdueDays = Math.abs(item.days_until_due)
-    return `SLA vencido há ${overdueDays} ${overdueDays === 1 ? 'dia' : 'dias'}`
-  }
-  if (item.days_until_due === 0) return 'SLA vence hoje'
-  return `SLA vence em ${item.days_until_due} ${item.days_until_due === 1 ? 'dia' : 'dias'}`
-}
-
 function formatDateTime(value: string | null) {
   if (!value) return '—'
   return new Intl.DateTimeFormat('pt-BR', {
     dateStyle: 'short',
     timeStyle: 'short',
-    timeZone: 'UTC',
   }).format(new Date(value))
 }
 
@@ -93,7 +83,7 @@ function ApprovalFlowPage() {
   const [projectFilter, setProjectFilter] = useState('all')
   const [docTypeFilter, setDocTypeFilter] = useState('all')
 
-  const canSeeQueue = profile && ['admin', 'manager', 'reviewer', 'approver'].includes(profile.role)
+  const canSeeQueue = Boolean(profile)
   const canConfigureRouting = profile && ['admin', 'manager', 'author'].includes(profile.role)
 
   const projectOptions = useMemo(() => {
@@ -394,11 +384,11 @@ function QueueTable({
             <TableCell>
               <div>{formatDateTime(item.due_at)}</div>
               {item.overdue ? (
-                <Badge variant="destructive" className="mt-1">{getSlaDescription(item)}</Badge>
+                <Badge variant="destructive" className="mt-1">{formatDueLabel(item.due_at)}</Badge>
               ) : item.days_until_due !== null ? (
-                <span className="text-xs text-muted-foreground">{getSlaDescription(item)}</span>
+                <span className="text-xs text-muted-foreground">{formatDueLabel(item.due_at)}</span>
               ) : (
-                <span className="text-xs text-muted-foreground">{getSlaDescription(item)}</span>
+                <span className="text-xs text-muted-foreground">{formatDueLabel(item.due_at)}</span>
               )}
             </TableCell>
             <TableCell><Badge variant="secondary">{getStatusLabel(item.doc_status)}</Badge></TableCell>

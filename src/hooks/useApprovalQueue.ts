@@ -7,6 +7,7 @@ import {
   isWorkflowFoundationUnavailable,
   type WorkflowAssignmentType,
 } from '@/lib/workflowCompatibility'
+import { getDaysUntilDue, getDueStatus } from '@/lib/workflowDates'
 
 export interface QueueItem {
   stepId: string
@@ -21,6 +22,7 @@ export interface QueueItem {
   assignee_group_id: string | null
   assignee_group_name: string | null
   instructions: string | null
+  started_at: string | null
   due_at: string | null
   days_until_due: number | null
   overdue: boolean
@@ -65,6 +67,7 @@ interface QueueRow {
   assignee_user_id?: string | null
   assignee_group_id?: string | null
   instructions?: string | null
+  started_at?: string | null
   due_at?: string | null
   created_at: string
   assignee?: NamedRelation | NamedRelation[] | null
@@ -75,16 +78,11 @@ interface QueueRow {
 
 type QueueQueryMode = 'enterprise' | 'enterprise_without_project' | 'legacy_sla' | 'legacy_base'
 
-const BLOCKED_DOCUMENT_STATUSES = new Set(['draft', 'published', 'obsolete'])
+const ACTIVE_DOCUMENT_STATUSES = new Set(['in_review', 'pending_approval'])
 
 function first<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null
   return Array.isArray(value) ? (value[0] ?? null) : value
-}
-
-function getDaysUntilDue(value: string | null) {
-  if (!value) return null
-  return Math.ceil((new Date(value).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
 }
 
 function resolveAssignmentType(row: QueueRow): WorkflowAssignmentType {
@@ -118,6 +116,7 @@ const ENTERPRISE_SELECT = `
   assignee_user_id,
   assignee_group_id,
   instructions,
+  started_at,
   due_at,
   created_at,
   assignee:profiles!approval_flows_assignee_id_fkey (full_name),
@@ -147,6 +146,7 @@ const ENTERPRISE_WITHOUT_PROJECT_SELECT = `
   assignee_user_id,
   assignee_group_id,
   instructions,
+  started_at,
   due_at,
   created_at,
   assignee:profiles!approval_flows_assignee_id_fkey (full_name),
@@ -170,6 +170,7 @@ const LEGACY_SLA_SELECT = `
   step_label,
   required_role,
   assignee_id,
+  started_at,
   due_at,
   created_at,
   assignee:profiles!approval_flows_assignee_id_fkey (full_name),
@@ -276,7 +277,32 @@ export function useApprovalQueue() {
       if (result.error) throw result.error
 
       const rows = (result.data ?? []) as unknown as QueueRow[]
-      const items: QueueItem[] = rows
+      const currentStepByDocument = new Map<string, { step: number; started: boolean }>()
+      for (const row of rows) {
+        const document = first(row.documents)
+        if (!document?.id || !ACTIVE_DOCUMENT_STATUSES.has(document.status)) continue
+        const candidate = { step: row.step, started: Boolean(row.started_at) }
+        const currentStep = currentStepByDocument.get(document.id)
+        if (
+          !currentStep
+          || (candidate.started && !currentStep.started)
+          || (candidate.started === currentStep.started && candidate.step < currentStep.step)
+        ) {
+          currentStepByDocument.set(document.id, candidate)
+        }
+      }
+
+      const currentRows = rows.filter((row) => {
+        const document = first(row.documents)
+        return Boolean(
+          document?.id
+          && ACTIVE_DOCUMENT_STATUSES.has(document.status)
+          && currentStepByDocument.get(document.id)?.step === row.step
+          && currentStepByDocument.get(document.id)?.started === Boolean(row.started_at),
+        )
+      })
+
+      const items: QueueItem[] = currentRows
         .filter((row) => isManager || isAssignedToProfile(row, currentProfile, userGroupIds))
         .map((row) => {
           const document = first(row.documents)
@@ -308,9 +334,10 @@ export function useApprovalQueue() {
               assignedGroup?.name
               ?? (row.assignee_group_id ? groupsById.get(row.assignee_group_id) ?? null : null),
             instructions: row.instructions ?? null,
+            started_at: row.started_at ?? null,
             due_at: dueAt,
             days_until_due: daysUntilDue,
-            overdue: daysUntilDue !== null && daysUntilDue < 0,
+            overdue: getDueStatus(dueAt) === 'overdue',
             created_at: row.created_at,
             documentId: document?.id ?? '',
             code: document?.code ?? null,
@@ -326,8 +353,7 @@ export function useApprovalQueue() {
         })
         .filter((item) =>
           item.documentId
-          && item.doc_status
-          && !BLOCKED_DOCUMENT_STATUSES.has(item.doc_status),
+          && ACTIVE_DOCUMENT_STATUSES.has(item.doc_status),
         )
 
       setQueryMode(mode)

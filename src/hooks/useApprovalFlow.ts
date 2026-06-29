@@ -6,11 +6,16 @@ import {
   isWorkflowFoundationUnavailable,
   type WorkflowAssignmentType,
 } from '@/lib/workflowCompatibility'
+import {
+  calculateDueAtFromDays,
+  normalizeDateInputToDueAt,
+} from '@/lib/workflowDates'
 
 export type FlowAction = 'submit' | 'approve' | 'reject' | 'publish' | 'obsolete'
 
 type FlowRole = 'reviewer' | 'approver' | 'author' | 'manager' | 'admin'
 type WorkflowPersistenceMode = 'enterprise' | 'legacy_sla' | 'legacy_base'
+export type WorkflowDueMode = 'days' | 'date'
 
 const BLOCKED_DOCUMENT_STATUSES = ['draft', 'published', 'obsolete']
 
@@ -29,7 +34,9 @@ export interface WorkflowStepInput {
   assignee_id?: string | null
   assignee_user_id?: string | null
   assignee_group_id?: string | null
+  due_mode?: WorkflowDueMode
   due_days?: number | null
+  due_at?: string | null
   instructions?: string | null
   escalation_user_id?: string | null
 }
@@ -39,7 +46,9 @@ interface NormalizedWorkflowStep extends WorkflowStepInput {
   assignee_id: string | null
   assignee_user_id: string | null
   assignee_group_id: string | null
+  due_mode: WorkflowDueMode
   due_days: number | null
+  due_at: string | null
   instructions: string | null
   escalation_user_id: string | null
 }
@@ -80,19 +89,26 @@ export function useApprovalFlow() {
     setCompatibilityMessage(null)
     let documentMovedToReview = false
     let workflowPersisted = false
+    let initialDocumentStatus = 'in_review'
 
     try {
       const now = new Date().toISOString()
       const workflowSteps = normalizeWorkflowSteps(input)
+      initialDocumentStatus = documentStatusForRole(workflowSteps[0].required_role)
 
-      const { error: updateError } = await supabase
+      const { data: updatedDocument, error: updateError } = await supabase
         .from('documents')
-        .update({ status: 'in_review', updated_at: now })
+        .update({ status: initialDocumentStatus, updated_at: now })
         .eq('id', input.documentId)
         .eq('org_id', profile.org_id)
         .eq('status', 'draft')
+        .select('id, status')
+        .maybeSingle()
 
       if (updateError) throw updateError
+      if (!updatedDocument || updatedDocument.status !== initialDocumentStatus) {
+        throw new Error('O documento não pôde ser movido de rascunho para revisão.')
+      }
       documentMovedToReview = true
 
       const { error: deleteError } = await supabase
@@ -124,7 +140,7 @@ export function useApprovalFlow() {
         user_id: profile.id,
         action: 'submitted_for_review',
         old_status: 'draft',
-        new_status: 'in_review',
+        new_status: initialDocumentStatus,
         metadata: { workflow_mode: persistenceMode },
       })
 
@@ -144,7 +160,7 @@ export function useApprovalFlow() {
           .update({ status: 'draft', updated_at: new Date().toISOString() })
           .eq('id', input.documentId)
           .eq('org_id', profile.org_id)
-          .eq('status', 'in_review')
+          .eq('status', initialDocumentStatus)
       }
       setError(getErrorMessage(err, 'Erro ao submeter para revisão'))
       return false
@@ -176,33 +192,45 @@ export function useApprovalFlow() {
       assignee_user_id: step.assignment_type === 'user' ? step.assignee_user_id : null,
       assignee_group_id: step.assignment_type === 'group' ? step.assignee_group_id : null,
       due_days: step.due_days,
-      due_at: buildDueAt(now, step.due_days),
+      due_at: resolveStepDueAt(step, now),
       started_at: index === 0 ? now : null,
       escalation_user_id: step.escalation_user_id,
       instructions: step.instructions,
-      metadata: { sequential: true, assignment_type: step.assignment_type },
+      metadata: {
+        sequential: true,
+        active_step: index === 0,
+        assignment_type: step.assignment_type,
+        due_mode: step.due_mode,
+      },
     }))
 
-    let result = await supabase.from('approval_flows').insert(enterpriseRows)
-    if (!result.error) return 'enterprise'
+    let result = await supabase.from('approval_flows').insert(enterpriseRows).select('id')
+    if (!result.error) {
+      assertInsertedStepCount(result.data, workflowSteps.length)
+      return 'enterprise'
+    }
     if (!isWorkflowFoundationUnavailable(result.error)) throw result.error
 
     const legacySlaRows = workflowSteps.map((step, index) => ({
       ...commonRows[index],
       assignee_id: step.assignment_type === 'user' ? step.assignee_user_id : null,
       due_days: step.due_days,
-      due_at: buildDueAt(now, step.due_days),
+      due_at: resolveStepDueAt(step, now),
       started_at: index === 0 ? now : null,
       escalation_user_id: step.escalation_user_id,
       metadata: {
         sequential: true,
         requested_assignment_type: step.assignment_type,
         requested_group_id: step.assignment_type === 'group' ? step.assignee_group_id : null,
+        due_mode: step.due_mode,
       },
     }))
 
-    result = await supabase.from('approval_flows').insert(legacySlaRows)
-    if (!result.error) return 'legacy_sla'
+    result = await supabase.from('approval_flows').insert(legacySlaRows).select('id')
+    if (!result.error) {
+      assertInsertedStepCount(result.data, workflowSteps.length)
+      return 'legacy_sla'
+    }
     if (!isWorkflowFoundationUnavailable(result.error)) throw result.error
 
     const legacyBaseRows = workflowSteps.map((step, index) => ({
@@ -210,8 +238,9 @@ export function useApprovalFlow() {
       assignee_id: step.assignment_type === 'user' ? step.assignee_user_id : null,
     }))
 
-    result = await supabase.from('approval_flows').insert(legacyBaseRows)
+    result = await supabase.from('approval_flows').insert(legacyBaseRows).select('id')
     if (result.error) throw result.error
+    assertInsertedStepCount(result.data, workflowSteps.length)
     return 'legacy_base'
   }
 
@@ -631,7 +660,13 @@ function normalizeWorkflowSteps(input: SubmitForReviewInput): NormalizedWorkflow
         assignee_user_id: assigneeUserId,
         assignee_group_id: assignmentType === 'group' ? step.assignee_group_id || null : null,
         escalation_user_id: step.escalation_user_id || null,
-        due_days: step.due_days ?? null,
+        due_mode: step.due_mode ?? (step.due_at ? 'date' : 'days'),
+        due_days: (step.due_mode ?? (step.due_at ? 'date' : 'days')) === 'days'
+          ? step.due_days ?? null
+          : null,
+        due_at: (step.due_mode ?? (step.due_at ? 'date' : 'days')) === 'date'
+          ? step.due_at || null
+          : null,
         instructions: step.instructions?.trim() || null,
       }
     })
@@ -648,8 +683,15 @@ function normalizeWorkflowSteps(input: SubmitForReviewInput): NormalizedWorkflow
     if (step.assignment_type === 'group' && !step.assignee_group_id) {
       throw new Error(`Selecione o grupo responsável pela etapa ${index + 1}.`)
     }
-    if (step.due_days !== null && step.due_days < 0) {
-      throw new Error(`O prazo da etapa ${index + 1} não pode ser negativo.`)
+    if (
+      step.due_mode === 'days'
+      && step.due_days !== null
+      && (!Number.isInteger(step.due_days) || step.due_days < 0)
+    ) {
+      throw new Error(`O prazo da etapa ${index + 1} deve ser um número inteiro não negativo.`)
+    }
+    if (step.due_mode === 'date' && !normalizeManualDueAt(step.due_at)) {
+      throw new Error(`Selecione uma data de prazo válida para a etapa ${index + 1}.`)
     }
     step.step = index + 1
   }
@@ -680,17 +722,31 @@ function normalizePersistedStep(step: NextStepRow): NormalizedWorkflowStep {
     assignee_id: step.assignee_id ?? null,
     assignee_user_id: step.assignee_user_id ?? step.assignee_id ?? null,
     assignee_group_id: step.assignee_group_id ?? null,
+    due_mode: 'days',
     due_days: null,
+    due_at: null,
     instructions: null,
     escalation_user_id: null,
   }
 }
 
-function buildDueAt(nowIso: string, dueDays?: number | null) {
-  if (dueDays === null || dueDays === undefined) return null
-  const due = new Date(nowIso)
-  due.setDate(due.getDate() + dueDays)
-  return due.toISOString()
+function normalizeManualDueAt(value?: string | null) {
+  if (!value) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return normalizeDateInputToDueAt(value)
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
+}
+
+function resolveStepDueAt(step: NormalizedWorkflowStep, nowIso: string) {
+  if (step.due_mode === 'date') return normalizeManualDueAt(step.due_at)
+  if (step.due_days === null) return null
+  return calculateDueAtFromDays(step.due_days, new Date(nowIso))
+}
+
+function assertInsertedStepCount(data: { id?: string }[] | null, expected: number) {
+  if (!data || data.length !== expected) {
+    throw new Error('As etapas do workflow não foram persistidas integralmente.')
+  }
 }
 
 function documentStatusForRole(role: string) {
