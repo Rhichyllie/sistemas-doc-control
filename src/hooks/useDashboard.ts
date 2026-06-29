@@ -46,13 +46,14 @@ export function useDashboard() {
       return
     }
 
+    const currentProfile = profile
     let cancelled = false
     setLoading(true)
     setError(null)
 
     async function load() {
       try {
-        const orgId = profile.org_id
+        const orgId = currentProfile.org_id
         const now = new Date()
         const today = now.toISOString().split('T')[0]
         const in30 = new Date(now)
@@ -68,10 +69,10 @@ export function useDashboard() {
           .eq('org_id', orgId)
           .eq('status', 'pending')
 
-        if (!['admin', 'manager'].includes(profile.role)) {
+        if (!['admin', 'manager'].includes(currentProfile.role)) {
           myQueueQuery = myQueueQuery
-            .eq('required_role', profile.role)
-            .or(`assignee_id.eq.${profile.id},assignee_id.is.null`)
+            .eq('required_role', currentProfile.role)
+            .or(`assignee_id.eq.${currentProfile.id},assignee_id.is.null`)
         }
 
         let pendingStepsQuery = supabase
@@ -87,13 +88,13 @@ export function useDashboard() {
           .eq('status', 'pending')
           .lt('due_at', now.toISOString())
 
-        if (!['admin', 'manager'].includes(profile.role)) {
+        if (!['admin', 'manager'].includes(currentProfile.role)) {
           pendingStepsQuery = pendingStepsQuery
-            .eq('required_role', profile.role)
-            .or(`assignee_id.eq.${profile.id},assignee_id.is.null`)
+            .eq('required_role', currentProfile.role)
+            .or(`assignee_id.eq.${currentProfile.id},assignee_id.is.null`)
           overdueStepsQuery = overdueStepsQuery
-            .eq('required_role', profile.role)
-            .or(`assignee_id.eq.${profile.id},assignee_id.is.null`)
+            .eq('required_role', currentProfile.role)
+            .or(`assignee_id.eq.${currentProfile.id},assignee_id.is.null`)
         }
 
         const [

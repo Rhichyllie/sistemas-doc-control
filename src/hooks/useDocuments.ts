@@ -18,6 +18,7 @@ export interface Document {
   org_id: string
   code: string | null
   title: string
+  project_id: string | null
   doc_type: string
   area: string
   status: string
@@ -32,6 +33,7 @@ export interface Document {
   created_at: string
   updated_at: string
   author?: { full_name: string }
+  project?: { id: string; code: string; name: string } | null
 }
 
 export interface DocumentFilters {
@@ -41,11 +43,17 @@ export interface DocumentFilters {
   search?: string
 }
 
+function isOptionalProjectError(error: { code?: string; message?: string }) {
+  return ['42703', 'PGRST200', 'PGRST204'].includes(error.code ?? '')
+    || /project_id|projects|relationship/i.test(error.message ?? '')
+}
+
 export function useDocuments(filters: DocumentFilters = {}) {
   const { profile } = useAuthContext()
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [schemaFallback, setSchemaFallback] = useState(false)
 
   const fetchDocuments = useCallback(async () => {
     if (!profile) {
@@ -54,28 +62,44 @@ export function useDocuments(filters: DocumentFilters = {}) {
       return
     }
 
+    const currentProfile = profile
     setLoading(true)
     setError(null)
+    setSchemaFallback(false)
 
     try {
-      let query = supabase
-        .from('documents')
-        .select(`
-          *,
-          author:profiles!documents_author_id_fkey (full_name)
-        `)
-        .eq('org_id', profile.org_id)
-        .order('created_at', { ascending: false })
+      async function runQuery(includeProject: boolean) {
+        let query = supabase
+          .from('documents')
+          .select(includeProject ? `
+            *,
+            author:profiles!documents_author_id_fkey (full_name),
+            project:projects!documents_project_id_fkey (id, code, name)
+          ` : `
+            *,
+            author:profiles!documents_author_id_fkey (full_name)
+          `)
+          .eq('org_id', currentProfile.org_id)
+          .order('created_at', { ascending: false })
 
-      if (filters.status) query = query.eq('status', filters.status)
-      if (filters.doc_type) query = query.eq('doc_type', filters.doc_type)
-      if (filters.area) query = query.eq('area', filters.area)
-      if (filters.search) query = query.ilike('title', `%${filters.search}%`)
+        if (filters.status) query = query.eq('status', filters.status)
+        if (filters.doc_type) query = query.eq('doc_type', filters.doc_type)
+        if (filters.area) query = query.eq('area', filters.area)
+        if (filters.search) query = query.ilike('title', `%${filters.search}%`)
 
-      const { data, error: queryError } = await query
+        return query
+      }
+
+      let { data, error: queryError } = await runQuery(true)
+      if (queryError && isOptionalProjectError(queryError)) {
+        const fallbackResult = await runQuery(false)
+        data = fallbackResult.data
+        queryError = fallbackResult.error
+        if (!queryError) setSchemaFallback(true)
+      }
 
       if (queryError) throw queryError
-      setDocuments((data ?? []) as Document[])
+      setDocuments((data ?? []) as unknown as Document[])
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar documentos')
     } finally {
@@ -87,5 +111,5 @@ export function useDocuments(filters: DocumentFilters = {}) {
     fetchDocuments()
   }, [fetchDocuments])
 
-  return { documents, loading, error, refetch: fetchDocuments }
+  return { documents, loading, error, schemaFallback, refetch: fetchDocuments }
 }

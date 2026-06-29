@@ -14,6 +14,9 @@ import { supabase } from "@/lib/supabase";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useApprovalFlow, type WorkflowStepInput } from "@/hooks/useApprovalFlow";
 import { ApprovalStep, useDocument } from "@/hooks/useDocument";
+import { useAuditTrail } from "@/hooks/useAuditTrail";
+import { mapAuditEntriesToRecentActivities } from "@/hooks/useOperationalCockpit";
+import { RecentActivityList } from "@/components/operational/RecentActivityList";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/authenticated/documents/$documentId")({
@@ -97,6 +100,7 @@ function DocumentDetailPage() {
   const { documentId } = Route.useParams();
   const { profile } = useAuthContext();
   const { document, loading, error, refetch } = useDocument(documentId);
+  const { entries: auditEntries, loading: auditLoading } = useAuditTrail({ document_id: documentId });
   const { submitForReview, actOnStep, obsoleteDocument, loading: actionLoading, error: actionError } = useApprovalFlow();
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [obsoleteDialogOpen, setObsoleteDialogOpen] = useState(false);
@@ -242,8 +246,8 @@ function DocumentDetailPage() {
     if (!profile) return false;
     const assignedToUser = step.assignee_id === profile.id;
     const unassignedMatchingRole = !step.assignee_id && step.required_role === profile.role;
-    const authorFinalApproval = step.required_role === "approver" && document.author_id === profile.id && !isManager;
-    return step.status === "pending" && stepMatchesDocumentStatus(step, document.status) && !authorFinalApproval && (assignedToUser || unassignedMatchingRole || isManager);
+    const authorFinalApproval = step.required_role === "approver" && document?.author_id === profile.id && !isManager;
+    return step.status === "pending" && stepMatchesDocumentStatus(step, document?.status ?? "") && !authorFinalApproval && (assignedToUser || unassignedMatchingRole || isManager);
   }
 
   return (
@@ -375,6 +379,13 @@ function DocumentDetailPage() {
           {!document.approval_steps.length && <p className="text-muted-foreground">Nenhuma etapa de aprovação registrada.</p>}
         </CardContent>
       </Card>
+
+      <RecentActivityList
+        activities={mapAuditEntriesToRecentActivities(auditEntries, 20)}
+        loading={auditLoading}
+        title="Atividades Recentes do Documento"
+        description="Movimentações registradas na trilha de auditoria deste documento."
+      />
 
       <Dialog open={submitDialogOpen} onOpenChange={setSubmitDialogOpen}>
         <DialogContent className="max-w-4xl">

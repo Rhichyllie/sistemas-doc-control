@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { LayoutDashboard, FileStack, Users, LogOut, Settings, Palette, Download, DatabaseZap, GitBranch, Bell, ClipboardList, UserCircle } from "lucide-react";
+import { House, FileStack, Users, LogOut, Settings, Palette, Download, DatabaseZap, GitBranch, Bell, ClipboardList, UserCircle, Inbox, ChartNoAxesCombined } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -9,15 +9,17 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { useTheme, themeColors } from "@/contexts/theme-context";
 import { useLocalData } from "@/hooks/use-local-data";
 import { useNotifications } from "@/hooks/useNotifications";
-import { useDashboard } from "@/hooks/useDashboard";
+import { useApprovalQueue } from "@/hooks/useApprovalQueue";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 
 const nav = [
-  { to: "/authenticated/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/authenticated/dashboard", label: "Início", icon: House },
   { to: "/authenticated/documents", label: "Documentos", icon: FileStack },
+  { to: "/authenticated/atividades", label: "Minhas Atividades", icon: Inbox, badge: "activities" },
   { to: "/authenticated/fluxo-de-aprovacao", label: "Fila de Aprovação", icon: GitBranch, badge: "approval" },
+  { to: "/authenticated/indicadores", label: "Indicadores", icon: ChartNoAxesCombined },
   { to: "/authenticated/trilha-de-auditoria", label: "Trilha de Auditoria", icon: ClipboardList },
   { to: "/authenticated/equipe", label: "Equipe", icon: Users },
   { to: "/authenticated/configuracoes", label: "Configurações", icon: Settings, managerOnly: true },
@@ -30,7 +32,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { theme, setTheme } = useTheme();
   const { exportData, importData } = useLocalData();
   const { notifications, unreadCount, loading: notificationsLoading, markAllRead } = useNotifications();
-  const { metrics } = useDashboard();
+  const { queue } = useApprovalQueue();
 
   // Company settings
   const [openSettings, setOpenSettings] = useState(false);
@@ -247,7 +249,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     .map(item => {
       const active = pathname.startsWith(item.to);
       const Icon = item.icon;
-      const pendingCount = item.badge === "approval" ? (metrics?.pending_my_action ?? 0) : 0;
+      const pendingCount = item.badge === "approval"
+        ? queue.length
+        : item.badge === "activities"
+          ? unreadCount
+          : 0;
       return (
         <Link
           key={item.to}
@@ -468,7 +474,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     )}
                   </div>
                   <Button asChild variant="secondary" className="w-full">
-                    <Link to="/authenticated/fluxo-de-aprovacao">Ver tudo</Link>
+                    <Link to="/authenticated/atividades">Ver tudo em Minhas Atividades</Link>
                   </Button>
                 </div>
               </PopoverContent>

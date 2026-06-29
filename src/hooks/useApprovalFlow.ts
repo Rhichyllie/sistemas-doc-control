@@ -23,6 +23,8 @@ export type FlowAction = 'submit' | 'approve' | 'reject' | 'publish' | 'obsolete
 
 type FlowRole = 'reviewer' | 'approver' | 'author' | 'manager' | 'admin'
 
+const BLOCKED_DOCUMENT_STATUSES = ['draft', 'published', 'obsolete']
+
 interface ActOnStepInput {
   documentId: string
   stepId: string
