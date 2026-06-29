@@ -1,15 +1,26 @@
-﻿import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useCallback, useEffect, useState } from 'react'
 import { useAuthContext } from '@/contexts/AuthContext'
+import { useWorkflowActors } from '@/hooks/useWorkflowActors'
+import { supabase } from '@/lib/supabase'
 import { getErrorMessage } from '@/lib/errorUtils'
+import {
+  isWorkflowFoundationUnavailable,
+  type WorkflowAssignmentType,
+} from '@/lib/workflowCompatibility'
 
 export interface QueueItem {
   stepId: string
   step: number
   step_label: string
   required_role: string
+  assignment_type: WorkflowAssignmentType
   assignee_id: string | null
   assignee_name: string | null
+  assignee_user_id: string | null
+  assignee_user_name: string | null
+  assignee_group_id: string | null
+  assignee_group_name: string | null
+  instructions: string | null
   due_at: string | null
   days_until_due: number | null
   overdue: boolean
@@ -26,39 +37,45 @@ export interface QueueItem {
   org_id: string
 }
 
+interface NamedRelation {
+  full_name?: string
+  name?: string
+}
+
+interface QueueDocumentRow {
+  id: string
+  code: string | null
+  title: string
+  project_id?: string | null
+  doc_type: string
+  area: string
+  status: string
+  org_id: string
+  author?: NamedRelation | NamedRelation[] | null
+  project?: NamedRelation | NamedRelation[] | null
+}
+
 interface QueueRow {
   id: string
   step: number
   step_label: string
   required_role: string
+  assignment_type?: string | null
   assignee_id: string | null
+  assignee_user_id?: string | null
+  assignee_group_id?: string | null
+  instructions?: string | null
   due_at?: string | null
   created_at: string
-  assignee?: { full_name: string } | { full_name: string }[] | null
-  documents?: {
-    id: string
-    code: string | null
-    title: string
-    project_id?: string | null
-    doc_type: string
-    area: string
-    status: string
-    org_id: string
-    author?: { full_name: string } | { full_name: string }[] | null
-    project?: { name: string } | { name: string }[] | null
-  } | {
-    id: string
-    code: string | null
-    title: string
-    project_id?: string | null
-    doc_type: string
-    area: string
-    status: string
-    org_id: string
-    author?: { full_name: string } | { full_name: string }[] | null
-    project?: { name: string } | { name: string }[] | null
-  }[] | null
+  assignee?: NamedRelation | NamedRelation[] | null
+  assignee_user?: NamedRelation | NamedRelation[] | null
+  assignee_group?: NamedRelation | NamedRelation[] | null
+  documents?: QueueDocumentRow | QueueDocumentRow[] | null
 }
+
+type QueueQueryMode = 'enterprise' | 'enterprise_without_project' | 'legacy_sla' | 'legacy_base'
+
+const BLOCKED_DOCUMENT_STATUSES = new Set(['draft', 'published', 'obsolete'])
 
 function first<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null
@@ -70,12 +87,84 @@ function getDaysUntilDue(value: string | null) {
   return Math.ceil((new Date(value).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
 }
 
-function isOptionalSchemaError(error: { code?: string; message?: string }) {
-  return ['42703', 'PGRST200', 'PGRST204'].includes(error.code ?? '')
-    || /due_at|projects|relationship/i.test(error.message ?? '')
+function resolveAssignmentType(row: QueueRow): WorkflowAssignmentType {
+  if (row.assignee_group_id || row.assignment_type === 'group') return 'group'
+  if (row.assignee_user_id || row.assignee_id || row.assignment_type === 'user') return 'user'
+  return 'role'
 }
 
-const QUEUE_SELECT = `
+function isAssignedToProfile(
+  row: QueueRow,
+  profile: { id: string; role: string },
+  groupIds: Set<string>,
+) {
+  const assignmentType = resolveAssignmentType(row)
+  if (assignmentType === 'user') {
+    return (row.assignee_user_id ?? row.assignee_id) === profile.id
+  }
+  if (assignmentType === 'group') {
+    return Boolean(row.assignee_group_id && groupIds.has(row.assignee_group_id))
+  }
+  return row.required_role === profile.role
+}
+
+const ENTERPRISE_SELECT = `
+  id,
+  step,
+  step_label,
+  required_role,
+  assignment_type,
+  assignee_id,
+  assignee_user_id,
+  assignee_group_id,
+  instructions,
+  due_at,
+  created_at,
+  assignee:profiles!approval_flows_assignee_id_fkey (full_name),
+  assignee_user:profiles!approval_flows_assignee_user_id_fkey (full_name),
+  assignee_group:approval_groups!approval_flows_assignee_group_id_fkey (name),
+  documents (
+    id,
+    code,
+    title,
+    project_id,
+    doc_type,
+    area,
+    status,
+    org_id,
+    author:profiles!documents_author_id_fkey (full_name),
+    project:projects!documents_project_id_fkey (name)
+  )
+`
+
+const ENTERPRISE_WITHOUT_PROJECT_SELECT = `
+  id,
+  step,
+  step_label,
+  required_role,
+  assignment_type,
+  assignee_id,
+  assignee_user_id,
+  assignee_group_id,
+  instructions,
+  due_at,
+  created_at,
+  assignee:profiles!approval_flows_assignee_id_fkey (full_name),
+  assignee_user:profiles!approval_flows_assignee_user_id_fkey (full_name),
+  assignee_group:approval_groups!approval_flows_assignee_group_id_fkey (name),
+  documents (
+    id,
+    code,
+    title,
+    doc_type,
+    area,
+    status,
+    org_id,
+    author:profiles!documents_author_id_fkey (full_name)
+  )
+`
+
+const LEGACY_SLA_SELECT = `
   id,
   step,
   step_label,
@@ -98,7 +187,7 @@ const QUEUE_SELECT = `
   )
 `
 
-const QUEUE_FALLBACK_SELECT = `
+const LEGACY_BASE_SELECT = `
   id,
   step,
   step_label,
@@ -120,10 +209,19 @@ const QUEUE_FALLBACK_SELECT = `
 
 export function useApprovalQueue() {
   const { profile } = useAuthContext()
+  const {
+    users,
+    groups,
+    groupMembers,
+    isLoading: actorsLoading,
+    error: actorsError,
+    canUseGroups,
+    compatibilityMessage: actorsCompatibilityMessage,
+  } = useWorkflowActors()
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [schemaFallback, setSchemaFallback] = useState(false)
+  const [queryMode, setQueryMode] = useState<QueueQueryMode>('enterprise')
 
   const fetchQueue = useCallback(async () => {
     if (!profile) {
@@ -132,54 +230,84 @@ export function useApprovalQueue() {
       return
     }
 
+    if (actorsLoading) {
+      setLoading(true)
+      return
+    }
+
     const currentProfile = profile
+    const isManager = ['admin', 'manager'].includes(currentProfile.role)
+    const userGroupIds = new Set(
+      groupMembers
+        .filter((member) => member.user_id === currentProfile.id && member.is_active)
+        .map((member) => member.group_id),
+    )
+    const usersById = new Map(users.map((user) => [user.id, user.full_name]))
+    const groupsById = new Map(groups.map((group) => [group.id, group.name]))
+
     setLoading(true)
     setError(null)
-    setSchemaFallback(false)
 
     try {
       async function runQuery(select: string) {
-        let query = supabase
+        return supabase
           .from('approval_flows')
           .select(select)
           .eq('org_id', currentProfile.org_id)
           .eq('status', 'pending')
           .order('step', { ascending: true })
-
-        if (!['admin', 'manager'].includes(currentProfile.role)) {
-          query = query
-            .eq('required_role', currentProfile.role)
-            .or(`assignee_id.eq.${currentProfile.id},assignee_id.is.null`)
-        }
-
-        return query
       }
 
-      let { data, error: queryError } = await runQuery(QUEUE_SELECT)
-      if (queryError && isOptionalSchemaError(queryError)) {
-        const fallbackResult = await runQuery(QUEUE_FALLBACK_SELECT)
-        data = fallbackResult.data
-        queryError = fallbackResult.error
-        if (!queryError) setSchemaFallback(true)
-      }
-      if (queryError) throw queryError
+      let mode: QueueQueryMode = 'enterprise'
+      let result = await runQuery(ENTERPRISE_SELECT)
 
-      const items: QueueItem[] = ((data ?? []) as unknown as QueueRow[])
+      if (result.error && isWorkflowFoundationUnavailable(result.error)) {
+        mode = 'enterprise_without_project'
+        result = await runQuery(ENTERPRISE_WITHOUT_PROJECT_SELECT)
+      }
+      if (result.error && isWorkflowFoundationUnavailable(result.error)) {
+        mode = 'legacy_sla'
+        result = await runQuery(LEGACY_SLA_SELECT)
+      }
+      if (result.error && isWorkflowFoundationUnavailable(result.error)) {
+        mode = 'legacy_base'
+        result = await runQuery(LEGACY_BASE_SELECT)
+      }
+      if (result.error) throw result.error
+
+      const rows = (result.data ?? []) as unknown as QueueRow[]
+      const items: QueueItem[] = rows
+        .filter((row) => isManager || isAssignedToProfile(row, currentProfile, userGroupIds))
         .map((row) => {
           const document = first(row.documents)
           const author = first(document?.author)
           const project = first(document?.project)
-          const assignee = first(row.assignee)
+          const legacyAssignee = first(row.assignee)
+          const assignedUser = first(row.assignee_user)
+          const assignedGroup = first(row.assignee_group)
           const dueAt = row.due_at ?? null
           const daysUntilDue = getDaysUntilDue(dueAt)
+          const assignmentType = resolveAssignmentType(row)
+          const assigneeUserId = row.assignee_user_id ?? (assignmentType === 'user' ? row.assignee_id : null)
 
           return {
             stepId: row.id,
             step: row.step,
             step_label: row.step_label,
             required_role: row.required_role,
+            assignment_type: assignmentType,
             assignee_id: row.assignee_id,
-            assignee_name: assignee?.full_name ?? null,
+            assignee_name: legacyAssignee?.full_name ?? null,
+            assignee_user_id: assigneeUserId,
+            assignee_user_name:
+              assignedUser?.full_name
+              ?? legacyAssignee?.full_name
+              ?? (assigneeUserId ? usersById.get(assigneeUserId) ?? null : null),
+            assignee_group_id: row.assignee_group_id ?? null,
+            assignee_group_name:
+              assignedGroup?.name
+              ?? (row.assignee_group_id ? groupsById.get(row.assignee_group_id) ?? null : null),
+            instructions: row.instructions ?? null,
             due_at: dueAt,
             days_until_due: daysUntilDue,
             overdue: daysUntilDue !== null && daysUntilDue < 0,
@@ -196,20 +324,41 @@ export function useApprovalQueue() {
             org_id: document?.org_id ?? currentProfile.org_id,
           }
         })
-        .filter((item) => item.documentId)
+        .filter((item) =>
+          item.documentId
+          && item.doc_status
+          && !BLOCKED_DOCUMENT_STATUSES.has(item.doc_status),
+        )
 
+      setQueryMode(mode)
       setQueue(items)
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Erro ao carregar fila'))
     } finally {
       setLoading(false)
     }
-  }, [profile])
+  }, [actorsLoading, groupMembers, groups, profile, users])
 
   useEffect(() => {
     fetchQueue()
   }, [fetchQueue])
 
-  return { queue, loading, error, schemaFallback, refetch: fetchQueue }
-}
+  const schemaFallback = queryMode !== 'enterprise'
+  const compatibilityMessage = queryMode.startsWith('legacy')
+    ? 'A fundação P-9A ainda não está aplicada neste ambiente. A fila usa atribuição legada por papel ou usuário.'
+    : queryMode === 'enterprise_without_project'
+      ? 'A atribuição enterprise está disponível, mas a relação de projeto não pôde ser carregada.'
+      : actorsCompatibilityMessage
+        ?? (actorsError ? 'Os grupos não puderam ser carregados; a fila continua operando sem atribuições por grupo.' : null)
 
+  return {
+    queue,
+    loading: loading || actorsLoading,
+    error,
+    schemaFallback,
+    queryMode,
+    canUseGroups,
+    compatibilityMessage,
+    refetch: fetchQueue,
+  }
+}

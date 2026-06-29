@@ -30,8 +30,8 @@ interface ProfileOption {
 }
 
 const DEFAULT_WORKFLOW_STEPS: WorkflowStepInput[] = [
-  { step: 1, step_label: "Revisão Técnica", required_role: "reviewer", assignee_id: null, due_days: 2, escalation_user_id: null },
-  { step: 2, step_label: "Aprovação Final", required_role: "approver", assignee_id: null, due_days: 2, escalation_user_id: null },
+  { step: 1, step_label: "Revisão Técnica", required_role: "reviewer", assignment_type: "role", assignee_id: null, assignee_user_id: null, due_days: 2, escalation_user_id: null },
+  { step: 2, step_label: "Aprovação Final", required_role: "approver", assignment_type: "role", assignee_id: null, assignee_user_id: null, due_days: 2, escalation_user_id: null },
 ];
 
 const WORKFLOW_ROLES = ["reviewer", "approver", "manager", "admin"];
@@ -149,6 +149,9 @@ function DocumentDetailPage() {
         ...step,
         step: index + 1,
         assignee_id: step.assignee_id || null,
+        assignee_user_id: step.assignee_id || null,
+        assignment_type: step.assignee_id ? "user" : "role",
+        assignee_group_id: null,
         escalation_user_id: step.escalation_user_id || null,
         due_days: step.due_days ?? null,
       })),
@@ -175,7 +178,10 @@ function DocumentDetailPage() {
         step: steps.length + 1,
         step_label: `Etapa ${steps.length + 1}`,
         required_role: "reviewer",
+        assignment_type: "role",
         assignee_id: null,
+        assignee_user_id: null,
+        assignee_group_id: null,
         due_days: 2,
         escalation_user_id: null,
       },
@@ -414,7 +420,13 @@ function DocumentDetailPage() {
                     </div>
                     <div>
                       <div className="text-sm font-medium mb-2">Papel obrigatório</div>
-                      <Select value={step.required_role} onValueChange={(value) => updateWorkflowStep(index, { required_role: value, assignee_id: null })}>
+                      <Select value={step.required_role} onValueChange={(value) => updateWorkflowStep(index, {
+                        required_role: value,
+                        assignment_type: "role",
+                        assignee_id: null,
+                        assignee_user_id: null,
+                        assignee_group_id: null,
+                      })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {WORKFLOW_ROLES.map((role) => <SelectItem key={role} value={role}>{getRoleLabel(role)}</SelectItem>)}
@@ -423,7 +435,12 @@ function DocumentDetailPage() {
                     </div>
                     <div>
                       <div className="text-sm font-medium mb-2">Responsável</div>
-                      <Select value={step.assignee_id ?? "any"} onValueChange={(value) => updateWorkflowStep(index, { assignee_id: value === "any" ? null : value })}>
+                      <Select value={step.assignee_id ?? "any"} onValueChange={(value) => updateWorkflowStep(index, {
+                        assignment_type: value === "any" ? "role" : "user",
+                        assignee_id: value === "any" ? null : value,
+                        assignee_user_id: value === "any" ? null : value,
+                        assignee_group_id: null,
+                      })}>
                         <SelectTrigger><SelectValue placeholder="Qualquer usuário com este papel" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="any">Qualquer usuário com este papel</SelectItem>

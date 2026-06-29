@@ -38,6 +38,12 @@ function getRoleLabel(role: string) {
   return USER_ROLES.find((item) => item.value === role)?.label ?? role
 }
 
+function getAssignmentTypeLabel(type: QueueItem['assignment_type']) {
+  if (type === 'user') return 'Usuário'
+  if (type === 'group') return 'Grupo'
+  return 'Papel'
+}
+
 function formatDateTime(value: string | null) {
   if (!value) return '—'
   return new Intl.DateTimeFormat('pt-BR', {
@@ -49,7 +55,15 @@ function formatDateTime(value: string | null) {
 
 function ApprovalFlowPage() {
   const { profile } = useAuthContext()
-  const { queue, loading, error, schemaFallback, refetch } = useApprovalQueue()
+  const {
+    queue,
+    loading,
+    error,
+    schemaFallback,
+    canUseGroups,
+    compatibilityMessage,
+    refetch,
+  } = useApprovalQueue()
   const { actOnStep, loading: actionLoading, error: actionError } = useApprovalFlow()
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null)
   const [action, setAction] = useState<'approve' | 'reject' | null>(null)
@@ -196,11 +210,13 @@ function ApprovalFlowPage() {
             </CardContent>
           </Card>
 
-          {schemaFallback && (
+          {(schemaFallback || compatibilityMessage) && (
             <Alert>
               <AlertTitle>Fila em modo de compatibilidade</AlertTitle>
               <AlertDescription>
-                Os campos opcionais de prazo ou projeto não estão disponíveis neste ambiente. As aprovações continuam acessíveis sem essas informações.
+                {compatibilityMessage
+                  ?? 'Os campos opcionais do workflow não estão disponíveis. As aprovações continuam acessíveis no modo atual.'}
+                {!canUseGroups && ' Atribuições por grupo ficam disponíveis após a migration P-9A.'}
               </AlertDescription>
             </Alert>
           )}
@@ -338,10 +354,18 @@ function QueueTable({
               <div className="mt-1 text-xs text-muted-foreground">{item.project_name ?? 'Sem projeto'}</div>
             </TableCell>
             <TableCell className="min-w-48">
-              <div className="font-medium">{item.step_label}</div>
-              <div className="text-xs text-muted-foreground">
-                {item.assignee_name ?? `Qualquer ${getRoleLabel(item.required_role)}`}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{item.step_label}</span>
+                <Badge variant="outline">{getAssignmentTypeLabel(item.assignment_type)}</Badge>
               </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {item.assignment_type === 'group'
+                  ? item.assignee_group_name ?? 'Grupo não identificado'
+                  : item.assignment_type === 'user'
+                    ? item.assignee_user_name ?? item.assignee_name ?? 'Usuário não identificado'
+                    : getRoleLabel(item.required_role)}
+              </div>
+              {item.instructions && <div className="mt-1 text-xs text-muted-foreground">{item.instructions}</div>}
             </TableCell>
             <TableCell>
               <div>{formatDateTime(item.due_at)}</div>

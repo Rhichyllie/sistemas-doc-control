@@ -191,6 +191,7 @@ export function useOperationalCockpit() {
     loading: queueLoading,
     error: queueError,
     schemaFallback: queueSchemaFallback,
+    compatibilityMessage: queueCompatibilityMessage,
   } = useApprovalQueue()
   const { notifications, unreadCount, loading: notificationsLoading } = useNotifications()
   const { entries, loading: auditLoading, error: auditError } = useAuditTrail()
@@ -205,11 +206,17 @@ export function useOperationalCockpit() {
 
     for (const item of queue) {
       const overdue = item.overdue
+      const assignedActor =
+        item.assignment_type === 'group'
+          ? item.assignee_group_name ?? 'grupo responsável'
+          : item.assignment_type === 'user'
+            ? item.assignee_user_name ?? item.assignee_name ?? 'usuário responsável'
+            : item.assignee_name ?? 'responsável do papel'
       activityItems.push({
         id: `approval-${item.stepId}`,
         type: overdue ? 'overdue' : 'approval_pending',
         title: overdue ? 'Aprovação atrasada' : 'Aprovação pendente',
-        description: `${item.step_label} aguarda ${item.assignee_name ?? 'responsável do papel'}.`,
+        description: `${item.step_label} aguarda ${assignedActor}.`,
         documentId: item.documentId,
         documentCode: item.code,
         documentTitle: item.title,
@@ -377,7 +384,9 @@ export function useOperationalCockpit() {
   const warnings = [
     auditError ? 'A trilha de auditoria não pôde ser carregada; as atividades recentes usam documentos atualizados.' : null,
     documentsSchemaFallback ? 'Os dados de projeto não estão disponíveis neste ambiente; área e documento continuam visíveis.' : null,
-    queueSchemaFallback ? 'Os campos opcionais de prazo ou projeto da fila não estão disponíveis; os itens são exibidos sem SLA.' : null,
+    queueSchemaFallback
+      ? queueCompatibilityMessage ?? 'A fila está operando em modo de compatibilidade.'
+      : queueCompatibilityMessage,
   ].filter((warning): warning is string => Boolean(warning))
 
   return {
