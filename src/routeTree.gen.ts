@@ -18,6 +18,7 @@ import { Route as AuthenticatedProjetistasRouteImport } from './routes/authentic
 import { Route as AuthenticatedProjectsRouteImport } from './routes/authenticated/projects'
 import { Route as AuthenticatedMeuPerfilRouteImport } from './routes/authenticated/meu-perfil'
 import { Route as AuthenticatedIndicadoresRouteImport } from './routes/authenticated/indicadores'
+import { Route as AuthenticatedGruposAprovacaoRouteImport } from './routes/authenticated/grupos-aprovacao'
 import { Route as AuthenticatedFluxoDeAprovacaoRouteImport } from './routes/authenticated/fluxo-de-aprovacao'
 import { Route as AuthenticatedEquipeRouteImport } from './routes/authenticated/equipe'
 import { Route as AuthenticatedDocumentsRouteImport } from './routes/authenticated/documents'
@@ -73,6 +74,12 @@ const AuthenticatedIndicadoresRoute =
   AuthenticatedIndicadoresRouteImport.update({
     id: '/indicadores',
     path: '/indicadores',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedGruposAprovacaoRoute =
+  AuthenticatedGruposAprovacaoRouteImport.update({
+    id: '/grupos-aprovacao',
+    path: '/grupos-aprovacao',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedFluxoDeAprovacaoRoute =
@@ -132,6 +139,7 @@ export interface FileRoutesByFullPath {
   '/authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
   '/authenticated/equipe': typeof AuthenticatedEquipeRoute
   '/authenticated/fluxo-de-aprovacao': typeof AuthenticatedFluxoDeAprovacaoRoute
+  '/authenticated/grupos-aprovacao': typeof AuthenticatedGruposAprovacaoRoute
   '/authenticated/indicadores': typeof AuthenticatedIndicadoresRoute
   '/authenticated/meu-perfil': typeof AuthenticatedMeuPerfilRoute
   '/authenticated/projects': typeof AuthenticatedProjectsRoute
@@ -151,6 +159,7 @@ export interface FileRoutesByTo {
   '/authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
   '/authenticated/equipe': typeof AuthenticatedEquipeRoute
   '/authenticated/fluxo-de-aprovacao': typeof AuthenticatedFluxoDeAprovacaoRoute
+  '/authenticated/grupos-aprovacao': typeof AuthenticatedGruposAprovacaoRoute
   '/authenticated/indicadores': typeof AuthenticatedIndicadoresRoute
   '/authenticated/meu-perfil': typeof AuthenticatedMeuPerfilRoute
   '/authenticated/projects': typeof AuthenticatedProjectsRoute
@@ -171,6 +180,7 @@ export interface FileRoutesById {
   '/authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
   '/authenticated/equipe': typeof AuthenticatedEquipeRoute
   '/authenticated/fluxo-de-aprovacao': typeof AuthenticatedFluxoDeAprovacaoRoute
+  '/authenticated/grupos-aprovacao': typeof AuthenticatedGruposAprovacaoRoute
   '/authenticated/indicadores': typeof AuthenticatedIndicadoresRoute
   '/authenticated/meu-perfil': typeof AuthenticatedMeuPerfilRoute
   '/authenticated/projects': typeof AuthenticatedProjectsRoute
@@ -192,6 +202,7 @@ export interface FileRouteTypes {
     | '/authenticated/documents'
     | '/authenticated/equipe'
     | '/authenticated/fluxo-de-aprovacao'
+    | '/authenticated/grupos-aprovacao'
     | '/authenticated/indicadores'
     | '/authenticated/meu-perfil'
     | '/authenticated/projects'
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
     | '/authenticated/documents'
     | '/authenticated/equipe'
     | '/authenticated/fluxo-de-aprovacao'
+    | '/authenticated/grupos-aprovacao'
     | '/authenticated/indicadores'
     | '/authenticated/meu-perfil'
     | '/authenticated/projects'
@@ -230,6 +242,7 @@ export interface FileRouteTypes {
     | '/authenticated/documents'
     | '/authenticated/equipe'
     | '/authenticated/fluxo-de-aprovacao'
+    | '/authenticated/grupos-aprovacao'
     | '/authenticated/indicadores'
     | '/authenticated/meu-perfil'
     | '/authenticated/projects'
@@ -308,6 +321,13 @@ declare module '@tanstack/react-router' {
       path: '/indicadores'
       fullPath: '/authenticated/indicadores'
       preLoaderRoute: typeof AuthenticatedIndicadoresRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/authenticated/grupos-aprovacao': {
+      id: '/authenticated/grupos-aprovacao'
+      path: '/grupos-aprovacao'
+      fullPath: '/authenticated/grupos-aprovacao'
+      preLoaderRoute: typeof AuthenticatedGruposAprovacaoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/authenticated/fluxo-de-aprovacao': {
@@ -392,6 +412,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDocumentsRoute: typeof AuthenticatedDocumentsRouteWithChildren
   AuthenticatedEquipeRoute: typeof AuthenticatedEquipeRoute
   AuthenticatedFluxoDeAprovacaoRoute: typeof AuthenticatedFluxoDeAprovacaoRoute
+  AuthenticatedGruposAprovacaoRoute: typeof AuthenticatedGruposAprovacaoRoute
   AuthenticatedIndicadoresRoute: typeof AuthenticatedIndicadoresRoute
   AuthenticatedMeuPerfilRoute: typeof AuthenticatedMeuPerfilRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
@@ -407,6 +428,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDocumentsRoute: AuthenticatedDocumentsRouteWithChildren,
   AuthenticatedEquipeRoute: AuthenticatedEquipeRoute,
   AuthenticatedFluxoDeAprovacaoRoute: AuthenticatedFluxoDeAprovacaoRoute,
+  AuthenticatedGruposAprovacaoRoute: AuthenticatedGruposAprovacaoRoute,
   AuthenticatedIndicadoresRoute: AuthenticatedIndicadoresRoute,
   AuthenticatedMeuPerfilRoute: AuthenticatedMeuPerfilRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,

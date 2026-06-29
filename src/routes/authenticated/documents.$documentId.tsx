@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { WorkflowStepRoutingFields } from "@/components/workflow/WorkflowStepRoutingFields";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +15,7 @@ import { DOC_STATUS, DOC_TYPES, USER_ROLES } from "@/lib/constants";
 import { supabase } from "@/lib/supabase";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useApprovalFlow, type WorkflowStepInput } from "@/hooks/useApprovalFlow";
+import { useWorkflowActors } from "@/hooks/useWorkflowActors";
 import { ApprovalStep, useDocument } from "@/hooks/useDocument";
 import { useAuditTrail } from "@/hooks/useAuditTrail";
 import { mapAuditEntriesToRecentActivities } from "@/hooks/useOperationalCockpit";
@@ -23,18 +26,11 @@ export const Route = createFileRoute("/authenticated/documents/$documentId")({
   component: DocumentDetailPage,
 });
 
-interface ProfileOption {
-  id: string;
-  full_name: string;
-  role: string;
-}
-
 const DEFAULT_WORKFLOW_STEPS: WorkflowStepInput[] = [
   { step: 1, step_label: "Revisão Técnica", required_role: "reviewer", assignment_type: "role", assignee_id: null, assignee_user_id: null, due_days: 2, escalation_user_id: null },
   { step: 2, step_label: "Aprovação Final", required_role: "approver", assignment_type: "role", assignee_id: null, assignee_user_id: null, due_days: 2, escalation_user_id: null },
 ];
 
-const WORKFLOW_ROLES = ["reviewer", "approver", "manager", "admin"];
 const DUE_DAY_OPTIONS = [1, 2, 3, 5, 7, 10, 15];
 
 function getStatusMeta(status: string) {
@@ -102,30 +98,21 @@ function DocumentDetailPage() {
   const { document, loading, error, refetch } = useDocument(documentId);
   const { entries: auditEntries, loading: auditLoading } = useAuditTrail({ document_id: documentId });
   const { submitForReview, actOnStep, obsoleteDocument, loading: actionLoading, error: actionError } = useApprovalFlow();
+  const {
+    users: workflowUsers,
+    groups: workflowGroups,
+    roles: workflowRoles,
+    isLoading: actorsLoading,
+    error: actorsError,
+    canUseGroups,
+    compatibilityMessage: actorsCompatibilityMessage,
+  } = useWorkflowActors();
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [obsoleteDialogOpen, setObsoleteDialogOpen] = useState(false);
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStepInput[]>(DEFAULT_WORKFLOW_STEPS);
-  const [profileOptions, setProfileOptions] = useState<ProfileOption[]>([]);
   const [stepAction, setStepAction] = useState<{ step: ApprovalStep; action: "approve" | "reject" } | null>(null);
   const [stepComment, setStepComment] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function fetchProfileOptions() {
-      if (!profile) return;
-      const { data } = await supabase
-        .from("profiles")
-        .select("id, full_name, role")
-        .eq("org_id", profile.org_id)
-        .eq("active", true)
-        .in("role", WORKFLOW_ROLES)
-        .order("full_name", { ascending: true });
-
-      setProfileOptions((data ?? []) as ProfileOption[]);
-    }
-
-    fetchProfileOptions();
-  }, [profile]);
 
   async function handleDownload(filePath: string | null) {
     if (!filePath) return;
@@ -145,16 +132,25 @@ function DocumentDetailPage() {
     if (!document) return;
     const success = await submitForReview({
       documentId: document.id,
-      steps: workflowSteps.map((step, index) => ({
-        ...step,
-        step: index + 1,
-        assignee_id: step.assignee_id || null,
-        assignee_user_id: step.assignee_id || null,
-        assignment_type: step.assignee_id ? "user" : "role",
-        assignee_group_id: null,
-        escalation_user_id: step.escalation_user_id || null,
-        due_days: step.due_days ?? null,
-      })),
+      steps: workflowSteps.map((step, index) => {
+        const assignmentType = step.assignment_type
+          ?? (step.assignee_group_id ? "group" : step.assignee_user_id || step.assignee_id ? "user" : "role");
+        const assigneeUserId = assignmentType === "user"
+          ? step.assignee_user_id || step.assignee_id || null
+          : null;
+
+        return {
+          ...step,
+          step: index + 1,
+          assignment_type: assignmentType,
+          assignee_id: assigneeUserId,
+          assignee_user_id: assigneeUserId,
+          assignee_group_id: assignmentType === "group" ? step.assignee_group_id || null : null,
+          escalation_user_id: step.escalation_user_id || null,
+          due_days: step.due_days ?? null,
+          instructions: step.instructions?.trim() || null,
+        };
+      }),
     });
 
     if (success) {
@@ -400,10 +396,17 @@ function DocumentDetailPage() {
             <DialogDescription>{document.code ?? "Gerando..."} — {document.title}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-2">
-            {workflowSteps.map((step, index) => {
-              const assignableUsers = profileOptions.filter((option) => option.role === step.required_role);
-
-              return (
+            {(!canUseGroups || actorsError) && (
+              <Alert>
+                <AlertTitle>Compatibilidade do roteamento</AlertTitle>
+                <AlertDescription>
+                  {actorsCompatibilityMessage
+                    ?? actorsError
+                    ?? "Grupos de aprovação ainda não estão disponíveis neste ambiente. Papel e usuário continuam funcionando."}
+                </AlertDescription>
+              </Alert>
+            )}
+            {workflowSteps.map((step, index) => (
                 <div key={index} className="rounded-md border p-3 space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="font-medium">Etapa {index + 1}</div>
@@ -418,37 +421,15 @@ function DocumentDetailPage() {
                       <div className="text-sm font-medium mb-2">Nome da etapa</div>
                       <Input value={step.step_label} onChange={(event) => updateWorkflowStep(index, { step_label: event.target.value })} />
                     </div>
-                    <div>
-                      <div className="text-sm font-medium mb-2">Papel obrigatório</div>
-                      <Select value={step.required_role} onValueChange={(value) => updateWorkflowStep(index, {
-                        required_role: value,
-                        assignment_type: "role",
-                        assignee_id: null,
-                        assignee_user_id: null,
-                        assignee_group_id: null,
-                      })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {WORKFLOW_ROLES.map((role) => <SelectItem key={role} value={role}>{getRoleLabel(role)}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium mb-2">Responsável</div>
-                      <Select value={step.assignee_id ?? "any"} onValueChange={(value) => updateWorkflowStep(index, {
-                        assignment_type: value === "any" ? "role" : "user",
-                        assignee_id: value === "any" ? null : value,
-                        assignee_user_id: value === "any" ? null : value,
-                        assignee_group_id: null,
-                      })}>
-                        <SelectTrigger><SelectValue placeholder="Qualquer usuário com este papel" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="any">Qualquer usuário com este papel</SelectItem>
-                          {assignableUsers.map((option) => <SelectItem key={option.id} value={option.id}>{option.full_name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      {!assignableUsers.length && <p className="text-xs text-muted-foreground mt-1">Qualquer usuário com este papel poderá agir.</p>}
-                    </div>
+                    <WorkflowStepRoutingFields
+                      step={step}
+                      users={workflowUsers}
+                      groups={workflowGroups}
+                      roles={workflowRoles}
+                      canUseGroups={canUseGroups}
+                      compatibilityMessage={actorsCompatibilityMessage}
+                      onChange={(updates) => updateWorkflowStep(index, updates)}
+                    />
                     <div>
                       <div className="text-sm font-medium mb-2">Prazo da etapa</div>
                       <Select value={String(step.due_days ?? 2)} onValueChange={(value) => updateWorkflowStep(index, { due_days: Number(value) })}>
@@ -464,20 +445,19 @@ function DocumentDetailPage() {
                         <SelectTrigger><SelectValue placeholder="Nenhum escalonamento" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">Nenhum escalonamento</SelectItem>
-                          {profileOptions.map((option) => <SelectItem key={option.id} value={option.id}>{option.full_name} · {getRoleLabel(option.role)}</SelectItem>)}
+                          {workflowUsers.map((option) => <SelectItem key={option.id} value={option.id}>{option.full_name} · {getRoleLabel(option.role)}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                 </div>
-              );
-            })}
+            ))}
             <Button variant="outline" onClick={addWorkflowStep}>Adicionar etapa</Button>
             {actionError && <p className="text-sm text-destructive">{actionError}</p>}
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setSubmitDialogOpen(false)}>Cancelar</Button>
-            <Button disabled={actionLoading} onClick={handleSubmitForReview}>{actionLoading ? "Enviando..." : "Enviar para Revisão"}</Button>
+            <Button disabled={actionLoading || actorsLoading} onClick={handleSubmitForReview}>{actionLoading ? "Enviando..." : "Enviar para Revisão"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

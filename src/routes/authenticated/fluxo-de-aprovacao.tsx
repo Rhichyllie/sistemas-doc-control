@@ -44,6 +44,26 @@ function getAssignmentTypeLabel(type: QueueItem['assignment_type']) {
   return 'Papel'
 }
 
+function getAssignmentDescription(item: QueueItem) {
+  if (item.assignment_type === 'group') {
+    return `Atribuído ao grupo: ${item.assignee_group_name ?? 'Grupo não identificado'}`
+  }
+  if (item.assignment_type === 'user') {
+    return `Atribuído ao usuário: ${item.assignee_user_name ?? item.assignee_name ?? 'Usuário não identificado'}`
+  }
+  return `Atribuído ao papel: ${getRoleLabel(item.required_role)}`
+}
+
+function getSlaDescription(item: QueueItem) {
+  if (!item.due_at || item.days_until_due === null) return 'Sem prazo definido'
+  if (item.days_until_due < 0) {
+    const overdueDays = Math.abs(item.days_until_due)
+    return `SLA vencido há ${overdueDays} ${overdueDays === 1 ? 'dia' : 'dias'}`
+  }
+  if (item.days_until_due === 0) return 'SLA vence hoje'
+  return `SLA vence em ${item.days_until_due} ${item.days_until_due === 1 ? 'dia' : 'dias'}`
+}
+
 function formatDateTime(value: string | null) {
   if (!value) return '—'
   return new Intl.DateTimeFormat('pt-BR', {
@@ -74,6 +94,7 @@ function ApprovalFlowPage() {
   const [docTypeFilter, setDocTypeFilter] = useState('all')
 
   const canSeeQueue = profile && ['admin', 'manager', 'reviewer', 'approver'].includes(profile.role)
+  const canConfigureRouting = profile && ['admin', 'manager', 'author'].includes(profile.role)
 
   const projectOptions = useMemo(() => {
     const projects = new Map<string, string>()
@@ -162,9 +183,16 @@ function ApprovalFlowPage() {
           <h1 className="text-3xl font-bold tracking-tight">Fila de Aprovação</h1>
           <p className="mt-1 text-muted-foreground">Documentos aguardando sua revisão ou decisão no workflow.</p>
         </div>
-        <Badge variant={queue.length > 0 ? 'default' : 'secondary'}>
-          {queue.length} {queue.length === 1 ? 'pendente' : 'pendentes'}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          {canConfigureRouting && (
+            <Button asChild variant="outline">
+              <Link to="/authenticated/documents">Configurar roteamento</Link>
+            </Button>
+          )}
+          <Badge variant={queue.length > 0 ? 'default' : 'secondary'}>
+            {queue.length} {queue.length === 1 ? 'pendente' : 'pendentes'}
+          </Badge>
+        </div>
       </div>
 
       {!canSeeQueue ? (
@@ -359,24 +387,18 @@ function QueueTable({
                 <Badge variant="outline">{getAssignmentTypeLabel(item.assignment_type)}</Badge>
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
-                {item.assignment_type === 'group'
-                  ? item.assignee_group_name ?? 'Grupo não identificado'
-                  : item.assignment_type === 'user'
-                    ? item.assignee_user_name ?? item.assignee_name ?? 'Usuário não identificado'
-                    : getRoleLabel(item.required_role)}
+                {getAssignmentDescription(item)}
               </div>
               {item.instructions && <div className="mt-1 text-xs text-muted-foreground">{item.instructions}</div>}
             </TableCell>
             <TableCell>
               <div>{formatDateTime(item.due_at)}</div>
               {item.overdue ? (
-                <Badge variant="destructive" className="mt-1">Atrasado</Badge>
+                <Badge variant="destructive" className="mt-1">{getSlaDescription(item)}</Badge>
               ) : item.days_until_due !== null ? (
-                <span className="text-xs text-muted-foreground">
-                  {item.days_until_due === 0 ? 'Vence hoje' : `${item.days_until_due} dias`}
-                </span>
+                <span className="text-xs text-muted-foreground">{getSlaDescription(item)}</span>
               ) : (
-                <span className="text-xs text-muted-foreground">Sem prazo</span>
+                <span className="text-xs text-muted-foreground">{getSlaDescription(item)}</span>
               )}
             </TableCell>
             <TableCell><Badge variant="secondary">{getStatusLabel(item.doc_status)}</Badge></TableCell>
