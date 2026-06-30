@@ -21,18 +21,21 @@ import type { DocumentRiskLevel } from "@/lib/documentIntelligence";
 
 const RISK_META: Record<
   DocumentRiskLevel,
-  { label: string; className: string }
+  { label: string; description: string; className: string }
 > = {
   low: {
     label: "Baixo",
+    description: "Metadados consistentes para um rascunho inicial.",
     className: "border-emerald-200 bg-emerald-50 text-emerald-800",
   },
   medium: {
     label: "Médio",
+    description: "Revise os alertas antes de configurar o workflow.",
     className: "border-amber-200 bg-amber-50 text-amber-800",
   },
   high: {
     label: "Alto",
+    description: "Há lacunas relevantes de governança ou conteúdo.",
     className: "border-destructive/30 bg-destructive/10 text-destructive",
   },
 };
@@ -48,6 +51,8 @@ interface DocumentIntelligencePanelProps {
   warnings: string[];
   missingItems: string[];
   configurationMessage: string | null;
+  suggestionsApplied: boolean;
+  suggestionsDisabled: boolean;
   onApplySuggestions: () => void;
 }
 
@@ -62,6 +67,8 @@ export function DocumentIntelligencePanel({
   warnings,
   missingItems,
   configurationMessage,
+  suggestionsApplied,
+  suggestionsDisabled,
   onApplySuggestions,
 }: DocumentIntelligencePanelProps) {
   const risk = RISK_META[riskLevel];
@@ -89,9 +96,11 @@ export function DocumentIntelligencePanel({
           <div>
             <div className="mb-2 flex items-center justify-between text-sm">
               <span className="font-medium">Completude</span>
-              <span className="font-semibold">{completenessScore}%</span>
+              <span className="text-2xl font-bold tracking-tight">
+                {completenessScore}%
+              </span>
             </div>
-            <Progress value={completenessScore} />
+            <Progress value={completenessScore} className="h-2.5" />
             <p className="mt-2 text-xs text-muted-foreground">
               {missingItems.length
                 ? `Pode melhorar: ${missingItems.slice(0, 3).join(", ")}.`
@@ -117,10 +126,24 @@ export function DocumentIntelligencePanel({
               type="button"
               size="sm"
               className="mt-3 w-full"
+              variant={suggestionsApplied ? "secondary" : "default"}
+              disabled={suggestionsDisabled}
               onClick={onApplySuggestions}
             >
-              Aplicar sugestões
+              {suggestionsApplied ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Sugestões aplicadas
+                </>
+              ) : (
+                "Aplicar sugestões"
+              )}
             </Button>
+          </div>
+
+          <div className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
+            <strong className="text-foreground">Leitura de risco:</strong>{" "}
+            {risk.description}
           </div>
 
           {warnings.length > 0 && (

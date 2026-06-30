@@ -40,6 +40,11 @@ import {
   suggestNextReviewDate,
   type DocumentCreationMode,
 } from "@/lib/documentIntelligence";
+import {
+  DOCUMENT_FILE_ACCEPT,
+  isValidDateInput,
+  validateDocumentFile,
+} from "@/lib/documentCreationValidation";
 import { cn } from "@/lib/utils";
 
 const GUIDED_STEPS = [
@@ -72,6 +77,7 @@ export function DocumentCreationStudio() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<DocumentCreationMode>("quick");
   const [guidedStep, setGuidedStep] = useState(0);
+  const [suggestionsApplied, setSuggestionsApplied] = useState(false);
   const [form, setForm] = useState<IntelligentDocumentFormState>(INITIAL_FORM);
   const intelligence = useDocumentCreationIntelligence(form, mode);
   const creation = useCreateIntelligentDocument();
@@ -80,6 +86,7 @@ export function DocumentCreationStudio() {
     field: K,
     value: IntelligentDocumentFormState[K],
   ) {
+    setSuggestionsApplied(false);
     setForm((current) => ({ ...current, [field]: value }));
   }
 
@@ -88,12 +95,27 @@ export function DocumentCreationStudio() {
       ...current,
       ...intelligence.applySuggestion("all"),
     }));
+    setSuggestionsApplied(true);
     toast.success("Sugestões aplicadas aos metadados.");
   }
 
+  const creationInput = {
+    form,
+    mode,
+    capabilities: intelligence.capabilities,
+    completenessScore: intelligence.completenessScore,
+    riskLevel: intelligence.riskLevel,
+    availableProjectIds: intelligence.projects.map((project) => project.id),
+  };
+  const creationValidationErrors = creation.getValidationErrors(creationInput);
+  const canCreate =
+    !intelligence.isLoadingConfigurations &&
+    !creation.loading &&
+    creationValidationErrors.length === 0;
+
   function validateGuidedStep() {
-    if (guidedStep === 0 && !form.title.trim()) {
-      toast.error("Informe o título antes de continuar.");
+    if (guidedStep === 0 && form.title.trim().length < 3) {
+      toast.error("Informe um título com pelo menos 3 caracteres.");
       return false;
     }
     if (guidedStep === 1 && (!form.doc_type || !form.area)) {
@@ -102,22 +124,30 @@ export function DocumentCreationStudio() {
     }
     if (
       guidedStep === 2 &&
-      (!form.review_period_months || !form.next_review_at)
+      (!Number.isInteger(form.review_period_months) ||
+        form.review_period_months < 1 ||
+        form.review_period_months > 120 ||
+        !form.next_review_at ||
+        !isValidDateInput(form.next_review_at))
     ) {
-      toast.error("Defina o período e a próxima revisão.");
+      toast.error(
+        "Defina um período entre 1 e 120 meses e uma data de revisão válida.",
+      );
       return false;
     }
     return true;
   }
 
   async function handleCreate() {
-    const result = await creation.createIntelligentDocument({
-      form,
-      mode,
-      capabilities: intelligence.capabilities,
-      completenessScore: intelligence.completenessScore,
-      riskLevel: intelligence.riskLevel,
-    });
+    if (!canCreate) {
+      toast.error(
+        creationValidationErrors[0] ??
+          "Aguarde o carregamento das configurações.",
+      );
+      return;
+    }
+
+    const result = await creation.createIntelligentDocument(creationInput);
     if (!result) return;
 
     toast.success(`Documento criado: ${result.code ?? "Gerando código..."}`);
@@ -349,10 +379,18 @@ export function DocumentCreationStudio() {
           <Input
             id="intelligent-file"
             type="file"
-            accept=".pdf,.doc,.docx,.dwg,.xls,.xlsx,.png,.jpg,.jpeg"
-            onChange={(event) =>
-              updateField("file", event.target.files?.[0] ?? null)
-            }
+            accept={DOCUMENT_FILE_ACCEPT}
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              const fileError = validateDocumentFile(file);
+              if (fileError) {
+                event.currentTarget.value = "";
+                updateField("file", null);
+                toast.error(fileError);
+                return;
+              }
+              updateField("file", file);
+            }}
           />
         </div>
         <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-sm">
@@ -558,7 +596,7 @@ export function DocumentCreationStudio() {
             ) : (
               <Button
                 type="button"
-                disabled={creation.loading}
+                disabled={!canCreate}
                 onClick={handleCreate}
               >
                 {creation.loading ? (
@@ -570,6 +608,12 @@ export function DocumentCreationStudio() {
               </Button>
             )}
           </div>
+          {guidedStep === GUIDED_STEPS.length - 1 &&
+            creationValidationErrors[0] && (
+              <p className="text-xs text-muted-foreground">
+                Para criar: {creationValidationErrors[0]}
+              </p>
+            )}
         </CardContent>
       </Card>
     );
@@ -650,9 +694,11 @@ export function DocumentCreationStudio() {
 
       <DocumentCreationModeSelector
         value={mode}
+        disabled={creation.loading}
         onChange={(nextMode) => {
           setMode(nextMode);
           setGuidedStep(0);
+          setSuggestionsApplied(false);
         }}
       />
 
@@ -669,27 +715,30 @@ export function DocumentCreationStudio() {
           )}
 
           {showGlobalCreate && (
-            <div className="flex flex-col justify-between gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center">
-              <div>
-                <p className="font-medium">Pronto para criar o rascunho?</p>
-                <p className="text-sm text-muted-foreground">
-                  O fluxo de aprovação será configurado depois, no detalhe do
-                  documento.
-                </p>
+            <>
+              <div className="flex flex-col justify-between gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center">
+                <div>
+                  <p className="font-medium">Pronto para criar o rascunho?</p>
+                  <p className="text-sm text-muted-foreground">
+                    O fluxo de aprovação será configurado depois, no detalhe do
+                    documento.
+                  </p>
+                </div>
+                <Button size="lg" disabled={!canCreate} onClick={handleCreate}>
+                  {creation.loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FilePlus2 className="h-4 w-4" />
+                  )}
+                  Criar documento
+                </Button>
               </div>
-              <Button
-                size="lg"
-                disabled={creation.loading}
-                onClick={handleCreate}
-              >
-                {creation.loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FilePlus2 className="h-4 w-4" />
-                )}
-                Criar documento
-              </Button>
-            </div>
+              {creationValidationErrors[0] && (
+                <p className="mt-2 text-xs text-muted-foreground sm:text-right">
+                  Para criar: {creationValidationErrors[0]}
+                </p>
+              )}
+            </>
           )}
         </div>
 
@@ -704,6 +753,10 @@ export function DocumentCreationStudio() {
           warnings={intelligence.warnings}
           missingItems={intelligence.missingItems}
           configurationMessage={intelligence.configurationMessage}
+          suggestionsApplied={suggestionsApplied}
+          suggestionsDisabled={
+            intelligence.isLoadingConfigurations || creation.loading
+          }
           onApplySuggestions={applyAllSuggestions}
         />
       </div>

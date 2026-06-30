@@ -16,6 +16,7 @@ import { useCreateDocument } from "@/hooks/useCreateDocument";
 import { useTheme } from "@/contexts/theme-context";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { exportDocumentsToExcel } from "@/lib/exportUtils";
+import { DOCUMENT_FILE_ACCEPT, validateDocumentFile } from "@/lib/documentCreationValidation";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/authenticated/documents")({ component: DocumentsPage });
@@ -190,8 +191,18 @@ function DocumentsListPage() {
                   <Label>Arquivo</Label>
                   <Input
                     type="file"
-                    accept=".pdf,.doc,.docx,.dwg,.xls,.xlsx"
-                    onChange={(e) => setForm({ ...form, file: e.target.files?.[0] ?? null })}
+                    accept={DOCUMENT_FILE_ACCEPT}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] ?? null;
+                      const fileError = validateDocumentFile(file);
+                      if (fileError) {
+                        e.currentTarget.value = "";
+                        setForm({ ...form, file: null });
+                        toast.error(fileError);
+                        return;
+                      }
+                      setForm({ ...form, file });
+                    }}
                   />
                 </div>
               </div>

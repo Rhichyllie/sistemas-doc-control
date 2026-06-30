@@ -280,6 +280,145 @@ Após criar:
 - campos avançados são ocultados quando não há suporte no schema;
 - Storage e banco não compartilham uma transação distribuída.
 
+## Hardening P-10B.1
+
+### Contrato único de validação
+
+`documentCreationValidation.ts` centraliza as regras usadas pelo diálogo antigo e pelo Novo Documento Inteligente:
+
+- título obrigatório com ao menos 3 caracteres;
+- tipo documental reconhecido;
+- área obrigatória;
+- revisão inicial obrigatoriamente `0`;
+- período de revisão inteiro entre 1 e 120 meses;
+- data real no formato `YYYY-MM-DD`;
+- identificador de projeto válido;
+- projeto ainda disponível na lista carregada;
+- arquivo permitido e dentro do limite.
+
+O wrapper inteligente continua responsável por mapear capacidades e campos avançados, enquanto upload, insert, versão, auditoria e compensação permanecem centralizados em `useCreateDocument`.
+
+### Arquivos
+
+O limite conhecido do bucket é aplicado antes do upload:
+
+- máximo de 50 MB;
+- PDF;
+- DOC/DOCX;
+- DWG;
+- XLS/XLSX;
+- PNG;
+- JPG/JPEG.
+
+Arquivos vazios, extensões não permitidas, MIME incompatível ou tamanho excessivo são rejeitados com mensagem específica. O seletor de arquivo usa o mesmo contrato de formatos.
+
+### Prevenção de concorrência
+
+Um lock local impede dois envios simultâneos pelo mesmo hook. Botões de criação e troca de modo ficam desabilitados durante a operação.
+
+Na tela inteligente, o botão também permanece desabilitado enquanto:
+
+- configurações estão carregando;
+- existe erro de validação;
+- o projeto selecionado não está mais disponível.
+
+A primeira pendência é mostrada junto à ação de criação.
+
+### Compensação de falhas
+
+| Falha                         | Comportamento                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------------ |
+| Upload                        | Nenhum documento é criado                                                                  |
+| Insert de `documents`         | O upload é removido                                                                        |
+| Insert de `document_versions` | O documento parcial é removido quando permitido; o upload é removido depois                |
+| Insert de `audit_trail`       | Documento e versão são compensados quando permitido                                        |
+| Exclusão bloqueada por RLS    | O arquivo é preservado para não quebrar a referência e o `document_id` parcial é informado |
+| Remoção do Storage falha      | O caminho possivelmente órfão é informado para limpeza manual                              |
+
+Não existe exclusão silenciosa de arquivo ainda referenciado. Também não existe falha de limpeza silenciosa quando o Storage retorna erro.
+
+### Auditoria
+
+`audit_trail.action = created` foi preservado para os dois fluxos.
+
+Metadata da criação inteligente:
+
+- `creation_mode`;
+- `source = intelligent_creation`;
+- `completeness_score`;
+- `risk_level`;
+- `has_file`;
+- `file_hash`;
+- `review_period_months`;
+- `next_review_at`;
+- `project_id`.
+
+A criação antiga usa `source = standard_creation` e mantém compatibilidade com relatórios existentes baseados em `action = created`.
+
+### Versão inicial
+
+Com arquivo, a versão inicial persiste:
+
+- `document_id`;
+- `org_id`;
+- `revision = 0`;
+- caminho, nome, tamanho e hash;
+- `change_summary = Versão inicial`;
+- `uploaded_by`.
+
+No schema formal também persiste:
+
+- `status = draft`;
+- `change_reason = Criação inicial do documento`;
+- metadata com modo e origem da criação.
+
+Se os campos formais não existirem, o fallback legado permanece ativo.
+
+### UX
+
+- score recebeu maior destaque visual;
+- risco agora possui explicação operacional;
+- botão de sugestões confirma quando os valores foram aplicados;
+- resumo final mostra status `Rascunho`, código automático, tamanho do arquivo e data formatada;
+- arquivo inválido é rejeitado no momento da seleção;
+- ações exibem loading e motivos para bloqueio.
+
+### Casos heurísticos e de validação
+
+O projeto ainda não possui runner de testes unitários configurado. Para evitar uma dependência pesada apenas nesta fase, os casos foram validados de forma table-driven:
+
+| Entrada                                          | Resultado esperado     |
+| ------------------------------------------------ | ---------------------- |
+| Procedimento de Segurança Operacional            | `PRO`, `SST`, 24 meses |
+| Instrução de trabalho para manutenção preventiva | `IT`, `MNT`, 12 meses  |
+| Relatório RNC de desvio ambiental                | `RNC`, `MA`, 6 meses   |
+| Planta e layout da engenharia                    | `DRW`, `ENG`, 36 meses |
+| Base 31/01/2026 + 1 mês                          | 28/02/2026             |
+| Data 29/02/2028                                  | válida                 |
+| Data 29/02/2027                                  | inválida               |
+
+### Testes manuais adicionais
+
+1. tente criar com título vazio, tipo ausente e área ausente;
+2. selecione arquivo acima de 50 MB;
+3. selecione extensão não permitida;
+4. informe período `0`, decimal ou acima de `120`;
+5. simule projeto removido após carregar a tela;
+6. clique rapidamente duas vezes em criar;
+7. teste falha de insert após upload e confira a limpeza;
+8. teste ambiente sem campos formais de `document_versions`;
+9. confira `source`, `file_hash` e demais campos na auditoria;
+10. confirme que o diálogo antigo usa as mesmas validações.
+
+### Limitações restantes
+
+- a compensação depende das policies de exclusão e do acesso ao Storage;
+- se a exclusão for bloqueada, o registro parcial exige revisão manual;
+- hash SHA-256 depende de `crypto.subtle`;
+- não há transação distribuída entre Storage e PostgreSQL;
+- não existe teste automatizado de falhas RLS sem um ambiente Supabase de teste;
+- conteúdo e assinatura real do arquivo não são inspecionados.
+
 ## Próximos passos
 
 - templates de criação por setor;

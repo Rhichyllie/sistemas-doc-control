@@ -10,13 +10,33 @@ import {
   type DocumentCreationMode,
   type DocumentRiskLevel,
 } from "@/lib/documentIntelligence";
+import {
+  validateDocumentCreation,
+  validateSelectedProject,
+} from "@/lib/documentCreationValidation";
 
-interface CreateIntelligentDocumentInput {
+export interface CreateIntelligentDocumentInput {
   form: IntelligentDocumentFormState;
   mode: DocumentCreationMode;
   capabilities: DocumentCreationCapabilities;
   completenessScore: number;
   riskLevel: DocumentRiskLevel;
+  availableProjectIds: string[];
+}
+
+export function getIntelligentDocumentValidationErrors(
+  input: CreateIntelligentDocumentInput,
+) {
+  const errors = validateDocumentCreation({
+    ...input.form,
+    project_id: input.capabilities.project_id ? input.form.project_id : null,
+  });
+  const projectError = validateSelectedProject(input.form.project_id, {
+    projectCapabilityAvailable: input.capabilities.project_id,
+    availableProjectIds: input.availableProjectIds,
+  });
+  if (projectError) errors.push(projectError);
+  return errors;
 }
 
 export function useCreateIntelligentDocument() {
@@ -28,23 +48,9 @@ export function useCreateIntelligentDocument() {
   ): Promise<CreateDocumentResult | null> {
     setValidationError(null);
     const { form, capabilities } = input;
-
-    if (!form.title.trim()) {
-      setValidationError("Informe o título do documento.");
-      return null;
-    }
-    if (!form.doc_type) {
-      setValidationError(
-        "Selecione ou aplique uma sugestão de tipo documental.",
-      );
-      return null;
-    }
-    if (!form.area) {
-      setValidationError("Selecione ou aplique uma sugestão de área.");
-      return null;
-    }
-    if (form.review_period_months <= 0) {
-      setValidationError("Informe um período de revisão válido.");
+    const validationErrors = getIntelligentDocumentValidationErrors(input);
+    if (validationErrors.length) {
+      setValidationError(validationErrors[0]);
       return null;
     }
 
@@ -88,6 +94,7 @@ export function useCreateIntelligentDocument() {
 
   return {
     createIntelligentDocument,
+    getValidationErrors: getIntelligentDocumentValidationErrors,
     loading: baseCreation.loading,
     error: validationError ?? baseCreation.error,
   };

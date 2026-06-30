@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { getErrorMessage } from "@/lib/errorUtils";
+import { validateDocumentCreation } from "@/lib/documentCreationValidation";
 import { normalizeDocumentCreationPayload } from "@/lib/documentIntelligence";
 import { isWorkflowFoundationUnavailable } from "@/lib/workflowCompatibility";
 
@@ -13,6 +14,7 @@ import { isWorkflowFoundationUnavailable } from "@/lib/workflowCompatibility";
  *   - File size limit: 50MB
  *   - Allowed MIME types: application/pdf, application/msword,
  *     application/vnd.openxmlformats-officedocument.wordprocessingml.document,
+ *     application/dwg, image/vnd.dwg,
  *     application/vnd.ms-excel,
  *     application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,
  *     image/png, image/jpeg
@@ -76,6 +78,7 @@ export function useCreateDocument() {
   const { profile } = useAuthContext();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const creatingRef = useRef(false);
 
   async function createDocument(
     input: CreateDocumentInput,
@@ -84,7 +87,18 @@ export function useCreateDocument() {
       setError("Usuário não autenticado");
       return null;
     }
+    if (creatingRef.current) {
+      setError("Já existe uma criação em andamento. Aguarde a conclusão.");
+      return null;
+    }
 
+    const validationErrors = validateDocumentCreation(input);
+    if (validationErrors.length) {
+      setError(validationErrors[0]);
+      return null;
+    }
+
+    creatingRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -110,7 +124,11 @@ export function useCreateDocument() {
             upsert: false,
           });
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          throw new Error(
+            `Não foi possível enviar o arquivo: ${getErrorMessage(uploadError, "erro não identificado")}`,
+          );
+        }
 
         uploadedPath = storagePath;
         file_path = storagePath;
@@ -155,8 +173,18 @@ export function useCreateDocument() {
         .select("id, code")
         .single();
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        throw new Error(
+          `Não foi possível criar o documento: ${getErrorMessage(insertError, "erro não identificado")}`,
+        );
+      }
       createdDocumentId = data.id;
+      const creationMode = input.creationContext?.mode ?? "standard";
+      const creationSource =
+        input.creationContext?.mode &&
+        ["quick", "guided", "expert"].includes(input.creationContext.mode)
+          ? "intelligent_creation"
+          : "standard_creation";
 
       if (file_path && file_name) {
         const enterpriseVersion = await supabase
@@ -174,7 +202,8 @@ export function useCreateDocument() {
             change_reason: "Criação inicial do documento",
             status: "draft",
             metadata: {
-              creation_mode: input.creationContext?.mode ?? "standard",
+              creation_mode: creationMode,
+              source: creationSource,
               initial_upload: true,
             },
           });
@@ -182,7 +211,7 @@ export function useCreateDocument() {
         if (enterpriseVersion.error) {
           if (!isWorkflowFoundationUnavailable(enterpriseVersion.error)) {
             throw new Error(
-              `O documento foi criado, mas a versão inicial falhou: ${getErrorMessage(enterpriseVersion.error, "erro não identificado")}`,
+              `Não foi possível concluir a versão inicial: ${getErrorMessage(enterpriseVersion.error, "erro não identificado")}`,
             );
           }
 
@@ -201,7 +230,7 @@ export function useCreateDocument() {
             });
           if (legacyVersionError) {
             throw new Error(
-              `O documento foi criado, mas a versão inicial falhou: ${getErrorMessage(legacyVersionError, "erro não identificado")}`,
+              `Não foi possível concluir a versão inicial: ${getErrorMessage(legacyVersionError, "erro não identificado")}`,
             );
           }
         }
@@ -216,23 +245,25 @@ export function useCreateDocument() {
         file_hash,
         metadata: {
           creation_mode: input.creationContext?.mode ?? "standard",
+          source: creationSource,
           completeness_score: input.creationContext?.completenessScore ?? null,
           risk_level: input.creationContext?.riskLevel ?? null,
           project_id: input.project_id ?? null,
           review_period_months: input.review_period_months ?? 24,
           next_review_at: input.next_review_at ?? null,
           has_file: Boolean(file_path),
+          file_hash,
         },
       });
       if (auditError) {
         throw new Error(
-          `O documento foi criado, mas a auditoria inicial falhou: ${getErrorMessage(auditError, "erro não identificado")}`,
+          `Não foi possível concluir a auditoria inicial: ${getErrorMessage(auditError, "erro não identificado")}`,
         );
       }
 
       return data as CreateDocumentResult;
     } catch (err: unknown) {
-      let cleanupMessage = "";
+      const cleanupMessages: string[] = [];
 
       if (createdDocumentId) {
         const { error: deleteError } = await supabase
@@ -242,20 +273,48 @@ export function useCreateDocument() {
           .eq("org_id", profile.org_id);
 
         if (deleteError) {
-          cleanupMessage =
-            " O registro parcial foi preservado para não remover um arquivo ainda referenciado; revise-o antes de tentar novamente.";
-        } else if (uploadedPath) {
-          await supabase.storage.from("documents").remove([uploadedPath]);
+          cleanupMessages.push(
+            `O documento parcial ${createdDocumentId} foi preservado porque a limpeza foi bloqueada. Revise esse registro manualmente antes de tentar novamente.`,
+          );
+        } else {
+          cleanupMessages.push(
+            "A criação parcial foi desfeita; nenhum documento incompleto foi mantido.",
+          );
+          if (uploadedPath) {
+            const { error: storageCleanupError } = await supabase.storage
+              .from("documents")
+              .remove([uploadedPath]);
+            if (storageCleanupError) {
+              cleanupMessages.push(
+                `O arquivo ${uploadedPath} pode ter permanecido no Storage. Solicite a limpeza manual.`,
+              );
+            }
+          }
         }
       } else if (uploadedPath) {
-        await supabase.storage.from("documents").remove([uploadedPath]);
+        const { error: storageCleanupError } = await supabase.storage
+          .from("documents")
+          .remove([uploadedPath]);
+        if (storageCleanupError) {
+          cleanupMessages.push(
+            `O documento não foi criado, mas o arquivo ${uploadedPath} pode ter permanecido no Storage. Solicite a limpeza manual.`,
+          );
+        } else {
+          cleanupMessages.push(
+            "O upload parcial foi removido; nenhum arquivo órfão foi mantido.",
+          );
+        }
       }
 
       setError(
-        `${getErrorMessage(err, "Erro ao criar documento")}${cleanupMessage}`,
+        [
+          getErrorMessage(err, "Erro ao criar documento"),
+          ...cleanupMessages,
+        ].join(" "),
       );
       return null;
     } finally {
+      creatingRef.current = false;
       setLoading(false);
     }
   }

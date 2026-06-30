@@ -31,11 +31,13 @@ const MODES: Array<{
 interface DocumentCreationModeSelectorProps {
   value: DocumentCreationMode;
   onChange: (mode: DocumentCreationMode) => void;
+  disabled?: boolean;
 }
 
 export function DocumentCreationModeSelector({
   value,
   onChange,
+  disabled = false,
 }: DocumentCreationModeSelectorProps) {
   return (
     <div className="grid gap-3 md:grid-cols-3">
@@ -46,8 +48,10 @@ export function DocumentCreationModeSelector({
           <button
             key={mode.value}
             type="button"
+            disabled={disabled}
             className={cn(
               "rounded-xl border p-4 text-left transition-all hover:border-primary/50 hover:bg-muted/40",
+              disabled && "cursor-not-allowed opacity-60",
               selected
                 ? "border-primary bg-primary/5 shadow-sm"
                 : "bg-background",

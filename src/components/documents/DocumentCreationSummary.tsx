@@ -36,6 +36,11 @@ export function DocumentCreationSummary({
     medium: "médio",
     high: "alto",
   }[riskLevel];
+  const formattedReviewDate = form.next_review_at
+    ? new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(
+        new Date(`${form.next_review_at}T00:00:00Z`),
+      )
+    : "não definida";
 
   return (
     <Card className="border-primary/20">
@@ -60,6 +65,10 @@ export function DocumentCreationSummary({
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Badge className="bg-slate-700 text-white hover:bg-slate-700">
+            Rascunho
+          </Badge>
+          <Badge variant="outline">Código automático</Badge>
           <Badge>{type?.label || form.doc_type || "Tipo pendente"}</Badge>
           <Badge variant="secondary">{form.area || "Área pendente"}</Badge>
           <Badge variant="outline">Revisão {form.revision}</Badge>
@@ -73,6 +82,11 @@ export function DocumentCreationSummary({
             <p className="truncate text-sm font-medium">
               {form.file?.name ?? "Cadastro preliminar"}
             </p>
+            {form.file && (
+              <p className="text-xs text-muted-foreground">
+                {(form.file.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+            )}
           </div>
           <div className="rounded-lg border p-3">
             <FolderKanban className="h-4 w-4 text-primary" />
@@ -93,8 +107,7 @@ export function DocumentCreationSummary({
         </div>
 
         <div className="rounded-lg bg-muted/40 p-3 text-sm">
-          Próxima revisão:{" "}
-          <strong>{form.next_review_at || "não definida"}</strong>
+          Próxima revisão: <strong>{formattedReviewDate}</strong>
         </div>
       </CardContent>
     </Card>
