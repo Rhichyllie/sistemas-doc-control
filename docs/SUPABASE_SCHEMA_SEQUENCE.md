@@ -19,13 +19,17 @@ A sequência lógica oficial é:
 11. `10_TRAMITA_decision_and_correction_cycle`
 12. `11_TRAMITA_formal_revision_lifecycle`
 13. `12_TRAMITA_formal_revision_transactional_hardening`
+14. `13_TRAMITA_schema_doctor`
 
-No repositório, os quatro últimos ciclos correspondem a:
+No repositório, os cinco últimos ciclos correspondem a:
 
 - `supabase/migrations/20260629_09_tramita_enterprise_schema_alignment_bridge.sql`;
 - `supabase/migrations/20260629_p9c1_decision_and_correction_cycle.sql`;
 - `supabase/migrations/20260629_p10a_formal_revision_lifecycle.sql`;
-- `supabase/migrations/20260629_p10a2_formal_revision_transactional_hardening.sql`.
+- `supabase/migrations/20260629_p10a2_formal_revision_transactional_hardening.sql`;
+- `supabase/migrations/20260629_p10a3_schema_doctor.sql`.
+
+O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
 ## Por que o bridge 09 existe
 

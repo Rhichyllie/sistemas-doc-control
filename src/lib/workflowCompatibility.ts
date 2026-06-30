@@ -20,6 +20,7 @@ const WORKFLOW_RPC_UNAVAILABLE_ERROR_CODES = new Set([
 ])
 
 const WORKFLOW_RPC_NAMES = [
+  'get_schema_doctor_report',
   'publish_formal_revision',
   'reject_formal_revision',
   'resubmit_formal_revision',
