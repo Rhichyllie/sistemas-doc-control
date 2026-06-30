@@ -1,0 +1,291 @@
+# P-10B — Criação Documental Inteligente
+
+## Objetivo
+
+Transformar a criação de documentos em uma experiência assistida, mantendo a persistência, o workflow e o schema existentes.
+
+A inteligência desta fase é local e determinística. Não usa LLM, serviço externo, chave de API ou backend adicional.
+
+## Como acessar
+
+1. abra **Documentos**;
+2. clique em **Novo Documento Inteligente**;
+3. escolha o modo Rápido, Guiado ou Especialista.
+
+Rota:
+
+`/authenticated/documentos/novo-inteligente`
+
+A criação antiga em **Novo Documento** foi preservada.
+
+## Criação anterior
+
+Antes da P-10B:
+
+- o formulário ficava em um diálogo de `documents.tsx`;
+- `useCreateDocument` fazia upload no bucket `documents`;
+- o documento era inserido como `draft`, revisão `0`;
+- o código era gerado pelo trigger `generate_document_code`;
+- com arquivo, uma linha inicial era criada em `document_versions`;
+- `audit_trail.action = created` registrava a criação.
+
+A P-10B reutiliza esse fluxo e endurece sua verificação de erros.
+
+## Modos
+
+### Rápido
+
+Campos principais:
+
+- título;
+- tipo documental;
+- área;
+- projeto, quando disponível;
+- descrição curta;
+- arquivo opcional.
+
+O painel lateral sugere tipo, área, período e próxima revisão. O documento é criado como `draft`.
+
+### Guiado
+
+Wizard com cinco etapas:
+
+1. identidade;
+2. classificação;
+3. governança;
+4. arquivo;
+5. revisão final.
+
+Cada etapa valida somente o necessário para avançar. Não há persistência intermediária no banco.
+
+### Especialista
+
+Exibe:
+
+- identidade e classificação completas;
+- período e data da próxima revisão;
+- revisão inicial controlada;
+- projeto;
+- confidencialidade;
+- referência externa;
+- sistema de origem;
+- tags;
+- observações de governança.
+
+Campos avançados aparecem somente quando uma leitura defensiva confirma que a coluna existe em `documents`.
+
+Nesta fase, todo documento novo continua nascendo como `draft`, revisão `0`. Importação direta como publicado não foi habilitada.
+
+## Heurísticas
+
+O módulo `src/lib/documentIntelligence.ts` contém funções puras.
+
+### Tipo documental
+
+| Sinais                                | Sugestão |
+| ------------------------------------- | -------- |
+| procedimento, processo, norma         | `PRO`    |
+| instrução, passo a passo, operacional | `IT`     |
+| especificação, requisito técnico      | `ET`     |
+| desenho, planta, layout               | `DRW`    |
+| não conformidade, RNC, desvio         | `RNC`    |
+| plano, programa                       | `PLN`    |
+| registro, evidência, checklist        | `REG`    |
+| manual, guia de uso                   | `MAN`    |
+
+### Área
+
+Título, descrição e nome do projeto são comparados com sinais de:
+
+- `SGI`;
+- `ENG`;
+- `OPS`;
+- `MNT`;
+- `SST`;
+- `MA`.
+
+Sem correspondência, a área já selecionada é preservada; o fallback final é `SGI`.
+
+### Revisão
+
+Períodos locais:
+
+| Tipo | Meses |
+| ---- | ----: |
+| RNC  |     6 |
+| IT   |    12 |
+| PLN  |    12 |
+| PRO  |    24 |
+| ET   |    24 |
+| DRW  |    36 |
+| REG  |    60 |
+| MAN  |    36 |
+
+Se `document_types.default_review_months` estiver disponível, o valor configurado tem prioridade.
+
+A próxima revisão é calculada em data de calendário, preservando o dia quando possível. Calendário útil e feriados continuam fora desta fase.
+
+### Completude
+
+O score de 0 a 100 considera:
+
+- título;
+- tipo;
+- área;
+- descrição;
+- projeto;
+- arquivo;
+- próxima revisão;
+- autor;
+- metadados críticos.
+
+Projeto e arquivo continuam opcionais para criação. Sua ausência reduz o score e gera orientação, mas não bloqueia o rascunho.
+
+### Risco
+
+O risco aumenta com:
+
+- confidencialidade restrita ou confidencial;
+- ausência de próxima revisão;
+- `RNC`, `PRO` ou `IT` com descrição pobre;
+- ausência de arquivo;
+- revisão inicial incomum.
+
+Resultados:
+
+- `low`;
+- `medium`;
+- `high`.
+
+## Configurações e fallbacks
+
+O hook `useDocumentCreationIntelligence` tenta carregar:
+
+- `document_types`;
+- `document_areas`;
+- `projects`.
+
+Se `document_types` ou `document_areas` não existirem, usa constantes locais reais do TRAMITA.
+
+Se projetos não estiverem disponíveis ou sua leitura falhar, o campo é ocultado.
+
+As capacidades avançadas são verificadas com selects vazios e seguros na própria tabela `documents`. O frontend não consulta `information_schema`.
+
+## Upload e persistência
+
+`useCreateDocument` foi endurecido:
+
+1. calcula SHA-256 quando `crypto.subtle` está disponível;
+2. envia o arquivo ao bucket privado `documents`;
+3. insere o documento mestre como `draft`;
+4. cria a versão inicial;
+5. registra a auditoria `created`;
+6. retorna o `document_id`;
+7. redireciona para o detalhe.
+
+Se o schema formal estiver disponível, a versão inicial recebe:
+
+- `status = draft`;
+- `change_reason = Criação inicial do documento`;
+- metadata com o modo de criação.
+
+Sem os campos formais, o insert usa o contrato legado de `document_versions`.
+
+Em falha:
+
+- upload anterior ao insert é removido;
+- se o documento já existir, o hook tenta excluir o registro parcial e então remover o arquivo;
+- se a exclusão for bloqueada por RLS, o arquivo é preservado para não quebrar a referência e a mensagem orienta revisar o registro parcial.
+
+O processo cobre compensação cliente/banco, mas não é uma transação única entre Storage e PostgreSQL.
+
+## Auditoria
+
+`audit_trail.action = created` inclui:
+
+- modo de criação;
+- score de completude;
+- risco;
+- projeto;
+- período e próxima revisão;
+- presença de arquivo;
+- hash do arquivo, quando calculado.
+
+## Workflow
+
+Após criar:
+
+- o documento permanece `draft`;
+- nenhuma etapa é criada automaticamente;
+- o detalhe continua usando o builder existente;
+- correção, revisão formal e publicação transacional não foram alteradas.
+
+## Testes manuais
+
+### Cenário 1 — criação rápida
+
+1. abra o modo Rápido;
+2. informe `Procedimento de Segurança Operacional`;
+3. confirme sugestão `PRO`;
+4. confirme área `SST` ou, conforme contexto adicional, `OPS`;
+5. aplique as sugestões;
+6. crie sem publicar;
+7. confirme o detalhe do mesmo documento.
+
+### Cenário 2 — IT com arquivo
+
+1. selecione ou sugira `IT`;
+2. anexe um arquivo;
+3. crie o documento;
+4. confirme `documents.file_*` e `file_hash`;
+5. confirme versão inicial em `document_versions`.
+
+### Cenário 3 — sem arquivo
+
+1. crie um documento sem arquivo;
+2. confirme o alerta de cadastro preliminar;
+3. confirme que o rascunho é permitido;
+4. confirme ausência de versão inicial de arquivo.
+
+### Cenário 4 — guiado com score baixo
+
+1. preencha apenas os campos obrigatórios;
+2. avance até a revisão final;
+3. confira score, itens faltantes e recomendações;
+4. volte uma etapa, complemente os dados e confira a atualização do painel.
+
+### Cenário 5 — especialista e schema variável
+
+1. abra o modo Especialista;
+2. confirme somente os campos suportados pelo ambiente;
+3. preencha metadados avançados, quando disponíveis;
+4. confirme que a tela permanece funcional quando as colunas opcionais não existem.
+
+### Regressão
+
+1. use o diálogo antigo **Novo Documento**;
+2. crie com e sem arquivo;
+3. confirme que o fluxo existente continua funcionando;
+4. envie um documento criado para o workflow atual.
+
+## Limitações
+
+- não lê conteúdo do arquivo;
+- não usa IA generativa;
+- não cria DOCX ou PDF;
+- não salva progresso intermediário do wizard;
+- não publica nem envia automaticamente para aprovação;
+- não oferece calendário útil;
+- projetos ainda dependem do contrato/RLS existente;
+- campos avançados são ocultados quando não há suporte no schema;
+- Storage e banco não compartilham uma transação distribuída.
+
+## Próximos passos
+
+- templates de criação por setor;
+- presets por tipo documental;
+- persistência de wizard incompleto;
+- RPC transacional para criação mestre + versão + auditoria;
+- importação formal controlada;
+- explicabilidade detalhada das sugestões;
+- integração opcional futura com IA, sem substituir as heurísticas locais.

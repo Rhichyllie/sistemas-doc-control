@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Search, Eye, Download } from "lucide-react";
+import { Plus, Search, Eye, Download, Sparkles } from "lucide-react";
 import { DOC_STATUS, DOC_TYPES } from "@/lib/constants";
 import { useDocuments, type DocumentFilters } from "@/hooks/useDocuments";
 import { useCreateDocument } from "@/hooks/useCreateDocument";
@@ -120,14 +120,19 @@ function DocumentsListPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Documentos</h1>
           <p className="text-muted-foreground text-sm">Controle real de documentos técnicos</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" onClick={() => exportDocumentsToExcel(documents, org?.name ?? "TRAMITA")} disabled={loading || documents.length === 0}>
             <Download className="h-4 w-4 mr-2" /> Exportar Excel
+          </Button>
+          <Button asChild variant="outline">
+            <Link to="/authenticated/documentos/novo-inteligente">
+              <Sparkles className="h-4 w-4 mr-2" /> Novo Documento Inteligente
+            </Link>
           </Button>
         <Dialog open={openNewDoc} onOpenChange={setOpenNewDoc}>
           <DialogTrigger asChild>

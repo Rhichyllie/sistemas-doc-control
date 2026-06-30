@@ -31,6 +31,12 @@ No repositório, os cinco últimos ciclos correspondem a:
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
+## P-10B — Criação Documental Inteligente
+
+A P-10B não exige migration obrigatória. Ela usa o schema existente e aplica fallbacks locais quando tabelas de configuração ou campos opcionais não estão disponíveis.
+
+Para a experiência completa, o ambiente deve estar alinhado com os ciclos base 01 a 13. A criação continua gerando documentos `draft` e não altera a sequência manual do Supabase.
+
 ## Por que o bridge 09 existe
 
 Instalações anteriores chegaram ao workflow enterprise com contratos diferentes:
