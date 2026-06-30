@@ -3,9 +3,14 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { getErrorMessage } from "@/lib/errorUtils";
 import { supabase } from "@/lib/supabase";
 import {
+  buildDocumentRulesDiagnostics,
+  classifyDocumentRulesError,
+  getDocumentRulesMutationErrorMessage,
+  type DocumentRulesDiagnostics,
+} from "@/lib/documentRulesDiagnostics";
+import {
   evaluateDocumentRules,
   explainAppliedRules,
-  isDocumentTemplateSchemaUnavailable,
   matchTemplateForDocument,
   normalizeRuleEffects,
   type DocumentRuleField,
@@ -150,6 +155,47 @@ function normalizeRule(value: unknown): DocumentRuleRecord | null {
   };
 }
 
+function normalizeConditionForMutation(
+  condition: Record<string, unknown> | undefined,
+) {
+  const normalized = { ...(condition ?? {}) };
+  if (typeof normalized.doc_type === "string") {
+    normalized.doc_type = normalized.doc_type.trim().toUpperCase();
+  }
+  if (typeof normalized.area === "string") {
+    normalized.area = normalized.area.trim().toUpperCase();
+  }
+  return normalized;
+}
+
+function normalizeEffectsForMutation(
+  effects: Record<string, unknown> | undefined,
+) {
+  const source = { ...(effects ?? {}) };
+  const normalized = normalizeRuleEffects(source);
+  if ("required_fields" in source) {
+    source.required_fields = normalized.required_fields;
+  }
+  if ("recommended_fields" in source) {
+    source.recommended_fields = normalized.recommended_fields;
+  }
+  if ("review_period_months" in source) {
+    if (normalized.review_period_months === null) {
+      delete source.review_period_months;
+    } else {
+      source.review_period_months = normalized.review_period_months;
+    }
+  }
+  if ("risk_level" in source) {
+    if (normalized.risk_level === null) delete source.risk_level;
+    else source.risk_level = normalized.risk_level;
+  }
+  if ("recommendations" in source) {
+    source.recommendations = normalized.recommendations;
+  }
+  return source;
+}
+
 export function useDocumentTemplatesAndRules(
   options: UseDocumentTemplatesAndRulesOptions = {},
 ) {
@@ -167,6 +213,11 @@ export function useDocumentTemplatesAndRules(
   const [compatibilityMessage, setCompatibilityMessage] = useState<
     string | null
   >(null);
+  const [diagnostics, setDiagnostics] =
+    useState<DocumentRulesDiagnostics | null>(null);
+  const [lastMutationMessage, setLastMutationMessage] = useState<string | null>(
+    null,
+  );
 
   const refresh = useCallback(async () => {
     if (!enabled || !profile?.org_id) {
@@ -177,6 +228,11 @@ export function useDocumentTemplatesAndRules(
       setCanUseRules(false);
       setCanUseProjects(false);
       setCompatibilityMessage(null);
+      setDiagnostics(
+        buildDocumentRulesDiagnostics({
+          profile,
+        }),
+      );
       setIsLoading(false);
       return;
     }
@@ -184,21 +240,17 @@ export function useDocumentTemplatesAndRules(
     setIsLoading(true);
     setError(null);
     setCompatibilityMessage(null);
+    setLastMutationMessage(null);
 
     try {
-      let templateQuery = supabase
+      const templateQuery = supabase
         .from("document_creation_templates")
         .select("*")
         .eq("org_id", profile.org_id);
-      let ruleQuery = supabase
+      const ruleQuery = supabase
         .from("document_creation_rules")
         .select("*")
         .eq("org_id", profile.org_id);
-      if (!includeInactive) {
-        templateQuery = templateQuery.eq("is_active", true);
-        ruleQuery = ruleQuery.eq("is_active", true);
-      }
-
       const [templateResult, ruleResult, projectResult] = await Promise.all([
         templateQuery
           .order("priority", { ascending: true })
@@ -212,39 +264,31 @@ export function useDocumentTemplatesAndRules(
           .order("name", { ascending: true }),
       ]);
 
-      if (templateResult.error) {
-        if (isDocumentTemplateSchemaUnavailable(templateResult.error)) {
-          setTemplates([]);
-          setCanUseTemplates(false);
-        } else {
-          throw templateResult.error;
-        }
-      } else {
-        setTemplates(
-          (templateResult.data ?? [])
+      const loadedTemplates = templateResult.error
+        ? []
+        : (templateResult.data ?? [])
             .map(normalizeTemplate)
             .filter((template): template is DocumentTemplateRecord =>
               Boolean(template),
-            ),
-        );
-        setCanUseTemplates(true);
-      }
-
-      if (ruleResult.error) {
-        if (isDocumentTemplateSchemaUnavailable(ruleResult.error)) {
-          setRules([]);
-          setCanUseRules(false);
-        } else {
-          throw ruleResult.error;
-        }
-      } else {
-        setRules(
-          (ruleResult.data ?? [])
+            );
+      const loadedRules = ruleResult.error
+        ? []
+        : (ruleResult.data ?? [])
             .map(normalizeRule)
-            .filter((rule): rule is DocumentRuleRecord => Boolean(rule)),
-        );
-        setCanUseRules(true);
-      }
+            .filter((rule): rule is DocumentRuleRecord => Boolean(rule));
+
+      setTemplates(
+        includeInactive
+          ? loadedTemplates
+          : loadedTemplates.filter((template) => template.is_active),
+      );
+      setRules(
+        includeInactive
+          ? loadedRules
+          : loadedRules.filter((rule) => rule.is_active),
+      );
+      setCanUseTemplates(!templateResult.error);
+      setCanUseRules(!ruleResult.error);
 
       if (projectResult.error) {
         setProjects([]);
@@ -265,10 +309,39 @@ export function useDocumentTemplatesAndRules(
         setCanUseProjects(true);
       }
 
-      if (templateResult.error || ruleResult.error) {
+      const nextDiagnostics = buildDocumentRulesDiagnostics({
+        profile,
+        templateError: templateResult.error,
+        ruleError: ruleResult.error,
+        templates: loadedTemplates,
+        rules: loadedRules,
+      });
+      setDiagnostics(nextDiagnostics);
+
+      if (
+        nextDiagnostics.code === "schema_missing" ||
+        nextDiagnostics.code === "partial_schema"
+      ) {
         setCompatibilityMessage(COMPATIBILITY_MESSAGE);
       }
+      if (
+        nextDiagnostics.code === "permission_denied" ||
+        nextDiagnostics.code === "load_error"
+      ) {
+        const rawErrors = [templateResult.error, ruleResult.error]
+          .filter(Boolean)
+          .map((item) => getErrorMessage(item, "erro não identificado"))
+          .join(" · ");
+        setError(`${nextDiagnostics.message} ${rawErrors}`.trim());
+      }
     } catch (err: unknown) {
+      setDiagnostics(
+        buildDocumentRulesDiagnostics({
+          profile,
+          templateError: err,
+          ruleError: err,
+        }),
+      );
       setError(
         getErrorMessage(
           err,
@@ -278,7 +351,7 @@ export function useDocumentTemplatesAndRules(
     } finally {
       setIsLoading(false);
     }
-  }, [enabled, includeInactive, profile?.org_id]);
+  }, [enabled, includeInactive, profile]);
 
   useEffect(() => {
     refresh();
@@ -301,112 +374,196 @@ export function useDocumentTemplatesAndRules(
       };
       const template = matchTemplateForDocument(scopedInput, templates);
       const appliedRules = evaluateDocumentRules(scopedInput, rules);
+      const activeTemplates = diagnostics?.templates.active ?? templates.length;
+      const activeRules = diagnostics?.rules.active ?? rules.length;
+      const contextLabel = [
+        scopedInput.doc_type ? `tipo ${scopedInput.doc_type}` : null,
+        scopedInput.area ? `área ${scopedInput.area}` : null,
+        scopedInput.project_id ? "projeto selecionado" : null,
+      ]
+        .filter(Boolean)
+        .join(" e ");
+      const applicationMessages: string[] = [];
+      if (activeTemplates > 0 && !template) {
+        applicationMessages.push(
+          `${activeTemplates} template(s) ativo(s), mas nenhum corresponde a ${contextLabel || "este contexto"}.`,
+        );
+      }
+      if (activeRules > 0 && !appliedRules.length) {
+        applicationMessages.push(
+          `${activeRules} regra(s) ativa(s), mas nenhuma corresponde a ${contextLabel || "este contexto"}.`,
+        );
+      }
       return {
         template,
         appliedRules,
         explanations: explainAppliedRules(appliedRules),
+        applicationDiagnostics: {
+          activeTemplates,
+          inactiveTemplates: diagnostics?.templates.inactive ?? 0,
+          activeRules,
+          inactiveRules: diagnostics?.rules.inactive ?? 0,
+          hasApplicableTemplate: Boolean(template),
+          applicableRuleCount: appliedRules.length,
+          message: applicationMessages.join(" "),
+        },
       };
     },
-    [profile?.org_id, rules, templates],
+    [diagnostics, profile?.org_id, rules, templates],
   );
 
   function canManage() {
-    if (!profile?.org_id) {
-      setError("Perfil sem organização disponível para gerenciar regras.");
+    if (!profile?.id) {
+      const message =
+        "Perfil interno não disponível. Atualize a sessão antes de administrar regras.";
+      setError(message);
+      setLastMutationMessage(message);
+      return false;
+    }
+    if (!profile.org_id) {
+      const message =
+        "Perfil sem organização disponível para gerenciar regras.";
+      setError(message);
+      setLastMutationMessage(message);
       return false;
     }
     if (profile.role !== "admin" && profile.role !== "manager") {
-      setError(
-        "Apenas administradores e gestores podem alterar regras documentais.",
-      );
+      const message =
+        "Você não tem permissão para administrar regras documentais. Se o próprio usuário perdeu o papel administrativo, apenas outro admin ou uma manutenção controlada no Supabase pode restaurá-lo.";
+      setError(message);
+      setLastMutationMessage(message);
       return false;
     }
     return true;
   }
 
-  function handleMutationError(err: unknown, fallback: string) {
-    if (isDocumentTemplateSchemaUnavailable(err)) {
+  function handleMutationError(
+    err: unknown,
+    fallback: string,
+    entity: "template" | "regra",
+  ) {
+    const kind = classifyDocumentRulesError(err);
+    if (kind === "schema_missing") {
       setCompatibilityMessage(COMPATIBILITY_MESSAGE);
     }
-    setError(getErrorMessage(err, fallback));
+    const classifiedMessage = getDocumentRulesMutationErrorMessage(err, entity);
+    const rawMessage = getErrorMessage(err, fallback);
+    const message = classifiedMessage
+      ? `${classifiedMessage} Detalhes: ${rawMessage}`
+      : rawMessage;
+    setError(message);
+    setLastMutationMessage(message);
+  }
+
+  function requireResource(available: boolean, entity: "template" | "regra") {
+    if (available) return true;
+    const message =
+      diagnostics?.message ??
+      `Não é possível salvar ${entity}: o recurso não está disponível neste ambiente.`;
+    setError(message);
+    setLastMutationMessage(message);
+    return false;
   }
 
   async function createTemplate(input: DocumentTemplateMutationInput) {
-    if (!canManage() || !profile?.org_id || !canUseTemplates) return false;
+    if (!canManage() || !profile?.org_id) return false;
+    if (!requireResource(canUseTemplates, "template")) return false;
     setIsSaving(true);
     setError(null);
-    const { error: mutationError } = await supabase
-      .from("document_creation_templates")
-      .insert({
-        org_id: profile.org_id,
-        created_by: profile.id,
-        name: input.name.trim(),
-        description: input.description?.trim() || null,
-        doc_type: input.doc_type || null,
-        area: input.area || null,
-        project_id: input.project_id || null,
-        is_active: input.is_active ?? true,
-        is_default: input.is_default ?? false,
-        priority: input.priority ?? 100,
-        template_scope: input.template_scope ?? "organization",
-        default_title_pattern: input.default_title_pattern?.trim() || null,
-        default_description: input.default_description?.trim() || null,
-        default_review_months: input.default_review_months ?? null,
-        required_fields: input.required_fields ?? [],
-        recommended_fields: input.recommended_fields ?? [],
-        default_metadata: input.default_metadata ?? {},
-        governance_hints: input.governance_hints ?? {},
-        risk_profile: input.risk_profile ?? "medium",
-      });
-    setIsSaving(false);
-    if (mutationError) {
-      handleMutationError(mutationError, "Erro ao criar template documental.");
-      return false;
+    setLastMutationMessage(null);
+    try {
+      const { data: createdTemplate, error: mutationError } = await supabase
+        .from("document_creation_templates")
+        .insert({
+          org_id: profile.org_id,
+          created_by: profile.id,
+          name: input.name.trim(),
+          description: input.description?.trim() || null,
+          doc_type: input.doc_type?.trim().toUpperCase() || null,
+          area: input.area?.trim().toUpperCase() || null,
+          project_id: input.project_id || null,
+          is_active: input.is_active ?? true,
+          is_default: input.is_default ?? false,
+          priority: input.priority ?? 100,
+          template_scope: input.template_scope ?? "organization",
+          default_title_pattern: input.default_title_pattern?.trim() || null,
+          default_description: input.default_description?.trim() || null,
+          default_review_months: input.default_review_months ?? null,
+          required_fields: input.required_fields ?? [],
+          recommended_fields: input.recommended_fields ?? [],
+          default_metadata: input.default_metadata ?? {},
+          governance_hints: input.governance_hints ?? {},
+          risk_profile: input.risk_profile ?? "medium",
+        })
+        .select("id")
+        .single();
+      if (mutationError || !createdTemplate?.id) {
+        handleMutationError(
+          mutationError ??
+            new Error("O insert não retornou o template criado."),
+          "Erro ao criar template documental.",
+          "template",
+        );
+        return false;
+      }
+      await refresh();
+      return true;
+    } finally {
+      setIsSaving(false);
     }
-    await refresh();
-    return true;
   }
 
   async function updateTemplate(
     templateId: string,
     input: DocumentTemplateMutationInput,
   ) {
-    if (!canManage() || !profile?.org_id || !canUseTemplates) return false;
+    if (!canManage() || !profile?.org_id) return false;
+    if (!requireResource(canUseTemplates, "template")) return false;
     setIsSaving(true);
     setError(null);
-    const { error: mutationError } = await supabase
-      .from("document_creation_templates")
-      .update({
-        name: input.name.trim(),
-        description: input.description?.trim() || null,
-        doc_type: input.doc_type || null,
-        area: input.area || null,
-        project_id: input.project_id || null,
-        is_active: input.is_active ?? true,
-        is_default: input.is_default ?? false,
-        priority: input.priority ?? 100,
-        template_scope: input.template_scope ?? "organization",
-        default_title_pattern: input.default_title_pattern?.trim() || null,
-        default_description: input.default_description?.trim() || null,
-        default_review_months: input.default_review_months ?? null,
-        required_fields: input.required_fields ?? [],
-        recommended_fields: input.recommended_fields ?? [],
-        default_metadata: input.default_metadata ?? {},
-        governance_hints: input.governance_hints ?? {},
-        risk_profile: input.risk_profile ?? "medium",
-      })
-      .eq("id", templateId)
-      .eq("org_id", profile.org_id);
-    setIsSaving(false);
-    if (mutationError) {
-      handleMutationError(
-        mutationError,
-        "Erro ao atualizar template documental.",
-      );
-      return false;
+    setLastMutationMessage(null);
+    try {
+      const { data: updatedTemplate, error: mutationError } = await supabase
+        .from("document_creation_templates")
+        .update({
+          name: input.name.trim(),
+          description: input.description?.trim() || null,
+          doc_type: input.doc_type?.trim().toUpperCase() || null,
+          area: input.area?.trim().toUpperCase() || null,
+          project_id: input.project_id || null,
+          is_active: input.is_active ?? true,
+          is_default: input.is_default ?? false,
+          priority: input.priority ?? 100,
+          template_scope: input.template_scope ?? "organization",
+          default_title_pattern: input.default_title_pattern?.trim() || null,
+          default_description: input.default_description?.trim() || null,
+          default_review_months: input.default_review_months ?? null,
+          required_fields: input.required_fields ?? [],
+          recommended_fields: input.recommended_fields ?? [],
+          default_metadata: input.default_metadata ?? {},
+          governance_hints: input.governance_hints ?? {},
+          risk_profile: input.risk_profile ?? "medium",
+        })
+        .eq("id", templateId)
+        .eq("org_id", profile.org_id)
+        .select("id")
+        .maybeSingle();
+      if (mutationError || !updatedTemplate?.id) {
+        handleMutationError(
+          mutationError ??
+            new Error(
+              "Nenhum template foi atualizado. O registro pode pertencer a outra organização ou estar bloqueado por RLS.",
+            ),
+          "Erro ao atualizar template documental.",
+          "template",
+        );
+        return false;
+      }
+      await refresh();
+      return true;
+    } finally {
+      setIsSaving(false);
     }
-    await refresh();
-    return true;
   }
 
   async function setTemplateActive(templateId: string, isActive: boolean) {
@@ -416,61 +573,91 @@ export function useDocumentTemplatesAndRules(
   }
 
   async function createRule(input: DocumentRuleMutationInput) {
-    if (!canManage() || !profile?.org_id || !canUseRules) return false;
+    if (!canManage() || !profile?.org_id) return false;
+    if (!requireResource(canUseRules, "regra")) return false;
     setIsSaving(true);
     setError(null);
-    const { error: mutationError } = await supabase
-      .from("document_creation_rules")
-      .insert({
-        org_id: profile.org_id,
-        created_by: profile.id,
-        name: input.name.trim(),
-        description: input.description?.trim() || null,
-        is_active: input.is_active ?? true,
-        priority: input.priority ?? 100,
-        condition: input.condition ?? {},
-        effects: input.effects ?? {},
-        severity: input.severity ?? "info",
-      });
-    setIsSaving(false);
-    if (mutationError) {
-      handleMutationError(mutationError, "Erro ao criar regra documental.");
-      return false;
+    setLastMutationMessage(null);
+    try {
+      const { data: createdRule, error: mutationError } = await supabase
+        .from("document_creation_rules")
+        .insert({
+          org_id: profile.org_id,
+          created_by: profile.id,
+          name: input.name.trim(),
+          description: input.description?.trim() || null,
+          is_active: input.is_active ?? true,
+          priority: input.priority ?? 100,
+          condition: normalizeConditionForMutation(input.condition),
+          effects: normalizeEffectsForMutation(input.effects),
+          severity: input.severity ?? "info",
+        })
+        .select("id")
+        .single();
+      if (mutationError || !createdRule?.id) {
+        handleMutationError(
+          mutationError ?? new Error("O insert não retornou a regra criada."),
+          "Erro ao criar regra documental.",
+          "regra",
+        );
+        return false;
+      }
+      await refresh();
+      return true;
+    } finally {
+      setIsSaving(false);
     }
-    await refresh();
-    return true;
   }
 
   async function updateRule(ruleId: string, input: DocumentRuleMutationInput) {
-    if (!canManage() || !profile?.org_id || !canUseRules) return false;
+    if (!canManage() || !profile?.org_id) return false;
+    if (!requireResource(canUseRules, "regra")) return false;
     setIsSaving(true);
     setError(null);
-    const { error: mutationError } = await supabase
-      .from("document_creation_rules")
-      .update({
-        name: input.name.trim(),
-        description: input.description?.trim() || null,
-        is_active: input.is_active ?? true,
-        priority: input.priority ?? 100,
-        condition: input.condition ?? {},
-        effects: input.effects ?? {},
-        severity: input.severity ?? "info",
-      })
-      .eq("id", ruleId)
-      .eq("org_id", profile.org_id);
-    setIsSaving(false);
-    if (mutationError) {
-      handleMutationError(mutationError, "Erro ao atualizar regra documental.");
-      return false;
+    setLastMutationMessage(null);
+    try {
+      const { data: updatedRule, error: mutationError } = await supabase
+        .from("document_creation_rules")
+        .update({
+          name: input.name.trim(),
+          description: input.description?.trim() || null,
+          is_active: input.is_active ?? true,
+          priority: input.priority ?? 100,
+          condition: normalizeConditionForMutation(input.condition),
+          effects: normalizeEffectsForMutation(input.effects),
+          severity: input.severity ?? "info",
+        })
+        .eq("id", ruleId)
+        .eq("org_id", profile.org_id)
+        .select("id")
+        .maybeSingle();
+      if (mutationError || !updatedRule?.id) {
+        handleMutationError(
+          mutationError ??
+            new Error(
+              "Nenhuma regra foi atualizada. O registro pode pertencer a outra organização ou estar bloqueado por RLS.",
+            ),
+          "Erro ao atualizar regra documental.",
+          "regra",
+        );
+        return false;
+      }
+      await refresh();
+      return true;
+    } finally {
+      setIsSaving(false);
     }
-    await refresh();
-    return true;
   }
 
   async function setRuleActive(ruleId: string, isActive: boolean) {
     const rule = rules.find((item) => item.id === ruleId);
     if (!rule) return false;
     return updateRule(ruleId, { ...rule, is_active: isActive });
+  }
+
+  function clearMutationFeedback() {
+    setError(null);
+    setLastMutationMessage(null);
   }
 
   return {
@@ -484,6 +671,8 @@ export function useDocumentTemplatesAndRules(
     canUseRules,
     canUseProjects,
     compatibilityMessage,
+    diagnostics,
+    lastMutationMessage,
     refresh,
     getBestTemplate,
     evaluate,
@@ -493,5 +682,6 @@ export function useDocumentTemplatesAndRules(
     createRule,
     updateRule,
     setRuleActive,
+    clearMutationFeedback,
   };
 }

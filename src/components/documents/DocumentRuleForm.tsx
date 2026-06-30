@@ -35,7 +35,14 @@ import {
   type GovernanceRiskProfile,
 } from "@/lib/documentTemplateRules";
 
-const AREAS = ["SGI", "ENG", "OPS", "MNT", "SST", "MA", "QUA", "ADM"];
+const AREAS = [
+  { value: "SGI", label: "SGI — Sistema de Gestão Integrada" },
+  { value: "ENG", label: "ENG — Engenharia" },
+  { value: "OPS", label: "OPS — Operações" },
+  { value: "MNT", label: "MNT — Manutenção" },
+  { value: "SST", label: "SST — Saúde e Segurança" },
+  { value: "MA", label: "MA — Meio Ambiente" },
+];
 
 interface DocumentRuleFormProps {
   open: boolean;
@@ -44,6 +51,7 @@ interface DocumentRuleFormProps {
   projects: DocumentRulesProject[];
   canUseProjects: boolean;
   isSaving: boolean;
+  submissionError: string | null;
   onSubmit: (input: DocumentRuleMutationInput) => Promise<boolean>;
 }
 
@@ -79,6 +87,7 @@ export function DocumentRuleForm({
   projects,
   canUseProjects,
   isSaving,
+  submissionError,
   onSubmit,
 }: DocumentRuleFormProps) {
   const [form, setForm] = useState(() => initialState(rule));
@@ -302,8 +311,8 @@ export function DocumentRuleForm({
                 <SelectContent>
                   <SelectItem value="any">Qualquer área</SelectItem>
                   {AREAS.map((area) => (
-                    <SelectItem key={area} value={area}>
-                      {area}
+                    <SelectItem key={area.value} value={area.value}>
+                      {area.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -420,6 +429,11 @@ export function DocumentRuleForm({
 
           {formError && (
             <p className="mb-4 text-sm text-destructive">{formError}</p>
+          )}
+          {!formError && submissionError && (
+            <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              {submissionError}
+            </div>
           )}
 
           <DialogFooter>

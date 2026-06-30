@@ -773,6 +773,8 @@ export function DocumentCreationStudio() {
           requiredFieldChecklist={intelligence.requiredFieldChecklist}
           governanceScore={intelligence.governanceScore}
           governanceRiskProfile={intelligence.governanceRiskProfile}
+          governanceWarnings={intelligence.governanceWarnings}
+          blockingReason={creationValidationErrors[0] ?? null}
           suggestionsApplied={suggestionsApplied}
           suggestionsDisabled={
             intelligence.isLoadingConfigurations || creation.loading

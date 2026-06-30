@@ -35,6 +35,12 @@ O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de exe
 
 O ciclo 14 é a primeira camada configurável de regras da criação documental. Ele cria templates, políticas e logs de uso com RLS. Sem esse ciclo, a P-10B continua usando as heurísticas locais e não interrompe a criação.
 
+### Hardening P-10C.1
+
+A P-10C.1 não adiciona um novo ciclo SQL. Ela endurece diagnóstico, leitura, confirmação de escrita, mensagens de RLS/org e resolução determinística de conflitos no frontend. O ciclo oficial continua sendo o 14.
+
+As queries administrativas de conferência e manutenção estão em `docs/P10C_DOCUMENT_TEMPLATES_AND_RULES.md`.
+
 ## P-10B — Criação Documental Inteligente
 
 A P-10B não exige migration obrigatória. Ela usa o schema existente e aplica fallbacks locais quando tabelas de configuração ou campos opcionais não estão disponíveis.

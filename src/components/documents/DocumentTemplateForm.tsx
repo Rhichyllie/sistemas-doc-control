@@ -33,7 +33,16 @@ import {
   type GovernanceRiskProfile,
 } from "@/lib/documentTemplateRules";
 
-const AREAS = ["SGI", "ENG", "OPS", "MNT", "SST", "MA", "QUA", "ADM"];
+const AREAS = [
+  { value: "SGI", label: "SGI — Sistema de Gestão Integrada" },
+  { value: "ENG", label: "ENG — Engenharia" },
+  { value: "OPS", label: "OPS — Operações" },
+  { value: "MNT", label: "MNT — Manutenção" },
+  { value: "SST", label: "SST — Saúde e Segurança" },
+  { value: "MA", label: "MA — Meio Ambiente" },
+  { value: "QUA", label: "QUA — Qualidade" },
+  { value: "ADM", label: "ADM — Administrativo" },
+];
 
 interface DocumentTemplateFormProps {
   open: boolean;
@@ -42,6 +51,7 @@ interface DocumentTemplateFormProps {
   projects: DocumentRulesProject[];
   canUseProjects: boolean;
   isSaving: boolean;
+  submissionError: string | null;
   onSubmit: (input: DocumentTemplateMutationInput) => Promise<boolean>;
 }
 
@@ -71,6 +81,7 @@ export function DocumentTemplateForm({
   projects,
   canUseProjects,
   isSaving,
+  submissionError,
   onSubmit,
 }: DocumentTemplateFormProps) {
   const [form, setForm] = useState(() => initialState(template));
@@ -277,8 +288,8 @@ export function DocumentTemplateForm({
                 <SelectContent>
                   <SelectItem value="any">Qualquer área</SelectItem>
                   {AREAS.map((area) => (
-                    <SelectItem key={area} value={area}>
-                      {area}
+                    <SelectItem key={area.value} value={area.value}>
+                      {area.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -407,6 +418,11 @@ export function DocumentTemplateForm({
 
           {formError && (
             <p className="mb-4 text-sm text-destructive">{formError}</p>
+          )}
+          {!formError && submissionError && (
+            <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              {submissionError}
+            </div>
           )}
 
           <DialogFooter>

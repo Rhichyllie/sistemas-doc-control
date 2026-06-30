@@ -68,11 +68,13 @@ export function DocumentRulesAdmin() {
   );
 
   function openNewTemplate() {
+    governance.clearMutationFeedback();
     setEditingTemplate(null);
     setTemplateFormOpen(true);
   }
 
   function openNewRule() {
+    governance.clearMutationFeedback();
     setEditingRule(null);
     setRuleFormOpen(true);
   }
@@ -140,13 +142,27 @@ export function DocumentRulesAdmin() {
         </Button>
       </div>
 
-      {governance.compatibilityMessage && (
-        <Alert>
+      {governance.diagnostics && governance.diagnostics.code !== "ready" && (
+        <Alert
+          variant={
+            governance.diagnostics.status === "critical"
+              ? "destructive"
+              : "default"
+          }
+        >
           <ShieldCheck className="h-4 w-4" />
-          <AlertTitle>Ciclo 14 ainda não aplicado</AlertTitle>
-          <AlertDescription>
-            {governance.compatibilityMessage} A criação inteligente continua
-            usando as heurísticas locais.
+          <AlertTitle>{governance.diagnostics.title}</AlertTitle>
+          <AlertDescription className="space-y-2">
+            <p>{governance.diagnostics.message}</p>
+            {governance.diagnostics.recommendations.length > 0 && (
+              <ul className="list-disc space-y-1 pl-4">
+                {governance.diagnostics.recommendations.map(
+                  (recommendation) => (
+                    <li key={recommendation}>{recommendation}</li>
+                  ),
+                )}
+              </ul>
+            )}
           </AlertDescription>
         </Alert>
       )}
@@ -291,6 +307,7 @@ export function DocumentRulesAdmin() {
                       variant="outline"
                       size="sm"
                       onClick={() => {
+                        governance.clearMutationFeedback();
                         setEditingTemplate(template);
                         setTemplateFormOpen(true);
                       }}
@@ -408,6 +425,7 @@ export function DocumentRulesAdmin() {
                         variant="outline"
                         size="sm"
                         onClick={() => {
+                          governance.clearMutationFeedback();
                           setEditingRule(rule);
                           setRuleFormOpen(true);
                         }}
@@ -431,6 +449,7 @@ export function DocumentRulesAdmin() {
         projects={governance.projects}
         canUseProjects={governance.canUseProjects}
         isSaving={governance.isSaving}
+        submissionError={governance.lastMutationMessage ?? governance.error}
         onSubmit={saveTemplate}
       />
       <DocumentRuleForm
@@ -440,6 +459,7 @@ export function DocumentRulesAdmin() {
         projects={governance.projects}
         canUseProjects={governance.canUseProjects}
         isSaving={governance.isSaving}
+        submissionError={governance.lastMutationMessage ?? governance.error}
         onSubmit={saveRule}
       />
     </div>

@@ -22,7 +22,9 @@ function DocumentRulesPage() {
         <CardHeader>
           <CardTitle>Acesso restrito</CardTitle>
           <CardDescription>
-            Esta área é exclusiva para administradores e gestores.
+            Esta área é exclusiva para administradores e gestores. Se o seu
+            próprio papel foi rebaixado, somente outro administrador ou uma
+            manutenção controlada pelo Supabase poderá restaurar o acesso.
           </CardDescription>
         </CardHeader>
       </Card>

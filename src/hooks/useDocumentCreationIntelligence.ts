@@ -399,6 +399,7 @@ export function useDocumentCreationIntelligence(
         `A política exige revisão em ${governanceDecision.enforcedReviewPeriodMonths} meses.`,
       );
     }
+    items.push(...governanceDecision.warnings);
     return items;
   }, [
     form.file,
@@ -407,6 +408,7 @@ export function useDocumentCreationIntelligence(
     form.revision,
     governanceDecision.enforcedReviewPeriodMonths,
     governanceDecision.riskProfile,
+    governanceDecision.warnings,
     initialRevisionSuggestion,
     riskLevel,
   ]);
@@ -488,6 +490,19 @@ export function useDocumentCreationIntelligence(
     configurationMessage: [
       configurationMessage,
       templateGovernance.compatibilityMessage,
+      templateGovernance.diagnostics?.code === "empty"
+        ? "Ciclo P-10C disponível, ainda sem templates ou regras. Heurísticas P-10B ativas."
+        : null,
+      templateGovernance.diagnostics &&
+      templateGovernance.diagnostics.templates.active === 0 &&
+      templateGovernance.diagnostics.rules.active === 0 &&
+      (templateGovernance.diagnostics.templates.inactive > 0 ||
+        templateGovernance.diagnostics.rules.inactive > 0)
+        ? "Existem templates ou regras cadastrados, mas todos estão inativos. Heurísticas P-10B ativas."
+        : null,
+      (form.doc_type || inferredType) && (form.area || inferredArea)
+        ? governanceEvaluation.applicationDiagnostics.message
+        : null,
     ]
       .filter(Boolean)
       .join(" "),
@@ -500,6 +515,10 @@ export function useDocumentCreationIntelligence(
     governanceRiskProfile: governanceDecision.riskProfile,
     enforcedReviewPeriodMonths: governanceDecision.enforcedReviewPeriodMonths,
     reviewSource: governanceDecision.reviewSource,
+    governanceWarnings: governanceDecision.warnings,
+    governanceApplicationDiagnostics:
+      governanceEvaluation.applicationDiagnostics,
+    governanceDiagnostics: templateGovernance.diagnostics,
     canUseTemplates: templateGovernance.canUseTemplates,
     canUseRules: templateGovernance.canUseRules,
     applySuggestion,

@@ -324,3 +324,239 @@ limit 50;
 - vínculo opcional com templates de workflow;
 - calendário útil e regras temporais;
 - analytics de aderência documental.
+
+## Hardening P-10C.1
+
+### Diagnóstico do problema relatado
+
+A revisão não encontrou incompatibilidade estrutural que exija uma migration de reparo. O ciclo 14 usa os mesmos helpers de organização e papel já adotados pelas migrations enterprise.
+
+Os sintomas observados são compatíveis com uma destas situações:
+
+1. as tabelas existem, mas não receberam registros;
+2. o insert foi bloqueado por RLS;
+3. `profiles.org_id` não corresponde ao `org_id` consultado;
+4. o papel do perfil não é `admin` ou `manager`;
+5. a tela está conectada a outro ambiente Supabase;
+6. existem registros, mas estão inativos;
+7. existem registros ativos, mas seus códigos de tipo/área não correspondem ao input atual.
+
+Também havia uma falha de UX confirmada: erros de insert eram exibidos na página administrativa atrás do modal. Quando RLS bloqueava o save, o diálogo permanecia aberto sem apresentar o motivo no próprio formulário. A P-10C.1 mostra o erro dentro do modal e exige que insert/update retorne o `id` persistido.
+
+O frontend agora separa explicitamente:
+
+- ciclo ausente;
+- schema parcial;
+- tabelas vazias;
+- leitura bloqueada por RLS;
+- perfil ou organização ausentes;
+- papel sem permissão administrativa;
+- registros ativos e inativos;
+- registros existentes, mas não aplicáveis;
+- falha de insert ou update.
+
+Inserts e updates usam retorno do banco para confirmar que o registro realmente foi persistido e ficou visível pela policy de leitura.
+
+### Estados apresentados
+
+- **Templates e regras ainda não foram cadastrados:** tabelas disponíveis e vazias;
+- **Ciclo P-10C não instalado:** tabelas ausentes ou fora do schema cache;
+- **Schema P-10C incompleto:** somente parte das tabelas existe;
+- **Leitura bloqueada por RLS:** tabela existe, mas o usuário não consegue consultar;
+- **Acesso restrito:** usuário não é admin/manager;
+- **Governança disponível:** registros carregados com contagem de ativos e inativos.
+
+Se um elaborador acessar diretamente a rota administrativa, nenhum hook administrativo é carregado. Se o próprio usuário perdeu o papel de admin/manager, apenas outro administrador ou uma manutenção controlada no Supabase pode restaurá-lo.
+
+### Prioridade e conflitos
+
+- templates e regras inativos nunca são aplicados;
+- dados de outra organização são rejeitados;
+- condições desconhecidas não são aplicadas;
+- efeitos desconhecidos são ignorados sem quebrar a criação;
+- prioridade numérica menor vence;
+- empates usam `created_at`, `id` e nome para decisão determinística;
+- campos obrigatórios são a união das regras aplicáveis;
+- risco nunca é reduzido;
+- conflitos de período usam a regra de maior prioridade e geram alerta visível.
+
+### Queries de diagnóstico
+
+As queries desta seção são operações de manutenção administrativa. Revise o ambiente e substitua `SEU_EMAIL_AQUI` antes de executar qualquer escrita.
+
+#### 1. Ver tabelas
+
+```sql
+select to_regclass('public.document_creation_templates') as templates,
+       to_regclass('public.document_creation_rules') as rules,
+       to_regclass('public.document_template_usage_logs') as logs;
+```
+
+#### 2. Ver templates
+
+```sql
+select
+  id,
+  org_id,
+  name,
+  doc_type,
+  area,
+  project_id,
+  priority,
+  is_active,
+  is_default,
+  template_scope,
+  required_fields,
+  default_review_months,
+  risk_profile
+from public.document_creation_templates
+order by priority, name;
+```
+
+#### 3. Ver regras
+
+```sql
+select
+  id,
+  org_id,
+  name,
+  priority,
+  is_active,
+  severity,
+  condition,
+  effects
+from public.document_creation_rules
+order by priority, name;
+```
+
+#### 4. Ver perfil atual
+
+```sql
+select
+  p.id,
+  p.org_id,
+  p.role,
+  u.email
+from public.profiles p
+join auth.users u on u.id = p.id
+where u.id = auth.uid();
+```
+
+No SQL Editor executado como administrador, `auth.uid()` pode ser nulo. Nesse caso, use a consulta por e-mail.
+
+#### 5. Ver perfil por e-mail
+
+```sql
+select
+  p.id,
+  p.org_id,
+  p.role,
+  u.email
+from public.profiles p
+join auth.users u on u.id = p.id
+where lower(u.email) = lower('SEU_EMAIL_AQUI');
+```
+
+#### 6. Restaurar admin por e-mail
+
+Use somente em manutenção controlada e depois de confirmar organização e identidade.
+
+```sql
+update public.profiles p
+set role = 'admin',
+    updated_at = now()
+from auth.users u
+where u.id = p.id
+  and lower(u.email) = lower('SEU_EMAIL_AQUI')
+returning p.id, u.email, p.org_id, p.role, p.updated_at;
+```
+
+#### 7. Inserir template PRO/SST mínimo
+
+Use apenas para diagnóstico quando a administração pela interface estiver indisponível.
+
+```sql
+insert into public.document_creation_templates (
+  org_id,
+  name,
+  description,
+  doc_type,
+  area,
+  is_active,
+  is_default,
+  priority,
+  template_scope,
+  default_review_months,
+  required_fields,
+  recommended_fields,
+  risk_profile
+)
+select
+  p.org_id,
+  'Procedimento SST',
+  'Template mínimo para procedimento de saúde e segurança.',
+  'PRO',
+  'SST',
+  true,
+  true,
+  10,
+  'organization',
+  12,
+  '["description", "file"]'::jsonb,
+  '["project_id", "next_review_at"]'::jsonb,
+  'high'
+from public.profiles p
+join auth.users u on u.id = p.id
+where lower(u.email) = lower('SEU_EMAIL_AQUI')
+limit 1
+returning id, org_id, name, doc_type, area, required_fields;
+```
+
+#### 8. Inserir regra PRO/SST mínima
+
+```sql
+insert into public.document_creation_rules (
+  org_id,
+  name,
+  description,
+  is_active,
+  priority,
+  condition,
+  effects,
+  severity
+)
+select
+  p.org_id,
+  'Regra PRO/SST obrigatória',
+  'Exige descrição e arquivo para procedimentos de saúde e segurança.',
+  true,
+  10,
+  '{"doc_type": "PRO", "area": "SST"}'::jsonb,
+  '{"required_fields": ["description", "file"], "review_period_months": 12, "risk_level": "high", "recommendations": ["Procedimentos de SST devem conter evidência de validação técnica."]}'::jsonb,
+  'critical'
+from public.profiles p
+join auth.users u on u.id = p.id
+where lower(u.email) = lower('SEU_EMAIL_AQUI')
+limit 1
+returning id, org_id, name, condition, effects;
+```
+
+### Testes manuais P-10C.1
+
+1. sem ciclo 14, abra o Novo Documento Inteligente e confirme o fallback P-10B;
+2. com ciclo 14 e tabelas vazias, confirme o estado vazio explícito;
+3. como admin, crie um template PRO/SST e confirme atualização imediata da lista;
+4. crie uma regra PRO/SST e confirme atualização imediata da lista;
+5. na criação, confirme template, regra, prazo de 12 meses e bloqueio por descrição/arquivo;
+6. como elaborador, acesse `/authenticated/documentos/regras` e confirme acesso restrito;
+7. desative template/regra e confirme que deixam de ser aplicados;
+8. crie condition desconhecida por manutenção e confirme que não aplica nem quebra;
+9. bloqueie o insert no log de uso em ambiente de teste e confirme que o documento é preservado com alerta não bloqueante.
+
+### Limitações remanescentes
+
+- o diagnóstico usa selects nas próprias tabelas e não consulta `information_schema`;
+- o frontend não consegue diferenciar tabela vazia de linhas invisíveis por uma policy que retorna zero registros sem erro;
+- a confirmação definitiva de RLS/org exige as queries administrativas;
+- não há simulação de policy antes de salvar;
+- não há histórico versionado das alterações de regra.

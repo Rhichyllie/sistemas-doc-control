@@ -122,6 +122,7 @@ export interface DocumentGovernanceDecision {
   recommendedFields: DocumentRuleField[];
   defaultDescription: string | null;
   defaultMetadata: Record<string, unknown>;
+  warnings: string[];
 }
 
 const BASE_REQUIRED_FIELDS: DocumentRuleField[] = ["title", "doc_type", "area"];
@@ -226,6 +227,8 @@ export function matchTemplateForDocument(
         left.priority - right.priority ||
         templateSpecificity(right) - templateSpecificity(left) ||
         Number(right.is_default) - Number(left.is_default) ||
+        left.created_at.localeCompare(right.created_at) ||
+        left.id.localeCompare(right.id) ||
         left.name.localeCompare(right.name, "pt-BR"),
     )[0] ?? null
   );
@@ -303,6 +306,8 @@ export function evaluateDocumentRules(
     .sort(
       (left, right) =>
         left.priority - right.priority ||
+        left.created_at.localeCompare(right.created_at) ||
+        left.id.localeCompare(right.id) ||
         left.name.localeCompare(right.name, "pt-BR"),
     );
 }
@@ -335,6 +340,29 @@ export function mergeTemplateAndHeuristics({
   const enforcedReviewPeriodMonths =
     ruleEffects.find((effects) => effects.review_period_months !== null)
       ?.review_period_months ?? null;
+  const periodRules = appliedRules
+    .map((rule, index) => ({
+      rule,
+      period: ruleEffects[index].review_period_months,
+    }))
+    .filter(
+      (
+        item,
+      ): item is {
+        rule: DocumentRuleRecord;
+        period: number;
+      } => item.period !== null,
+    );
+  const distinctPeriods = [...new Set(periodRules.map((item) => item.period))];
+  const warnings =
+    distinctPeriods.length > 1
+      ? [
+          `Conflito de prazo: a regra "${periodRules[0].rule.name}" (${periodRules[0].period} meses) prevalece por prioridade sobre ${periodRules
+            .slice(1)
+            .map((item) => `"${item.rule.name}" (${item.period} meses)`)
+            .join(", ")}.`,
+        ]
+      : [];
   const validConfiguredMonths =
     Number.isInteger(configuredReviewMonths) &&
     (configuredReviewMonths ?? 0) >= 1 &&
@@ -388,6 +416,7 @@ export function mergeTemplateAndHeuristics({
     ],
     defaultDescription: template?.default_description ?? null,
     defaultMetadata: template?.default_metadata ?? {},
+    warnings,
   };
 }
 

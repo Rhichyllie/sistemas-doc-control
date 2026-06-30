@@ -66,6 +66,8 @@ interface DocumentIntelligencePanelProps {
   requiredFieldChecklist: RequiredFieldChecklistItem[];
   governanceScore: number;
   governanceRiskProfile: GovernanceRiskProfile;
+  governanceWarnings: string[];
+  blockingReason: string | null;
   suggestionsApplied: boolean;
   suggestionsDisabled: boolean;
   onApplySuggestions: () => void;
@@ -87,6 +89,8 @@ export function DocumentIntelligencePanel({
   requiredFieldChecklist,
   governanceScore,
   governanceRiskProfile,
+  governanceWarnings,
+  blockingReason,
   suggestionsApplied,
   suggestionsDisabled,
   onApplySuggestions,
@@ -158,6 +162,14 @@ export function DocumentIntelligencePanel({
                   Política crítica: todos os requisitos devem ser atendidos.
                 </p>
               )}
+              {governanceWarnings.map((warning) => (
+                <p
+                  key={warning}
+                  className="mt-2 text-xs font-medium text-amber-800"
+                >
+                  {warning}
+                </p>
+              ))}
             </div>
           )}
 
@@ -220,6 +232,12 @@ export function DocumentIntelligencePanel({
               ))}
             </div>
           </div>
+
+          {blockingReason && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              <strong>Criação bloqueada:</strong> {blockingReason}
+            </div>
+          )}
 
           {warnings.length > 0 && (
             <div className="space-y-2">
