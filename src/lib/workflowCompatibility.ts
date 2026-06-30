@@ -2,11 +2,34 @@ const WORKFLOW_FOUNDATION_ERROR_CODES = new Set([
   '42P01',
   '42703',
   'PGRST200',
+  'PGRST202',
   'PGRST204',
   'PGRST205',
 ])
 
 export type WorkflowAssignmentType = 'role' | 'user' | 'group'
+
+const WORKFLOW_RPC_UNAVAILABLE_ERROR_CODES = new Set([
+  '42P01',
+  '42703',
+  '42883',
+  'PGRST200',
+  'PGRST202',
+  'PGRST204',
+  'PGRST205',
+])
+
+const WORKFLOW_RPC_NAMES = [
+  'publish_formal_revision',
+  'reject_formal_revision',
+  'resubmit_formal_revision',
+]
+
+const WORKFLOW_RPC_UNAVAILABLE_TERMS = [
+  'function does not exist',
+  'could not find the function',
+  'schema cache',
+]
 
 const WORKFLOW_FOUNDATION_TERMS = [
   'approval_groups',
@@ -51,4 +74,21 @@ export function isWorkflowFoundationUnavailable(error: unknown) {
 
   return WORKFLOW_FOUNDATION_ERROR_CODES.has(code)
     || WORKFLOW_FOUNDATION_TERMS.some((term) => message.includes(term))
+}
+
+export function isWorkflowRpcUnavailable(error: unknown) {
+  if (!error || typeof error !== 'object') return false
+  const record = error as Record<string, unknown>
+  const code = typeof record.code === 'string' ? record.code : ''
+  const message = [record.message, record.details, record.hint]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ')
+    .toLowerCase()
+  const mentionsWorkflowRpc = WORKFLOW_RPC_NAMES.some((name) => message.includes(name))
+  const describesMissingFunction = WORKFLOW_RPC_UNAVAILABLE_TERMS.some(
+    (term) => message.includes(term),
+  )
+
+  return WORKFLOW_RPC_UNAVAILABLE_ERROR_CODES.has(code)
+    || (mentionsWorkflowRpc && describesMissingFunction)
 }

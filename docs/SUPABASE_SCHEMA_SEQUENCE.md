@@ -18,12 +18,14 @@ A sequência lógica oficial é:
 10. `09_TRAMITA_enterprise_schema_alignment_bridge`
 11. `10_TRAMITA_decision_and_correction_cycle`
 12. `11_TRAMITA_formal_revision_lifecycle`
+13. `12_TRAMITA_formal_revision_transactional_hardening`
 
-No repositório, os três últimos ciclos correspondem a:
+No repositório, os quatro últimos ciclos correspondem a:
 
 - `supabase/migrations/20260629_09_tramita_enterprise_schema_alignment_bridge.sql`;
 - `supabase/migrations/20260629_p9c1_decision_and_correction_cycle.sql`;
-- `supabase/migrations/20260629_p10a_formal_revision_lifecycle.sql`.
+- `supabase/migrations/20260629_p10a_formal_revision_lifecycle.sql`;
+- `supabase/migrations/20260629_p10a2_formal_revision_transactional_hardening.sql`.
 
 ## Por que o bridge 09 existe
 

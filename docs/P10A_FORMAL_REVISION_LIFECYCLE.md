@@ -198,6 +198,14 @@ Na última etapa:
 9. `documents.status` volta para `published`;
 10. são registrados `formal_revision_superseded` e `formal_revision_published`.
 
+### Hardening P-10A.2
+
+A P-10A.2 adiciona `publish_formal_revision`, uma RPC `SECURITY DEFINER` que executa supersessão, publicação, atualização do documento mestre e auditoria na mesma transação.
+
+O frontend usa a RPC como caminho principal. Ambientes que ainda não aplicaram `supabase/migrations/20260629_p10a2_formal_revision_transactional_hardening.sql` continuam usando o fallback compatível do cliente somente quando a função ou o schema ainda não estão disponíveis. Erros de permissão e de validação não acionam fallback.
+
+Para operação enterprise, a RPC deve ser aplicada e usada como caminho principal. Detalhes e conferências estão em `docs/P10A2_FORMAL_REVISION_TRANSACTIONAL_HARDENING.md`.
+
 ## Rejeitar e corrigir
 
 Ao rejeitar:

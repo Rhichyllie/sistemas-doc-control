@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { getErrorMessage } from '@/lib/errorUtils'
 import {
   isWorkflowFoundationUnavailable,
+  isWorkflowRpcUnavailable,
   type WorkflowAssignmentType,
 } from '@/lib/workflowCompatibility'
 import {
@@ -106,6 +107,15 @@ interface RejectedStepRow {
   metadata?: Record<string, unknown> | null
   document_version_id?: string | null
   revision_number?: number | null
+}
+
+interface PublishFormalRevisionRpcResult {
+  success?: boolean
+  document_id?: string
+  published_version_id?: string
+  previous_version_id?: string | null
+  revision?: number
+  idempotent?: boolean
 }
 
 export function useApprovalFlow() {
@@ -548,6 +558,7 @@ export function useApprovalFlow() {
 
     setLoading(true)
     setError(null)
+    setCompatibilityMessage(null)
 
     try {
       const now = new Date().toISOString()
@@ -977,9 +988,45 @@ export function useApprovalFlow() {
   ) {
     if (!profile) throw new Error('Usuário não autenticado')
 
+    const rpcResult = await supabase.rpc('publish_formal_revision', {
+      p_document_id: documentId,
+      p_document_version_id: documentVersionId,
+      p_actor_id: profile.id,
+    })
+
+    if (rpcResult.error) {
+      if (isWorkflowRpcUnavailable(rpcResult.error)) {
+        setCompatibilityMessage(
+          'A RPC transacional de revisão formal não está disponível neste ambiente. A publicação usou o fallback compatível do cliente.',
+        )
+      } else {
+        throw new Error(
+          `A publicação transacional da revisão foi recusada: ${getErrorMessage(rpcResult.error, 'erro não identificado')}`,
+        )
+      }
+    } else {
+      const result = rpcResult.data as PublishFormalRevisionRpcResult | null
+      if (
+        !result
+        || result.success !== true
+        || result.document_id !== documentId
+        || result.published_version_id !== documentVersionId
+        || typeof result.revision !== 'number'
+      ) {
+        throw new Error('A RPC de publicação retornou um resultado inválido ou incompleto.')
+      }
+
+      await notifyDocumentAuthor(
+        documentId,
+        'formal_revision_published',
+        `Revisão ${result.revision} aprovada e publicada`,
+      )
+      return
+    }
+
     const { data: version, error: versionError } = await supabase
       .from('document_versions')
-      .select('id, revision, file_path, file_name, file_size, change_reason, metadata')
+      .select('id, revision, file_path, file_name, file_size, file_hash, change_reason, metadata')
       .eq('id', documentVersionId)
       .eq('document_id', documentId)
       .eq('org_id', profile.org_id)
@@ -1054,6 +1101,7 @@ export function useApprovalFlow() {
         file_path: version.file_path,
         file_name: version.file_name,
         file_size: version.file_size,
+        file_hash: version.file_hash,
         status: 'published',
         published_at: now,
         published_version_id: documentVersionId,
