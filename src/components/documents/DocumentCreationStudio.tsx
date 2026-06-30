@@ -142,6 +142,11 @@ export function DocumentCreationStudio() {
       requiredFieldsMissing: intelligence.requiredFieldsMissing,
       enforcedReviewPeriodMonths: intelligence.enforcedReviewPeriodMonths,
     },
+    coding: {
+      previewCode: intelligence.codePreview.code,
+      patternId: intelligence.codePreview.patternId,
+      previewMode: intelligence.codePreview.mode,
+    },
   };
   const creationValidationErrors = creation.getValidationErrors(creationInput);
   const governanceDiagnostics = intelligence.governanceDiagnostics;
@@ -773,6 +778,9 @@ export function DocumentCreationStudio() {
               governanceScore={intelligence.governanceScore}
               appliedRulesCount={intelligence.appliedRules.length}
               policyGuidance={policyGuidance}
+              codePreview={intelligence.codePreview}
+              codePreviewLoading={intelligence.codePreviewLoading}
+              codeCompatibilityMessage={intelligence.codeCompatibilityMessage}
             />
           )}
 
@@ -865,6 +873,9 @@ export function DocumentCreationStudio() {
           governanceScore={intelligence.governanceScore}
           appliedRulesCount={intelligence.appliedRules.length}
           policyGuidance={policyGuidance}
+          codePreview={intelligence.codePreview}
+          codePreviewLoading={intelligence.codePreviewLoading}
+          codeCompatibilityMessage={intelligence.codeCompatibilityMessage}
         />
       </div>
     );
@@ -974,6 +985,9 @@ export function DocumentCreationStudio() {
           governanceScore={intelligence.governanceScore}
           governanceRiskProfile={intelligence.governanceRiskProfile}
           policyGuidance={policyGuidance}
+          codePreview={intelligence.codePreview}
+          codePreviewLoading={intelligence.codePreviewLoading}
+          codeCompatibilityMessage={intelligence.codeCompatibilityMessage}
           suggestionsApplied={suggestionsApplied}
           suggestionsDisabled={
             intelligence.isLoadingConfigurations || creation.loading

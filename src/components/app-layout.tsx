@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { House, FileStack, Users, LogOut, Settings, Palette, Download, DatabaseZap, GitBranch, Bell, ClipboardList, UserCircle, Inbox, ChartNoAxesCombined, UsersRound, Stethoscope, ScrollText } from "lucide-react";
+import { House, FileStack, Users, LogOut, Settings, Palette, Download, DatabaseZap, GitBranch, Bell, ClipboardList, UserCircle, Inbox, ChartNoAxesCombined, UsersRound, Stethoscope, ScrollText, Code2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ const nav = [
   { to: "/authenticated/fluxo-de-aprovacao", label: "Fila de Aprovação", icon: GitBranch, badge: "approval" },
   { to: "/authenticated/grupos-aprovacao", label: "Grupos de Aprovação", icon: UsersRound, managerOnly: true },
   { to: "/authenticated/documentos/regras", label: "Regras Documentais", icon: ScrollText, managerOnly: true },
+  { to: "/authenticated/documentos/codificacao", label: "Codificação Documental", icon: Code2, managerOnly: true },
   { to: "/authenticated/indicadores", label: "Indicadores", icon: ChartNoAxesCombined },
   { to: "/authenticated/trilha-de-auditoria", label: "Trilha de Auditoria", icon: ClipboardList },
   { to: "/authenticated/schema-doctor", label: "Schema Doctor", icon: Stethoscope, managerOnly: true },

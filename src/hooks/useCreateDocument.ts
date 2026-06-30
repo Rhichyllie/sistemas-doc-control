@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { getErrorMessage } from "@/lib/errorUtils";
 import { validateDocumentCreation } from "@/lib/documentCreationValidation";
+import { isDocumentCodingCompatibilityError } from "@/lib/documentCodePatterns";
 import { normalizeDocumentCreationPayload } from "@/lib/documentIntelligence";
 import { isDocumentTemplateSchemaUnavailable } from "@/lib/documentTemplateRules";
 import { isWorkflowFoundationUnavailable } from "@/lib/workflowCompatibility";
@@ -59,6 +60,10 @@ export interface CreateDocumentInput {
     appliedRuleIds?: string[];
     governanceScore?: number | null;
     requiredFieldsMissing?: string[];
+    codePreview?: string | null;
+    codePatternId?: string | null;
+    codePreviewMode?: string | null;
+    requestCodeAllocation?: boolean;
   };
 }
 
@@ -186,6 +191,60 @@ export function useCreateDocument() {
         );
       }
       createdDocumentId = data.id;
+      let finalCode = String(data.code ?? "");
+      let codePatternId = input.creationContext?.codePatternId ?? null;
+      let codeGenerationMode =
+        input.creationContext?.codePreviewMode ?? "legacy";
+      let codeGenerationWarning: string | undefined;
+
+      if (input.creationContext?.requestCodeAllocation) {
+        const allocationResult = await supabase.rpc("allocate_document_code", {
+          p_document_id: data.id,
+          p_doc_type: input.doc_type,
+          p_area: input.area,
+          p_project_id: input.project_id || null,
+          p_reference_date: new Date().toISOString().slice(0, 10),
+        });
+
+        if (allocationResult.error) {
+          codeGenerationMode = "legacy";
+          codePatternId = null;
+          const reconciliation = await supabase
+            .from("documents")
+            .select("code")
+            .eq("id", data.id)
+            .eq("org_id", profile.org_id)
+            .maybeSingle();
+          if (
+            !reconciliation.error &&
+            reconciliation.data?.code &&
+            reconciliation.data.code !== finalCode
+          ) {
+            finalCode = reconciliation.data.code;
+            codeGenerationMode = "configured_reconciled";
+          }
+          if (!isDocumentCodingCompatibilityError(allocationResult.error)) {
+            codeGenerationWarning =
+              codeGenerationMode === "configured_reconciled"
+                ? "O código final foi confirmado no documento, mas a resposta da alocação P-11 não retornou normalmente. Revise o evento de codificação."
+                : "Documento criado com o código legado, pois a alocação P-11 não pôde ser concluída. Revise as permissões e os padrões de codificação.";
+          }
+        } else if (
+          allocationResult.data &&
+          typeof allocationResult.data === "object"
+        ) {
+          const allocation = allocationResult.data as Record<string, unknown>;
+          if (typeof allocation.code === "string" && allocation.code) {
+            finalCode = allocation.code;
+          }
+          codePatternId =
+            typeof allocation.pattern_id === "string"
+              ? allocation.pattern_id
+              : null;
+          codeGenerationMode =
+            typeof allocation.mode === "string" ? allocation.mode : "allocated";
+        }
+      }
       const creationMode = input.creationContext?.mode ?? "standard";
       const creationSource =
         input.creationContext?.mode &&
@@ -266,6 +325,10 @@ export function useCreateDocument() {
           governance_score: input.creationContext?.governanceScore ?? null,
           required_fields_missing:
             input.creationContext?.requiredFieldsMissing ?? [],
+          code_preview: input.creationContext?.codePreview ?? null,
+          code_final: finalCode,
+          code_pattern_id: codePatternId,
+          code_generation_mode: codeGenerationMode,
         },
       });
       if (auditError) {
@@ -308,8 +371,11 @@ export function useCreateDocument() {
       }
 
       return {
-        ...(data as CreateDocumentResult),
-        warning: usageLogWarning,
+        id: data.id,
+        code: finalCode,
+        warning:
+          [codeGenerationWarning, usageLogWarning].filter(Boolean).join(" ") ||
+          undefined,
       };
     } catch (err: unknown) {
       const cleanupMessages: string[] = [];

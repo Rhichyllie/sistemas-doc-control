@@ -21,8 +21,9 @@ A sequência lógica oficial é:
 13. `12_TRAMITA_formal_revision_transactional_hardening`
 14. `13_TRAMITA_schema_doctor`
 15. `14_TRAMITA_document_templates_and_rules`
+16. `15_TRAMITA_intelligent_document_coding`
 
-No repositório, os seis últimos ciclos correspondem a:
+No repositório, os sete últimos ciclos correspondem a:
 
 - `supabase/migrations/20260629_09_tramita_enterprise_schema_alignment_bridge.sql`;
 - `supabase/migrations/20260629_p9c1_decision_and_correction_cycle.sql`;
@@ -30,6 +31,7 @@ No repositório, os seis últimos ciclos correspondem a:
 - `supabase/migrations/20260629_p10a2_formal_revision_transactional_hardening.sql`;
 - `supabase/migrations/20260629_p10a3_schema_doctor.sql`.
 - `supabase/migrations/20260629_p10c_document_templates_and_rules.sql`.
+- `supabase/migrations/20260629_p11_intelligent_document_coding.sql`.
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
@@ -44,6 +46,13 @@ As queries administrativas de conferência e manutenção estão em `docs/P10C_D
 ### Orientação P-10C.2
 
 A P-10C.2 também não adiciona ciclo SQL. Ela acrescenta orientação, explicabilidade, destaque de campos obrigatórios e simulação administrativa sobre as tabelas do ciclo 14.
+
+## P-11 — Codificação Documental Inteligente
+
+O ciclo 15 cria padrões, sequências e eventos de código, além das RPCs de
+preview e alocação final. Ele preserva o trigger legado e endurece seu cálculo
+contra concorrência. Sem o ciclo 15, a criação continua usando o formato
+automático legado.
 
 ## P-10B — Criação Documental Inteligente
 

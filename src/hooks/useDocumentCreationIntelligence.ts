@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { DOC_TYPES } from "@/lib/constants";
 import { useDocumentTemplatesAndRules } from "@/hooks/useDocumentTemplatesAndRules";
+import { useDocumentCodePreview } from "@/hooks/useDocumentCodePreview";
 import {
   assessDocumentCompleteness,
   buildCreationRecommendations,
@@ -288,6 +289,12 @@ export function useDocumentCreationIntelligence(
       }),
     [form.area, form.description, form.title, selectedProject?.name],
   );
+  const coding = useDocumentCodePreview({
+    docType: form.doc_type || inferredType,
+    area: form.area || inferredArea,
+    projectId: form.project_id || null,
+    projectCode: selectedProject?.code || null,
+  });
   const effectiveType = inferredType ?? (form.doc_type as DocumentTypeCode);
   const configuredReviewPeriod = documentTypes.find(
     (type) => type.value === effectiveType,
@@ -522,6 +529,10 @@ export function useDocumentCreationIntelligence(
     governanceDiagnostics: templateGovernance.diagnostics,
     canUseTemplates: templateGovernance.canUseTemplates,
     canUseRules: templateGovernance.canUseRules,
+    codePreview: coding.codePreview,
+    codePreviewLoading: coding.isLoading,
+    codePreviewError: coding.error,
+    codeCompatibilityMessage: coding.compatibilityMessage,
     applySuggestion,
   };
 }

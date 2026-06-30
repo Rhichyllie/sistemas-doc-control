@@ -1,5 +1,6 @@
 import { FileText, FolderKanban, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { DocumentCodePreviewCard } from "@/components/documents/DocumentCodePreviewCard";
 import {
   Card,
   CardContent,
@@ -14,6 +15,7 @@ import type {
 } from "@/hooks/useDocumentCreationIntelligence";
 import type { DocumentRiskLevel } from "@/lib/documentIntelligence";
 import type { DocumentPolicyGuidance } from "@/lib/documentPolicyGuidance";
+import type { DocumentCodePreview } from "@/lib/documentCodePatterns";
 
 interface DocumentCreationSummaryProps {
   form: IntelligentDocumentFormState;
@@ -25,6 +27,9 @@ interface DocumentCreationSummaryProps {
   governanceScore: number;
   appliedRulesCount: number;
   policyGuidance: DocumentPolicyGuidance;
+  codePreview: DocumentCodePreview;
+  codePreviewLoading: boolean;
+  codeCompatibilityMessage: string | null;
 }
 
 export function DocumentCreationSummary({
@@ -37,6 +42,9 @@ export function DocumentCreationSummary({
   governanceScore,
   appliedRulesCount,
   policyGuidance,
+  codePreview,
+  codePreviewLoading,
+  codeCompatibilityMessage,
 }: DocumentCreationSummaryProps) {
   const type = documentTypes.find((option) => option.value === form.doc_type);
   const project = projects.find((option) => option.id === form.project_id);
@@ -77,7 +85,9 @@ export function DocumentCreationSummary({
           <Badge className="bg-slate-700 text-white hover:bg-slate-700">
             Rascunho
           </Badge>
-          <Badge variant="outline">Código automático</Badge>
+          <Badge variant="outline">
+            {codePreview.code ? codePreview.code : "Código automático"}
+          </Badge>
           <Badge>{type?.label || form.doc_type || "Tipo pendente"}</Badge>
           <Badge variant="secondary">{form.area || "Área pendente"}</Badge>
           <Badge variant="outline">Revisão {form.revision}</Badge>
@@ -129,6 +139,13 @@ export function DocumentCreationSummary({
             </span>
           </div>
         )}
+
+        <DocumentCodePreviewCard
+          preview={codePreview}
+          isLoading={codePreviewLoading}
+          compatibilityMessage={codeCompatibilityMessage}
+          compact
+        />
 
         <div
           className={

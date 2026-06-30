@@ -8,6 +8,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { DocumentCodePreviewCard } from "@/components/documents/DocumentCodePreviewCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +22,7 @@ import { Progress } from "@/components/ui/progress";
 import type { DocumentRiskLevel } from "@/lib/documentIntelligence";
 import type { DocumentPolicyGuidance } from "@/lib/documentPolicyGuidance";
 import type { GovernanceRiskProfile } from "@/lib/documentTemplateRules";
+import type { DocumentCodePreview } from "@/lib/documentCodePatterns";
 
 const RISK_META: Record<
   DocumentRiskLevel,
@@ -60,6 +62,9 @@ interface DocumentIntelligencePanelProps {
   suggestionsApplied: boolean;
   suggestionsDisabled: boolean;
   onApplySuggestions: () => void;
+  codePreview: DocumentCodePreview;
+  codePreviewLoading: boolean;
+  codeCompatibilityMessage: string | null;
 }
 
 export function DocumentIntelligencePanel({
@@ -79,6 +84,9 @@ export function DocumentIntelligencePanel({
   suggestionsApplied,
   suggestionsDisabled,
   onApplySuggestions,
+  codePreview,
+  codePreviewLoading,
+  codeCompatibilityMessage,
 }: DocumentIntelligencePanelProps) {
   const risk = RISK_META[riskLevel];
 
@@ -193,6 +201,26 @@ export function DocumentIntelligencePanel({
                 </>
               )}
             </Button>
+          </div>
+
+          <div className="space-y-2">
+            <DocumentCodePreviewCard
+              preview={codePreview}
+              isLoading={codePreviewLoading}
+              compatibilityMessage={codeCompatibilityMessage}
+              compact
+            />
+            {policyGuidance.appliedPolicyNames.length > 0 &&
+              codePreview.code && (
+                <p className="px-1 text-xs text-muted-foreground">
+                  Com a política {policyGuidance.appliedPolicyNames[0]}{" "}
+                  aplicada, o código previsto segue o padrão{" "}
+                  <span className="font-mono font-medium text-foreground">
+                    {codePreview.code}
+                  </span>
+                  .
+                </p>
+              )}
           </div>
 
           <div className="rounded-md border px-3 py-2 text-xs text-muted-foreground">

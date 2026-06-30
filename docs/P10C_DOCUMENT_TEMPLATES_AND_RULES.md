@@ -740,3 +740,12 @@ Para template/regra PRO/SST exigindo descrição, arquivo e revisão em 12 meses
 - aplicação automática não preenche campos que exigem decisão humana;
 - regras complexas continuam limitadas ao motor JSON simples da P-10C;
 - o score é explicativo e não substitui aprovação documental.
+
+## Integração P-11
+
+Quando uma política ou template altera tipo, área ou projeto, a P-11 recalcula
+o preview do código. O painel conecta a política aplicada ao padrão documental
+previsto, sem transformar a ausência do ciclo 15 em bloqueio.
+
+Sem P-11, templates e regras P-10C continuam funcionando e o código é gerado
+pelo trigger legado.

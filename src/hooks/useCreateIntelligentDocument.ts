@@ -34,6 +34,11 @@ export interface CreateIntelligentDocumentInput {
     requiredFieldsMissing: DocumentRuleField[];
     enforcedReviewPeriodMonths: number | null;
   };
+  coding: {
+    previewCode: string | null;
+    patternId: string | null;
+    previewMode: string;
+  };
 }
 
 export function getIntelligentDocumentValidationErrors(
@@ -121,6 +126,10 @@ export function useCreateIntelligentDocument() {
         appliedRuleIds: input.governance.appliedRuleIds,
         governanceScore: input.governance.governanceScore,
         requiredFieldsMissing: input.governance.requiredFieldsMissing,
+        codePreview: input.coding.previewCode,
+        codePatternId: input.coding.patternId,
+        codePreviewMode: input.coding.previewMode,
+        requestCodeAllocation: true,
       },
     });
   }

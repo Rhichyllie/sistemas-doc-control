@@ -446,3 +446,13 @@ Sem a migration P-10C, o carregamento usa fallback defensivo e toda a experiênc
 A P-10C.1 diferencia schema ausente, tabelas vazias, bloqueio por RLS e políticas não aplicáveis. Esses estados não alteram as heurísticas locais: quando nenhuma regra aplicável é encontrada, a P-10B permanece como fallback.
 
 A P-10C.2 apresenta esse fallback como modo heurístico e adiciona orientação de conformidade apenas à criação inteligente. O diálogo antigo continua usando somente o contrato de validação P-10B.1.
+
+## Integração P-11
+
+A P-11 adiciona preview e governança configurável de código ao Novo Documento
+Inteligente. Tipo, área e projeto recalculam o padrão previsto, e a auditoria
+registra preview, código final, padrão e modo de geração.
+
+Sem a P-11, a criação permanece funcional: o banco usa o trigger legado e a
+interface informa que o código será confirmado automaticamente. O diálogo
+antigo não depende da P-11.
