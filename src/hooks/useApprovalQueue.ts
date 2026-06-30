@@ -277,16 +277,32 @@ export function useApprovalQueue() {
       if (result.error) throw result.error
 
       const rows = (result.data ?? []) as unknown as QueueRow[]
-      const currentStepByDocument = new Map<string, { step: number; started: boolean }>()
+      const currentStepByDocument = new Map<string, {
+        step: number
+        started: boolean
+        createdAt: number
+      }>()
       for (const row of rows) {
         const document = first(row.documents)
         if (!document?.id || !ACTIVE_DOCUMENT_STATUSES.has(document.status)) continue
-        const candidate = { step: row.step, started: Boolean(row.started_at) }
+        const candidate = {
+          step: row.step,
+          started: Boolean(row.started_at),
+          createdAt: new Date(row.created_at).getTime(),
+        }
         const currentStep = currentStepByDocument.get(document.id)
         if (
           !currentStep
           || (candidate.started && !currentStep.started)
-          || (candidate.started === currentStep.started && candidate.step < currentStep.step)
+          || (
+            candidate.started === currentStep.started
+            && candidate.createdAt > currentStep.createdAt
+          )
+          || (
+            candidate.started === currentStep.started
+            && candidate.createdAt === currentStep.createdAt
+            && candidate.step < currentStep.step
+          )
         ) {
           currentStepByDocument.set(document.id, candidate)
         }
@@ -298,7 +314,8 @@ export function useApprovalQueue() {
           document?.id
           && ACTIVE_DOCUMENT_STATUSES.has(document.status)
           && currentStepByDocument.get(document.id)?.step === row.step
-          && currentStepByDocument.get(document.id)?.started === Boolean(row.started_at),
+          && currentStepByDocument.get(document.id)?.started === Boolean(row.started_at)
+          && currentStepByDocument.get(document.id)?.createdAt === new Date(row.created_at).getTime()
         )
       })
 

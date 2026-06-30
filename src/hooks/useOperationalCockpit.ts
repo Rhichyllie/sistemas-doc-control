@@ -88,7 +88,9 @@ function getDocumentLabel(document: Document | undefined, notification?: Notific
 }
 
 function isCorrectionNotification(notification: Notification) {
-  return notification.type === 'document_rejected' || notification.type.includes('reject')
+  return notification.type === 'document_rejected'
+    || notification.type.includes('reject')
+    || notification.type.includes('correction')
 }
 
 function isMentionNotification(notification: Notification) {
@@ -110,6 +112,10 @@ function actionLabel(action: string) {
     approved: 'Documento aprovado',
     approved_and_published: 'Documento aprovado e publicado',
     rejected: 'Documento reprovado',
+    correction_requested: 'Correção solicitada',
+    correction_updated: 'Correção atualizada',
+    correction_updated_with_attachment: 'Correção atualizada com anexo',
+    resubmitted_after_correction: 'Documento corrigido e reenviado',
     revision_created: 'Nova revisão registrada',
     new_revision: 'Nova revisão registrada',
     exported: 'Documento exportado',
@@ -243,7 +249,7 @@ export function useOperationalCockpit() {
         activityItems.push({
           id: `correction-${notification.document_id ?? notification.id}`,
           type: 'rejected_for_correction',
-          title: 'Documento reprovado para correção',
+          title: 'Correção solicitada',
           description: notification.title,
           documentId: notification.document_id,
           documentCode: label.code,
@@ -282,13 +288,17 @@ export function useOperationalCockpit() {
     }
 
     for (const document of documents) {
-      if (document.status === 'rejected' && document.author_id === profile?.id && !correctionDocumentIds.has(document.id)) {
+      if (
+        (document.status === 'rejected' || document.correction)
+        && document.author_id === profile?.id
+        && !correctionDocumentIds.has(document.id)
+      ) {
         correctionDocumentIds.add(document.id)
         activityItems.push({
           id: `correction-status-${document.id}`,
           type: 'rejected_for_correction',
-          title: 'Documento reprovado para correção',
-          description: 'O documento precisa ser ajustado antes de retornar ao fluxo.',
+          title: 'Correção solicitada',
+          description: document.correction?.reason ?? 'O documento precisa ser ajustado antes de retornar ao fluxo.',
           documentId: document.id,
           documentCode: document.code,
           documentTitle: document.title,

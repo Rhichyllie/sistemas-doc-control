@@ -20,6 +20,13 @@ const WORKFLOW_FOUNDATION_TERMS = [
   'completed_at',
   'escalation_user_id',
   'metadata',
+  'comment',
+  'decided_by',
+  'decided_at',
+  'correction_round',
+  'resubmitted_from_step_id',
+  'approval_flows_decided_by_fkey',
+  'approval_flows_resubmitted_from_step_id_fkey',
   'relationship',
 ]
 

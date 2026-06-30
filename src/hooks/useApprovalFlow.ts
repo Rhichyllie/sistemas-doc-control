@@ -19,6 +19,17 @@ export type WorkflowDueMode = 'days' | 'date'
 
 const BLOCKED_DOCUMENT_STATUSES = ['draft', 'published', 'obsolete']
 
+interface WorkflowInsertResult {
+  mode: WorkflowPersistenceMode
+  correctionFieldsPersisted: boolean
+}
+
+interface CorrectionRoundContext {
+  correctionRound: number
+  rejectedStepId: string
+  responseComment: string | null
+}
+
 interface ActOnStepInput {
   documentId: string
   stepId: string
@@ -60,6 +71,11 @@ interface SubmitForReviewInput {
   approverId?: string
 }
 
+interface ResubmitAfterCorrectionInput extends SubmitForReviewInput {
+  rejectedStepId: string
+  responseComment?: string
+}
+
 interface NextStepRow {
   id: string
   step: number
@@ -69,6 +85,14 @@ interface NextStepRow {
   assignee_id?: string | null
   assignee_user_id?: string | null
   assignee_group_id?: string | null
+}
+
+interface RejectedStepRow {
+  id: string
+  step: number
+  comment: string | null
+  correction_round?: number | null
+  metadata?: Record<string, unknown> | null
 }
 
 export function useApprovalFlow() {
@@ -111,16 +135,13 @@ export function useApprovalFlow() {
       }
       documentMovedToReview = true
 
-      const { error: deleteError } = await supabase
-        .from('approval_flows')
-        .delete()
-        .eq('document_id', input.documentId)
-        .eq('org_id', profile.org_id)
-        .eq('status', 'pending')
+      await closeOpenPendingSteps(input.documentId, now)
 
-      if (deleteError) throw deleteError
-
-      const persistenceMode = await insertWorkflowSteps(input.documentId, workflowSteps, now)
+      const { mode: persistenceMode } = await insertWorkflowSteps(
+        input.documentId,
+        workflowSteps,
+        now,
+      )
       workflowPersisted = true
       setCompatibilityMode(persistenceMode)
 
@@ -169,11 +190,142 @@ export function useApprovalFlow() {
     }
   }
 
+  async function resubmitAfterCorrection(
+    input: ResubmitAfterCorrectionInput,
+  ): Promise<boolean> {
+    if (!profile) {
+      setError('Usuário não autenticado')
+      return false
+    }
+
+    setLoading(true)
+    setError(null)
+    setCompatibilityMessage(null)
+    let documentMovedToReview = false
+    let workflowPersisted = false
+    let initialDocumentStatus = 'in_review'
+
+    try {
+      const now = new Date().toISOString()
+      const workflowSteps = normalizeWorkflowSteps(input)
+      initialDocumentStatus = documentStatusForRole(workflowSteps[0].required_role)
+
+      const { data: document, error: documentError } = await supabase
+        .from('documents')
+        .select('id, author_id, status')
+        .eq('id', input.documentId)
+        .eq('org_id', profile.org_id)
+        .single()
+
+      if (documentError) throw documentError
+      if (document.status !== 'draft') {
+        throw new Error('O documento não está disponível para correção e reenvio.')
+      }
+      if (document.author_id !== profile.id && !['admin', 'manager'].includes(profile.role)) {
+        throw new Error('Somente o autor ou um gestor pode reenviar este documento.')
+      }
+
+      const rejectedStep = await fetchRejectedStep(input.documentId, input.rejectedStepId)
+      if (!rejectedStep?.comment?.trim()) {
+        throw new Error('A etapa rejeitada e seu motivo não foram encontrados.')
+      }
+
+      const metadataRound = rejectedStep.metadata?.correction_round
+      const previousRound = typeof rejectedStep.correction_round === 'number'
+        ? rejectedStep.correction_round
+        : typeof metadataRound === 'number'
+          ? metadataRound
+          : 0
+      const correctionRound = previousRound + 1
+      const responseComment = input.responseComment?.trim() || null
+
+      const { data: updatedDocument, error: updateError } = await supabase
+        .from('documents')
+        .update({ status: initialDocumentStatus, updated_at: now })
+        .eq('id', input.documentId)
+        .eq('org_id', profile.org_id)
+        .eq('status', 'draft')
+        .select('id, status')
+        .maybeSingle()
+
+      if (updateError) throw updateError
+      if (!updatedDocument || updatedDocument.status !== initialDocumentStatus) {
+        throw new Error('O documento não pôde ser reenviado para aprovação.')
+      }
+      documentMovedToReview = true
+
+      await closeOpenPendingSteps(input.documentId, now)
+
+      const insertion = await insertWorkflowSteps(
+        input.documentId,
+        workflowSteps,
+        now,
+        {
+          correctionRound,
+          rejectedStepId: rejectedStep.id,
+          responseComment,
+        },
+      )
+      workflowPersisted = true
+      setCompatibilityMode(insertion.mode)
+
+      if (!insertion.correctionFieldsPersisted) {
+        setCompatibilityMessage(
+          'O reenvio foi salvo, mas correction_round e resubmitted_from_step_id ficaram em metadata até a migration P-9C.1 ser aplicada.',
+        )
+      }
+
+      const { error: auditError } = await supabase.from('audit_trail').insert({
+        document_id: input.documentId,
+        org_id: profile.org_id,
+        user_id: profile.id,
+        action: 'resubmitted_after_correction',
+        old_status: 'draft',
+        new_status: initialDocumentStatus,
+        metadata: {
+          correction_round: correctionRound,
+          previous_rejected_step_id: rejectedStep.id,
+          response_comment: responseComment,
+          workflow_mode: insertion.mode,
+          correction_fields_persisted: insertion.correctionFieldsPersisted,
+        },
+      })
+      if (auditError) throw auditError
+
+      await notifyStepAssignment(
+        input.documentId,
+        workflowSteps[0],
+        'approval_required',
+        `Documento corrigido aguarda ${workflowSteps[0].step_label}`,
+        insertion.mode,
+      )
+
+      return true
+    } catch (err: unknown) {
+      if (documentMovedToReview) {
+        if (workflowPersisted) {
+          await closeOpenPendingSteps(input.documentId, new Date().toISOString())
+        }
+        await supabase
+          .from('documents')
+          .update({ status: 'draft', updated_at: new Date().toISOString() })
+          .eq('id', input.documentId)
+          .eq('org_id', profile.org_id)
+          .eq('status', initialDocumentStatus)
+      }
+      setError(getErrorMessage(err, 'Erro ao reenviar documento corrigido'))
+      return false
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function insertWorkflowSteps(
     documentId: string,
     workflowSteps: NormalizedWorkflowStep[],
     now: string,
-  ): Promise<WorkflowPersistenceMode> {
+    correctionContext?: CorrectionRoundContext,
+  ): Promise<WorkflowInsertResult> {
     if (!profile) throw new Error('Usuário não autenticado')
 
     const commonRows = workflowSteps.map((step) => ({
@@ -201,13 +353,36 @@ export function useApprovalFlow() {
         active_step: index === 0,
         assignment_type: step.assignment_type,
         due_mode: step.due_mode,
+        correction_round: correctionContext?.correctionRound ?? 0,
+        resubmitted_from_step_id: correctionContext?.rejectedStepId ?? null,
+        response_comment: index === 0 ? correctionContext?.responseComment ?? null : null,
       },
     }))
 
-    let result = await supabase.from('approval_flows').insert(enterpriseRows).select('id')
+    let result = correctionContext
+      ? await supabase
+          .from('approval_flows')
+          .insert(enterpriseRows.map((row) => ({
+            ...row,
+            correction_round: correctionContext.correctionRound,
+            resubmitted_from_step_id: correctionContext.rejectedStepId,
+          })))
+          .select('id')
+      : await supabase.from('approval_flows').insert(enterpriseRows).select('id')
+
     if (!result.error) {
       assertInsertedStepCount(result.data, workflowSteps.length)
-      return 'enterprise'
+      return {
+        mode: 'enterprise',
+        correctionFieldsPersisted: Boolean(correctionContext),
+      }
+    }
+    if (correctionContext && isWorkflowFoundationUnavailable(result.error)) {
+      result = await supabase.from('approval_flows').insert(enterpriseRows).select('id')
+      if (!result.error) {
+        assertInsertedStepCount(result.data, workflowSteps.length)
+        return { mode: 'enterprise', correctionFieldsPersisted: false }
+      }
     }
     if (!isWorkflowFoundationUnavailable(result.error)) throw result.error
 
@@ -223,13 +398,16 @@ export function useApprovalFlow() {
         requested_assignment_type: step.assignment_type,
         requested_group_id: step.assignment_type === 'group' ? step.assignee_group_id : null,
         due_mode: step.due_mode,
+        correction_round: correctionContext?.correctionRound ?? 0,
+        resubmitted_from_step_id: correctionContext?.rejectedStepId ?? null,
+        response_comment: index === 0 ? correctionContext?.responseComment ?? null : null,
       },
     }))
 
     result = await supabase.from('approval_flows').insert(legacySlaRows).select('id')
     if (!result.error) {
       assertInsertedStepCount(result.data, workflowSteps.length)
-      return 'legacy_sla'
+      return { mode: 'legacy_sla', correctionFieldsPersisted: false }
     }
     if (!isWorkflowFoundationUnavailable(result.error)) throw result.error
 
@@ -241,7 +419,7 @@ export function useApprovalFlow() {
     result = await supabase.from('approval_flows').insert(legacyBaseRows).select('id')
     if (result.error) throw result.error
     assertInsertedStepCount(result.data, workflowSteps.length)
-    return 'legacy_base'
+    return { mode: 'legacy_base', correctionFieldsPersisted: false }
   }
 
   async function actOnStep(input: ActOnStepInput): Promise<boolean> {
@@ -262,7 +440,7 @@ export function useApprovalFlow() {
 
       const { data: pendingStep, error: pendingStepError } = await supabase
         .from('approval_flows')
-        .select('step, document_id, required_role, status')
+        .select('step, document_id, required_role, status, created_at')
         .eq('id', input.stepId)
         .eq('org_id', profile.org_id)
         .eq('status', 'pending')
@@ -302,48 +480,55 @@ export function useApprovalFlow() {
       )
 
       if (input.action === 'reject') {
-        await supabase
+        const { data: returnedDocument, error: returnError } = await supabase
           .from('documents')
           .update({ status: 'draft', updated_at: now })
           .eq('id', input.documentId)
           .eq('org_id', profile.org_id)
+          .select('id')
+          .maybeSingle()
 
-        let skipResult = await supabase
-          .from('approval_flows')
-          .update({ status: 'skipped', completed_at: now })
-          .eq('document_id', input.documentId)
-          .eq('org_id', profile.org_id)
-          .eq('status', 'pending')
+        if (returnError) throw returnError
+        if (!returnedDocument) throw new Error('O documento não pôde retornar para correção.')
 
-        if (skipResult.error && isWorkflowFoundationUnavailable(skipResult.error)) {
-          skipResult = await supabase
-            .from('approval_flows')
-            .update({ status: 'skipped' })
-            .eq('document_id', input.documentId)
-            .eq('org_id', profile.org_id)
-            .eq('status', 'pending')
-        }
-        if (skipResult.error) throw skipResult.error
+        await closeOpenPendingSteps(input.documentId, now)
 
-        await supabase.from('audit_trail').insert({
+        const { error: auditError } = await supabase.from('audit_trail').insert({
           document_id: input.documentId,
           org_id: profile.org_id,
           user_id: profile.id,
-          action: 'rejected',
+          action: 'correction_requested',
+          old_status: doc.status,
           new_status: 'draft',
-          metadata: { comment: input.comment, step: step.step },
+          metadata: {
+            comment: input.comment,
+            rejected_step: step.step,
+            rejected_step_id: input.stepId,
+            correction_required: true,
+            previous_status: doc.status,
+            returned_to_author: true,
+          },
         })
+        if (auditError) {
+          setCompatibilityMessage(
+            `A correção foi solicitada, mas o registro complementar de auditoria falhou: ${getErrorMessage(auditError, 'erro não identificado')}`,
+          )
+        }
 
         await notifyDocumentAuthor(
           input.documentId,
-          'document_rejected',
-          `Documento rejeitado na etapa ${step.step}: ${input.comment ?? ''}`,
+          'correction_requested',
+          `Correção solicitada na etapa ${step.step}: ${input.comment ?? ''}`,
         )
 
         return true
       }
 
-      const nextStep = await fetchNextStep(input.documentId)
+      const nextStep = await fetchNextStep(
+        input.documentId,
+        pendingStep.step,
+        pendingStep.created_at,
+      )
 
       if (nextStep) {
         const startResult = await supabase
@@ -429,7 +614,7 @@ export function useApprovalFlow() {
       .eq('id', stepId)
       .eq('org_id', profile.org_id)
       .eq('status', 'pending')
-      .select('step, document_id, required_role, status')
+      .select('id, step, document_id, required_role, status')
       .single()
 
     if (result.error && isWorkflowFoundationUnavailable(result.error)) {
@@ -444,7 +629,18 @@ export function useApprovalFlow() {
         .eq('id', stepId)
         .eq('org_id', profile.org_id)
         .eq('status', 'pending')
-        .select('step, document_id, required_role, status')
+        .select('id, step, document_id, required_role, status')
+        .single()
+    }
+
+    if (result.error && isWorkflowFoundationUnavailable(result.error)) {
+      result = await supabase
+        .from('approval_flows')
+        .update({ status })
+        .eq('id', stepId)
+        .eq('org_id', profile.org_id)
+        .eq('status', 'pending')
+        .select('id, step, document_id, required_role, status')
         .single()
     }
 
@@ -452,7 +648,80 @@ export function useApprovalFlow() {
     return result.data
   }
 
-  async function fetchNextStep(documentId: string): Promise<NextStepRow | null> {
+  async function closeOpenPendingSteps(documentId: string, now: string) {
+    if (!profile) throw new Error('Usuário não autenticado')
+
+    let result = await supabase
+      .from('approval_flows')
+      .update({ status: 'cancelled', completed_at: now })
+      .eq('document_id', documentId)
+      .eq('org_id', profile.org_id)
+      .eq('status', 'pending')
+
+    if (result.error) {
+      result = await supabase
+        .from('approval_flows')
+        .update({ status: 'skipped', completed_at: now })
+        .eq('document_id', documentId)
+        .eq('org_id', profile.org_id)
+        .eq('status', 'pending')
+    }
+
+    if (result.error && isWorkflowFoundationUnavailable(result.error)) {
+      result = await supabase
+        .from('approval_flows')
+        .update({ status: 'skipped' })
+        .eq('document_id', documentId)
+        .eq('org_id', profile.org_id)
+        .eq('status', 'pending')
+    }
+
+    if (result.error) throw result.error
+  }
+
+  async function fetchRejectedStep(documentId: string, stepId: string) {
+    if (!profile) return null
+
+    let result = await supabase
+      .from('approval_flows')
+      .select('id, step, comment, correction_round, metadata')
+      .eq('id', stepId)
+      .eq('document_id', documentId)
+      .eq('org_id', profile.org_id)
+      .eq('status', 'rejected')
+      .maybeSingle()
+
+    if (result.error && isWorkflowFoundationUnavailable(result.error)) {
+      result = await supabase
+        .from('approval_flows')
+        .select('id, step, comment, metadata')
+        .eq('id', stepId)
+        .eq('document_id', documentId)
+        .eq('org_id', profile.org_id)
+        .eq('status', 'rejected')
+        .maybeSingle()
+    }
+
+    if (result.error && isWorkflowFoundationUnavailable(result.error)) {
+      result = await supabase
+        .from('approval_flows')
+        .select('id, step, comment')
+        .eq('id', stepId)
+        .eq('document_id', documentId)
+        .eq('org_id', profile.org_id)
+        .eq('status', 'rejected')
+        .maybeSingle()
+    }
+
+    if (result.error) throw result.error
+    return result.data as RejectedStepRow | null
+  }
+
+  async function fetchNextStep(
+    documentId: string,
+    currentStep: number,
+    currentRoundCreatedAt: string,
+  ): Promise<NextStepRow | null> {
     if (!profile) return null
 
     let result = await supabase
@@ -470,6 +739,8 @@ export function useApprovalFlow() {
       .eq('document_id', documentId)
       .eq('org_id', profile.org_id)
       .eq('status', 'pending')
+      .gt('step', currentStep)
+      .gte('created_at', currentRoundCreatedAt)
       .order('step', { ascending: true })
       .limit(1)
       .maybeSingle()
@@ -481,6 +752,8 @@ export function useApprovalFlow() {
         .eq('document_id', documentId)
         .eq('org_id', profile.org_id)
         .eq('status', 'pending')
+        .gt('step', currentStep)
+        .gte('created_at', currentRoundCreatedAt)
         .order('step', { ascending: true })
         .limit(1)
         .maybeSingle()
@@ -613,6 +886,7 @@ export function useApprovalFlow() {
 
   return {
     submitForReview,
+    resubmitAfterCorrection,
     actOnStep,
     obsoleteDocument,
     loading,

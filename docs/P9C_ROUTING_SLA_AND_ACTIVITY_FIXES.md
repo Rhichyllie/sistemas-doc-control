@@ -1,5 +1,10 @@
 # P-9C — Correção de Roteamento, SLA por Data e Atividades de Aprovação
 
+> Nota de continuidade: a P-9C.1 versiona os campos de decisão e adiciona o ciclo
+> **Correção Solicitada → Corrigir e Reenviar** no mesmo documento, sem criar
+> automaticamente uma nova revisão formal. Consulte
+> `docs/P9C1_DECISION_AND_CORRECTION_FLOW.md`.
+
 ## Objetivo
 
 Corrigir o caminho entre a submissão de um documento e sua exibição operacional, mantendo compatibilidade com ambientes que ainda não receberam a migration P-9A.

@@ -158,7 +158,7 @@ function ApprovalFlowPage() {
     })
 
     if (success) {
-      toast.success(action === 'approve' ? 'Documento aprovado' : 'Documento rejeitado e retornado ao elaborador')
+      toast.success(action === 'approve' ? 'Documento aprovado' : 'Correção solicitada ao autor')
       setSelectedItem(null)
       setAction(null)
       setComment('')
@@ -305,7 +305,7 @@ function ApprovalFlowPage() {
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{action === 'approve' ? 'Aprovar documento' : 'Rejeitar documento'}</DialogTitle>
+            <DialogTitle>{action === 'approve' ? 'Aprovar documento' : 'Solicitar correção'}</DialogTitle>
             <DialogDescription>
               {selectedItem?.code ?? 'Gerando...'} — {selectedItem?.title}
             </DialogDescription>
@@ -317,14 +317,14 @@ function ApprovalFlowPage() {
                 setComment(event.target.value)
                 setValidationError(null)
               }}
-              placeholder={action === 'approve' ? 'Comentário opcional sobre a aprovação...' : 'Informe o motivo da rejeição...'}
+              placeholder={action === 'approve' ? 'Comentário opcional sobre a aprovação...' : 'Informe o que precisa ser corrigido...'}
             />
             {(validationError || actionError) && <p className="text-sm text-destructive">{validationError ?? actionError}</p>}
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setSelectedItem(null)}>Cancelar</Button>
             <Button variant={action === 'reject' ? 'destructive' : 'default'} disabled={actionLoading} onClick={handleConfirmAction}>
-              {actionLoading ? 'Processando...' : action === 'approve' ? 'Confirmar aprovação' : 'Confirmar rejeição'}
+              {actionLoading ? 'Processando...' : action === 'approve' ? 'Confirmar aprovação' : 'Solicitar correção'}
             </Button>
           </DialogFooter>
         </DialogContent>

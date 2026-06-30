@@ -275,7 +275,13 @@ function DocumentsListPage() {
                     <TableCell><Badge variant="outline">{getDocTypeLabel(doc.doc_type)}</Badge></TableCell>
                     <TableCell>{doc.area}</TableCell>
                     <TableCell>
-                      <Badge style={{ backgroundColor: status?.color, color: "white" }}>{status?.label ?? doc.status}</Badge>
+                      {doc.correction ? (
+                        <Badge className="border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-100">
+                          Correção Solicitada
+                        </Badge>
+                      ) : (
+                        <Badge style={{ backgroundColor: status?.color, color: "white" }}>{status?.label ?? doc.status}</Badge>
+                      )}
                     </TableCell>
                     <TableCell>Rev. {doc.revision}</TableCell>
                     <TableCell>{doc.author?.full_name ?? "—"}</TableCell>

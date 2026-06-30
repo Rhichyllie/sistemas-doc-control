@@ -37,6 +37,8 @@ export interface ApprovalStep {
   comment: string | null
   instructions?: string | null
   metadata?: Record<string, unknown>
+  correction_round?: number | null
+  resubmitted_from_step_id?: string | null
   decided_at: string | null
   assignee?: { full_name: string }
   assignee_user?: { full_name: string }
@@ -109,6 +111,25 @@ export function useDocument(documentId: string | undefined) {
             assignee:profiles!approval_flows_assignee_id_fkey (full_name),
             decider:profiles!approval_flows_decided_by_fkey (full_name)
           `)
+          .eq('document_id', documentId)
+          .order('step', { ascending: true })
+      }
+
+      if (stepsResult.error && isWorkflowFoundationUnavailable(stepsResult.error)) {
+        stepsResult = await supabase
+          .from('approval_flows')
+          .select(`
+            *,
+            assignee:profiles!approval_flows_assignee_id_fkey (full_name)
+          `)
+          .eq('document_id', documentId)
+          .order('step', { ascending: true })
+      }
+
+      if (stepsResult.error && isWorkflowFoundationUnavailable(stepsResult.error)) {
+        stepsResult = await supabase
+          .from('approval_flows')
+          .select('*')
           .eq('document_id', documentId)
           .order('step', { ascending: true })
       }
