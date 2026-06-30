@@ -8,11 +8,20 @@ import type { Document } from './useDocuments'
 export interface DocumentVersion {
   id: string
   revision: number
+  status?: string
   file_path: string
   file_name: string
   file_size: number | null
   file_hash: string | null
   change_summary: string | null
+  change_reason?: string | null
+  created_from_version_id?: string | null
+  submitted_at?: string | null
+  approved_at?: string | null
+  published_at?: string | null
+  superseded_at?: string | null
+  metadata?: Record<string, unknown>
+  created_at?: string
   uploaded_at: string
   uploader?: { full_name: string }
 }
@@ -39,6 +48,8 @@ export interface ApprovalStep {
   metadata?: Record<string, unknown>
   correction_round?: number | null
   resubmitted_from_step_id?: string | null
+  document_version_id?: string | null
+  revision_number?: number | null
   decided_at: string | null
   assignee?: { full_name: string }
   assignee_user?: { full_name: string }

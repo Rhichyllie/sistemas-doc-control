@@ -27,6 +27,13 @@ const WORKFLOW_FOUNDATION_TERMS = [
   'resubmitted_from_step_id',
   'approval_flows_decided_by_fkey',
   'approval_flows_resubmitted_from_step_id_fkey',
+  'document_version_id',
+  'revision_number',
+  'published_version_id',
+  'working_version_id',
+  'created_from_version_id',
+  'document_versions_status_check',
+  'approval_flows_document_version_id_fkey',
   'relationship',
 ]
 

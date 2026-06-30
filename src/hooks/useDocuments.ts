@@ -38,6 +38,18 @@ export interface Document {
   published_at: string | null
   created_at: string
   updated_at: string
+  published_version_id?: string | null
+  working_version_id?: string | null
+  working_revision?: {
+    id: string
+    revision: number
+    status: string
+  } | null
+  published_revision?: {
+    id: string
+    revision: number
+    status: string
+  } | null
   correction?: DocumentCorrectionSummary | null
   author?: { full_name: string }
   project?: { id: string; code: string; name: string } | null
@@ -108,6 +120,36 @@ export function useDocuments(filters: DocumentFilters = {}) {
       if (queryError) throw queryError
 
       const loadedDocuments = (data ?? []) as unknown as Document[]
+      const documentIds = loadedDocuments.map((document) => document.id)
+      if (documentIds.length) {
+        const { data: versionStates, error: versionStateError } = await supabase
+          .from('document_versions')
+          .select('id, document_id, revision, status')
+          .eq('org_id', currentProfile.org_id)
+          .in('document_id', documentIds)
+          .in('status', ['draft', 'in_review', 'pending_approval', 'rejected', 'published'])
+
+        if (!versionStateError) {
+          for (const document of loadedDocuments) {
+            const documentVersions = (versionStates ?? [])
+              .filter((version) => version.document_id === document.id)
+              .sort((left, right) => right.revision - left.revision)
+            const working = documentVersions.find((version) =>
+              ['draft', 'in_review', 'pending_approval', 'rejected'].includes(version.status),
+            )
+            const published = documentVersions.find((version) => version.status === 'published')
+            document.working_revision = working
+              ? { id: working.id, revision: working.revision, status: working.status }
+              : null
+            document.published_revision = published
+              ? { id: published.id, revision: published.revision, status: published.status }
+              : null
+          }
+        } else if (isWorkflowFoundationUnavailable(versionStateError)) {
+          setSchemaFallback(true)
+        }
+      }
+
       const draftDocumentIds = loadedDocuments
         .filter((document) => document.status === 'draft')
         .map((document) => document.id)

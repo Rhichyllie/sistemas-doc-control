@@ -279,11 +279,27 @@ function DocumentsListPage() {
                         <Badge className="border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-100">
                           Correção Solicitada
                         </Badge>
+                      ) : doc.published_revision && doc.working_revision ? (
+                        <div className="flex flex-wrap gap-1">
+                          <Badge className="bg-emerald-700 text-white hover:bg-emerald-700">Publicado</Badge>
+                          <Badge variant="outline">
+                            {doc.working_revision.status === "draft"
+                              ? "Rev. em andamento"
+                              : "Nova revisão em análise"}
+                          </Badge>
+                        </div>
                       ) : (
                         <Badge style={{ backgroundColor: status?.color, color: "white" }}>{status?.label ?? doc.status}</Badge>
                       )}
                     </TableCell>
-                    <TableCell>Rev. {doc.revision}</TableCell>
+                    <TableCell>
+                      Rev. {doc.revision}
+                      {doc.working_revision && (
+                        <div className="text-xs text-muted-foreground">
+                          preparando Rev. {doc.working_revision.revision}
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell>{doc.author?.full_name ?? "—"}</TableCell>
                     <TableCell className={isReviewSoon(doc.next_review_at) ? "text-destructive font-medium" : ""}>
                       {formatDate(doc.next_review_at)}

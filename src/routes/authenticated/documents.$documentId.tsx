@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertTriangle, ArrowLeft, Download, Upload } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Download, FilePlus2, Upload } from "lucide-react";
 import { DOC_STATUS, DOC_TYPES, USER_ROLES } from "@/lib/constants";
 import { supabase } from "@/lib/supabase";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -19,6 +19,7 @@ import { useApprovalFlow, type WorkflowStepInput } from "@/hooks/useApprovalFlow
 import { useWorkflowActors } from "@/hooks/useWorkflowActors";
 import { ApprovalStep, useDocument } from "@/hooks/useDocument";
 import { useDocumentCorrection } from "@/hooks/useDocumentCorrection";
+import { useDocumentRevisions } from "@/hooks/useDocumentRevisions";
 import { useAuditTrail } from "@/hooks/useAuditTrail";
 import { mapAuditEntriesToRecentActivities } from "@/hooks/useOperationalCockpit";
 import { RecentActivityList } from "@/components/operational/RecentActivityList";
@@ -119,12 +120,32 @@ function getAssignmentTypeLabel(step: ApprovalStep) {
   return "Papel";
 }
 
+function getVersionStatusLabel(status?: string) {
+  const labels: Record<string, string> = {
+    draft: "Nova revisão em preparação",
+    in_review: "Nova revisão em análise",
+    pending_approval: "Nova revisão em aprovação",
+    published: "Versão publicada atual",
+    rejected: "Correção solicitada",
+    superseded: "Revisão superada",
+    obsolete: "Obsoleta",
+  };
+  return labels[status ?? ""] ?? status ?? "Histórica";
+}
+
 function workflowStepsForCorrection(steps: ApprovalStep[]): WorkflowStepInput[] {
   const latestRejectedStep = getLatestRejectedStep(steps);
   if (!latestRejectedStep) return DEFAULT_WORKFLOW_STEPS;
   const latestRound = getStepCorrectionRound(latestRejectedStep);
   const roundSteps = steps
-    .filter((step) => getStepCorrectionRound(step) === latestRound)
+    .filter((step) =>
+      getStepCorrectionRound(step) === latestRound
+      && (
+        latestRejectedStep.document_version_id
+          ? step.document_version_id === latestRejectedStep.document_version_id
+          : !step.document_version_id
+      ),
+    )
     .sort((left, right) => left.step - right.step);
   const uniqueSteps = new Map<number, ApprovalStep>();
   roundSteps.forEach((step) => uniqueSteps.set(step.step, step));
@@ -172,6 +193,7 @@ function DocumentDetailPage() {
     loading: correctionSaving,
     error: correctionError,
   } = useDocumentCorrection();
+  const revisions = useDocumentRevisions(documentId);
   const {
     users: workflowUsers,
     groups: workflowGroups,
@@ -184,6 +206,8 @@ function DocumentDetailPage() {
   } = useWorkflowActors();
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [correctionMode, setCorrectionMode] = useState(false);
+  const [formalRevisionMode, setFormalRevisionMode] = useState(false);
+  const [newRevisionDialogOpen, setNewRevisionDialogOpen] = useState(false);
   const [obsoleteDialogOpen, setObsoleteDialogOpen] = useState(false);
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStepInput[]>(DEFAULT_WORKFLOW_STEPS);
   const [stepAction, setStepAction] = useState<{ step: ApprovalStep; action: "approve" | "reject" } | null>(null);
@@ -194,6 +218,12 @@ function DocumentDetailPage() {
     description: "",
     nextReviewAt: "",
     responseComment: "",
+    file: null as File | null,
+  });
+  const [newRevisionForm, setNewRevisionForm] = useState({
+    changeReason: "",
+    changeSummary: "",
+    nextReviewAt: "",
     file: null as File | null,
   });
 
@@ -240,20 +270,36 @@ function DocumentDetailPage() {
         return;
       }
 
+      const formalVersionId = rejectedStep.document_version_id ?? null;
+      const formalWorkingVersion = formalVersionId
+        ? revisions.versions.find((version) => version.id === formalVersionId) ?? revisions.workingVersion
+        : null;
       const saved = await saveCorrection({
         documentId: document.id,
         title: correctionForm.title,
         description: correctionForm.description,
         nextReviewAt: correctionForm.nextReviewAt || null,
-        file: correctionForm.file,
+        file: formalVersionId ? null : correctionForm.file,
       });
       if (!saved) return;
+
+      if (formalVersionId && correctionForm.file) {
+        const fileUpdated = await revisions.uploadRevisionFile({
+          versionId: formalVersionId,
+          file: correctionForm.file,
+          changeSummary: formalWorkingVersion?.change_summary ?? undefined,
+        });
+        if (!fileUpdated) return;
+      }
 
       setCorrectionForm((current) => ({ ...current, file: null }));
       const success = await resubmitAfterCorrection({
         documentId: document.id,
         rejectedStepId: rejectedStep.id,
         responseComment: correctionForm.responseComment,
+        documentVersionId: formalVersionId,
+        revisionNumber: rejectedStep.revision_number ?? formalWorkingVersion?.revision ?? null,
+        flowContext: formalVersionId ? "formal_revision" : "document",
         steps,
       });
 
@@ -262,9 +308,25 @@ function DocumentDetailPage() {
         setSubmitDialogOpen(false);
         setCorrectionMode(false);
         setWorkflowSteps(DEFAULT_WORKFLOW_STEPS);
-        await Promise.all([refetch(), refetchAudit()]);
+        await Promise.all([refetch(), refetchAudit(), revisions.refresh()]);
       } else {
         await refetch();
+      }
+      return;
+    }
+
+    if (formalRevisionMode && revisions.workingVersion) {
+      const success = await revisions.submitRevisionForApproval({
+        versionId: revisions.workingVersion.id,
+        revisionNumber: revisions.workingVersion.revision,
+        steps,
+      });
+      if (success) {
+        toast.success(`Revisão ${revisions.workingVersion.revision} enviada para aprovação`);
+        setSubmitDialogOpen(false);
+        setFormalRevisionMode(false);
+        setWorkflowSteps(DEFAULT_WORKFLOW_STEPS);
+        await Promise.all([refetch(), refetchAudit(), revisions.refresh()]);
       }
       return;
     }
@@ -275,29 +337,40 @@ function DocumentDetailPage() {
       toast.success("Documento enviado para revisão");
       setSubmitDialogOpen(false);
       setWorkflowSteps(DEFAULT_WORKFLOW_STEPS);
-      await Promise.all([refetch(), refetchAudit()]);
+      await Promise.all([refetch(), refetchAudit(), revisions.refresh()]);
     }
   }
 
   async function handleSaveCorrection() {
     if (!document) return;
+    const rejectedStep = getLatestRejectedStep(document.approval_steps);
+    const formalVersionId = rejectedStep?.document_version_id ?? null;
     const success = await saveCorrection({
       documentId: document.id,
       title: correctionForm.title,
       description: correctionForm.description,
       nextReviewAt: correctionForm.nextReviewAt || null,
-      file: correctionForm.file,
+      file: formalVersionId ? null : correctionForm.file,
     });
     if (!success) return;
+
+    if (formalVersionId && correctionForm.file) {
+      const fileUpdated = await revisions.uploadRevisionFile({
+        versionId: formalVersionId,
+        file: correctionForm.file,
+      });
+      if (!fileUpdated) return;
+    }
 
     toast.success("Correções salvas no mesmo documento");
     setCorrectionForm((current) => ({ ...current, file: null }));
     setSubmitDialogOpen(false);
-    await Promise.all([refetch(), refetchAudit()]);
+    await Promise.all([refetch(), refetchAudit(), revisions.refresh()]);
   }
 
   function openInitialSubmission() {
     setCorrectionMode(false);
+    setFormalRevisionMode(false);
     setWorkflowSteps(DEFAULT_WORKFLOW_STEPS);
     setValidationError(null);
     setSubmitDialogOpen(true);
@@ -306,6 +379,7 @@ function DocumentDetailPage() {
   function openCorrectionDialog() {
     if (!document) return;
     setCorrectionMode(true);
+    setFormalRevisionMode(false);
     setWorkflowSteps(workflowStepsForCorrection(document.approval_steps));
     setCorrectionForm({
       title: document.title,
@@ -316,6 +390,34 @@ function DocumentDetailPage() {
     });
     setValidationError(null);
     setSubmitDialogOpen(true);
+  }
+
+  function openFormalRevisionSubmission() {
+    setCorrectionMode(false);
+    setFormalRevisionMode(true);
+    setWorkflowSteps(DEFAULT_WORKFLOW_STEPS);
+    setValidationError(null);
+    setSubmitDialogOpen(true);
+  }
+
+  async function handleStartRevision() {
+    const version = await revisions.startRevision({
+      changeReason: newRevisionForm.changeReason,
+      changeSummary: newRevisionForm.changeSummary,
+      nextReviewAt: newRevisionForm.nextReviewAt || null,
+      file: newRevisionForm.file,
+    });
+    if (!version) return;
+
+    toast.success(`Revisão ${version.revision} criada no mesmo documento`);
+    setNewRevisionDialogOpen(false);
+    setNewRevisionForm({
+      changeReason: "",
+      changeSummary: "",
+      nextReviewAt: "",
+      file: null,
+    });
+    await Promise.all([refetch(), refetchAudit(), revisions.refresh()]);
   }
 
   function updateWorkflowStep(index: number, updates: Partial<WorkflowStepInput>) {
@@ -364,7 +466,7 @@ function DocumentDetailPage() {
     if (success) {
       toast.success("Documento tornado obsoleto");
       setObsoleteDialogOpen(false);
-      await Promise.all([refetch(), refetchAudit()]);
+      await Promise.all([refetch(), refetchAudit(), revisions.refresh()]);
     }
   }
 
@@ -386,7 +488,7 @@ function DocumentDetailPage() {
       toast.success(stepAction.action === "approve" ? "Documento aprovado" : "Correção solicitada ao autor");
       setStepAction(null);
       setStepComment("");
-      await Promise.all([refetch(), refetchAudit()]);
+      await Promise.all([refetch(), refetchAudit(), revisions.refresh()]);
     }
   }
 
@@ -398,6 +500,7 @@ function DocumentDetailPage() {
   const isManager = profile?.role === "admin" || profile?.role === "manager";
   const documentInCorrection = isDocumentInCorrection(document);
   const latestRejectedStep = getLatestRejectedStep(document.approval_steps);
+  const formalCorrectionVersionId = latestRejectedStep?.document_version_id ?? null;
   const canCorrectDocument = canEditDocumentInCorrection(document, profile);
   const canSubmitForReview =
     document.status === "draft" &&
@@ -405,7 +508,8 @@ function DocumentDetailPage() {
     !!profile &&
     (["admin", "manager", "author"].includes(profile.role)) &&
     (profile.id === document.author_id || isManager);
-  const canObsolete = document.status === "published" && isManager;
+  const canObsolete = document.status === "published" && !revisions.workingVersion && isManager;
+  const hasPublishedBase = Boolean(revisions.currentPublishedVersion);
   const orderedApprovalSteps = [...document.approval_steps].sort((left, right) => {
     const roundDifference = getStepCorrectionRound(left) - getStepCorrectionRound(right);
     if (roundDifference !== 0) return roundDifference;
@@ -455,17 +559,43 @@ function DocumentDetailPage() {
         <div className="flex flex-wrap justify-end gap-2">
           {canSubmitForReview && <Button onClick={openInitialSubmission}>Enviar para Revisão</Button>}
           {canCorrectDocument && <Button onClick={openCorrectionDialog}>Corrigir e Reenviar</Button>}
+          {revisions.canStartRevision && (
+            <Button onClick={() => setNewRevisionDialogOpen(true)}>
+              <FilePlus2 className="mr-2 h-4 w-4" /> Subir Revisão
+            </Button>
+          )}
+          {revisions.workingVersion?.status === "draft" && revisions.canManageRevision && (
+            <Button onClick={openFormalRevisionSubmission}>Enviar revisão para aprovação</Button>
+          )}
           {canObsolete && <Button variant="destructive" onClick={() => setObsoleteDialogOpen(true)}>Tornar Obsoleto</Button>}
           {documentInCorrection ? (
             <Badge className="border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-100">
               Correção Solicitada
             </Badge>
           ) : (
-            <Badge style={{ backgroundColor: status?.color, color: "white" }}>{status?.label ?? document.status}</Badge>
+            <>
+              {hasPublishedBase && revisions.workingVersion ? (
+                <Badge className="bg-emerald-700 text-white hover:bg-emerald-700">Publicado</Badge>
+              ) : (
+                <Badge style={{ backgroundColor: status?.color, color: "white" }}>{status?.label ?? document.status}</Badge>
+              )}
+              {revisions.workingVersion && (
+                <Badge variant="outline">{getVersionStatusLabel(revisions.workingVersion.status)}</Badge>
+              )}
+            </>
           )}
           <Badge variant="outline">Rev. {document.revision}</Badge>
         </div>
       </div>
+
+      {document.status === "published" && !revisions.canUseFormalRevisions && (
+        <Alert>
+          <AlertTitle>Revisão formal indisponível neste ambiente</AlertTitle>
+          <AlertDescription>
+            Aplique a migration P-10A para habilitar “Subir Revisão”. O documento publicado continua acessível normalmente.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {documentInCorrection && latestRejectedStep && (
         <Alert className="border-amber-300 bg-amber-50 text-amber-950">
@@ -479,6 +609,11 @@ function DocumentDetailPage() {
                 {latestRejectedStep.decided_at ? ` em ${formatDateTime(latestRejectedStep.decided_at)}` : ""}.
               </p>
               <p className="mt-1">Corrija o documento e reenvie para aprovação. A rejeição permanecerá no histórico.</p>
+              {formalCorrectionVersionId && (
+                <p className="mt-1 font-medium">
+                  Esta correção pertence à revisão formal {revisions.workingVersion?.revision ?? "em andamento"}.
+                </p>
+              )}
             </div>
             {canCorrectDocument && (
               <div className="flex flex-wrap gap-2">
@@ -585,21 +720,71 @@ function DocumentDetailPage() {
       </Card>
 
       <Card className="shadow-md">
-        <CardHeader><CardTitle>Versões</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Revisões do Documento</CardTitle>
+        </CardHeader>
         <CardContent className="p-0">
           <Table>
-            <TableHeader><TableRow><TableHead>Revisão</TableHead><TableHead>Arquivo</TableHead><TableHead>Tamanho</TableHead><TableHead>Enviado por</TableHead><TableHead>Data</TableHead></TableRow></TableHeader>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Revisão</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Arquivo</TableHead>
+                <TableHead>Motivo / resumo</TableHead>
+                <TableHead>Data</TableHead>
+                <TableHead className="w-24">Ação</TableHead>
+              </TableRow>
+            </TableHeader>
             <TableBody>
-              {document.versions.map((version) => (
+              {revisions.versions.map((version) => (
                 <TableRow key={version.id}>
                   <TableCell>Rev. {version.revision}</TableCell>
-                  <TableCell>{version.file_name}</TableCell>
-                  <TableCell>{formatFileSize(version.file_size)}</TableCell>
-                  <TableCell>{version.uploader?.full_name ?? "—"}</TableCell>
-                  <TableCell>{formatDate(version.uploaded_at)}</TableCell>
+                  <TableCell>
+                    <Badge variant={version.status === "published" ? "default" : "outline"}>
+                      {getVersionStatusLabel(version.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div>{version.file_name}</div>
+                    <div className="text-xs text-muted-foreground">{formatFileSize(version.file_size)}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div>{version.change_reason ?? "—"}</div>
+                    {version.change_summary && (
+                      <div className="text-xs text-muted-foreground">{version.change_summary}</div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {formatDate(version.published_at ?? version.submitted_at ?? version.created_at)}
+                  </TableCell>
+                  <TableCell>
+                    <Button size="sm" variant="outline" onClick={() => handleDownload(version.file_path)}>
+                      <Download className="h-3 w-3" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
-              {!document.versions.length && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Nenhuma versão registrada</TableCell></TableRow>}
+              {!revisions.versions.length && document.versions.map((version) => (
+                <TableRow key={version.id}>
+                  <TableCell>Rev. {version.revision}</TableCell>
+                  <TableCell><Badge variant="outline">Histórica</Badge></TableCell>
+                  <TableCell>{version.file_name}</TableCell>
+                  <TableCell>{version.change_summary ?? "—"}</TableCell>
+                  <TableCell>{formatDate(version.uploaded_at)}</TableCell>
+                  <TableCell>
+                    <Button size="sm" variant="outline" onClick={() => handleDownload(version.file_path)}>
+                      <Download className="h-3 w-3" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {!revisions.versions.length && !document.versions.length && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    Nenhuma revisão registrada
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -680,14 +865,85 @@ function DocumentDetailPage() {
         description="Movimentações registradas na trilha de auditoria deste documento."
       />
 
+      <Dialog open={newRevisionDialogOpen} onOpenChange={setNewRevisionDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Nova Revisão</DialogTitle>
+            <DialogDescription>
+              Crie a revisão {document.revision + 1} no mesmo documento. A revisão publicada atual permanecerá vigente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <Label htmlFor="revision-reason">Motivo da revisão</Label>
+              <Textarea
+                id="revision-reason"
+                value={newRevisionForm.changeReason}
+                onChange={(event) => setNewRevisionForm((current) => ({ ...current, changeReason: event.target.value }))}
+                placeholder="Explique por que uma nova revisão formal é necessária."
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label htmlFor="revision-summary">Resumo das alterações</Label>
+              <Textarea
+                id="revision-summary"
+                value={newRevisionForm.changeSummary}
+                onChange={(event) => setNewRevisionForm((current) => ({ ...current, changeSummary: event.target.value }))}
+                placeholder="Descreva as principais mudanças."
+              />
+            </div>
+            <div>
+              <Label htmlFor="revision-file">Arquivo da nova revisão</Label>
+              <Input
+                id="revision-file"
+                type="file"
+                accept=".pdf,.doc,.docx,.dwg,.xls,.xlsx"
+                onChange={(event) => setNewRevisionForm((current) => ({
+                  ...current,
+                  file: event.target.files?.[0] ?? null,
+                }))}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Se não houver novo arquivo, o arquivo publicado atual será reutilizado.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="revision-next-review">Próxima revisão documental</Label>
+              <Input
+                id="revision-next-review"
+                type="date"
+                value={newRevisionForm.nextReviewAt}
+                onChange={(event) => setNewRevisionForm((current) => ({ ...current, nextReviewAt: event.target.value }))}
+              />
+            </div>
+            {revisions.error && (
+              <p className="text-sm text-destructive md:col-span-2">{revisions.error}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setNewRevisionDialogOpen(false)}>Cancelar</Button>
+            <Button disabled={revisions.mutating} onClick={handleStartRevision}>
+              {revisions.mutating ? "Criando..." : "Criar nova revisão"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={submitDialogOpen} onOpenChange={(open) => {
         setSubmitDialogOpen(open);
-        if (!open) setCorrectionMode(false);
+        if (!open) {
+          setCorrectionMode(false);
+          setFormalRevisionMode(false);
+        }
       }}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>
-              {correctionMode ? "Corrigir e Reenviar" : "Configurar Fluxo de Aprovação"}
+              {correctionMode
+                ? "Corrigir e Reenviar"
+                : formalRevisionMode
+                  ? "Enviar revisão para aprovação"
+                  : "Configurar Fluxo de Aprovação"}
             </DialogTitle>
             <DialogDescription>{document.code ?? "Gerando..."} — {document.title}</DialogDescription>
           </DialogHeader>
@@ -697,7 +953,10 @@ function DocumentDetailPage() {
                 <div>
                   <div className="font-medium text-amber-950">Correção no mesmo documento</div>
                   <p className="text-sm text-amber-900">
-                    Ajuste os campos permitidos e reenvie. A revisão formal continuará em {document.revision}.
+                    Ajuste os campos permitidos e reenvie. A revisão formal continuará em{" "}
+                    {formalCorrectionVersionId
+                      ? revisions.workingVersion?.revision ?? document.revision + 1
+                      : document.revision}.
                   </p>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
@@ -728,7 +987,7 @@ function DocumentDetailPage() {
                   </div>
                   <div>
                     <Label htmlFor="correction-file">Arquivo</Label>
-                    {document.file_path ? (
+                    {document.file_path && !formalCorrectionVersionId ? (
                       <p className="mt-2 text-sm text-muted-foreground">
                         Já existe arquivo. A substituição exige versionamento formal e não é feita neste ciclo simples.
                       </p>
@@ -805,8 +1064,10 @@ function DocumentDetailPage() {
             ))}
             <Button variant="outline" onClick={addWorkflowStep}>Adicionar etapa</Button>
             {flowCompatibilityMessage && <p className="text-sm text-muted-foreground">{flowCompatibilityMessage}</p>}
-            {(validationError || actionError || correctionError) && (
-              <p className="text-sm text-destructive">{validationError ?? actionError ?? correctionError}</p>
+            {(validationError || actionError || correctionError || revisions.error) && (
+              <p className="text-sm text-destructive">
+                {validationError ?? actionError ?? correctionError ?? revisions.error}
+              </p>
             )}
           </div>
           <DialogFooter>
@@ -821,14 +1082,21 @@ function DocumentDetailPage() {
               </Button>
             )}
             <Button
-              disabled={actionLoading || correctionSaving || actorsLoading}
+              disabled={
+                actionLoading
+                || correctionSaving
+                || actorsLoading
+                || (formalRevisionMode && revisions.loading)
+              }
               onClick={handleSubmitForReview}
             >
-              {actionLoading || correctionSaving
+              {actionLoading || correctionSaving || (formalRevisionMode && revisions.loading)
                 ? "Processando..."
                 : correctionMode
                   ? "Corrigir e Reenviar"
-                  : "Enviar para Revisão"}
+                  : formalRevisionMode
+                    ? "Enviar revisão para aprovação"
+                    : "Enviar para Revisão"}
             </Button>
           </DialogFooter>
         </DialogContent>

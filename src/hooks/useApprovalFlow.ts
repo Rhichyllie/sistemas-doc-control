@@ -16,18 +16,23 @@ export type FlowAction = 'submit' | 'approve' | 'reject' | 'publish' | 'obsolete
 type FlowRole = 'reviewer' | 'approver' | 'author' | 'manager' | 'admin'
 type WorkflowPersistenceMode = 'enterprise' | 'legacy_sla' | 'legacy_base'
 export type WorkflowDueMode = 'days' | 'date'
+export type WorkflowFlowContext = 'document' | 'formal_revision'
 
 const BLOCKED_DOCUMENT_STATUSES = ['draft', 'published', 'obsolete']
 
 interface WorkflowInsertResult {
   mode: WorkflowPersistenceMode
   correctionFieldsPersisted: boolean
+  revisionFieldsPersisted: boolean
 }
 
 interface CorrectionRoundContext {
-  correctionRound: number
-  rejectedStepId: string
-  responseComment: string | null
+  correctionRound?: number
+  rejectedStepId?: string
+  responseComment?: string | null
+  flowContext?: WorkflowFlowContext
+  documentVersionId?: string | null
+  revisionNumber?: number | null
 }
 
 interface ActOnStepInput {
@@ -64,11 +69,14 @@ interface NormalizedWorkflowStep extends WorkflowStepInput {
   escalation_user_id: string | null
 }
 
-interface SubmitForReviewInput {
+export interface SubmitForReviewInput {
   documentId: string
   steps?: WorkflowStepInput[]
   reviewerId?: string
   approverId?: string
+  documentVersionId?: string | null
+  revisionNumber?: number | null
+  flowContext?: WorkflowFlowContext
 }
 
 interface ResubmitAfterCorrectionInput extends SubmitForReviewInput {
@@ -85,6 +93,9 @@ interface NextStepRow {
   assignee_id?: string | null
   assignee_user_id?: string | null
   assignee_group_id?: string | null
+  document_version_id?: string | null
+  revision_number?: number | null
+  metadata?: Record<string, unknown> | null
 }
 
 interface RejectedStepRow {
@@ -93,6 +104,8 @@ interface RejectedStepRow {
   comment: string | null
   correction_round?: number | null
   metadata?: Record<string, unknown> | null
+  document_version_id?: string | null
+  revision_number?: number | null
 }
 
 export function useApprovalFlow() {
@@ -114,6 +127,7 @@ export function useApprovalFlow() {
     let documentMovedToReview = false
     let workflowPersisted = false
     let initialDocumentStatus = 'in_review'
+    const formalRevision = input.flowContext === 'formal_revision' && Boolean(input.documentVersionId)
 
     try {
       const now = new Date().toISOString()
@@ -125,7 +139,7 @@ export function useApprovalFlow() {
         .update({ status: initialDocumentStatus, updated_at: now })
         .eq('id', input.documentId)
         .eq('org_id', profile.org_id)
-        .eq('status', 'draft')
+        .eq('status', formalRevision ? 'published' : 'draft')
         .select('id, status')
         .maybeSingle()
 
@@ -135,13 +149,38 @@ export function useApprovalFlow() {
       }
       documentMovedToReview = true
 
+      if (formalRevision && input.documentVersionId) {
+        const { data: updatedVersion, error: versionError } = await supabase
+          .from('document_versions')
+          .update({
+            status: initialDocumentStatus,
+            submitted_at: now,
+          })
+          .eq('id', input.documentVersionId)
+          .eq('document_id', input.documentId)
+          .eq('org_id', profile.org_id)
+          .eq('status', 'draft')
+          .select('id')
+          .maybeSingle()
+        if (versionError) throw versionError
+        if (!updatedVersion) throw new Error('A revisão formal não pôde ser enviada para aprovação.')
+      }
+
       await closeOpenPendingSteps(input.documentId, now)
 
-      const { mode: persistenceMode } = await insertWorkflowSteps(
+      const insertion = await insertWorkflowSteps(
         input.documentId,
         workflowSteps,
         now,
+        formalRevision
+          ? {
+              flowContext: 'formal_revision',
+              documentVersionId: input.documentVersionId,
+              revisionNumber: input.revisionNumber,
+            }
+          : undefined,
       )
+      const persistenceMode = insertion.mode
       workflowPersisted = true
       setCompatibilityMode(persistenceMode)
 
@@ -153,16 +192,27 @@ export function useApprovalFlow() {
         setCompatibilityMessage(
           'O banco ainda não possui a fundação P-9A nem os campos de SLA. O fluxo foi salvo no modelo básico por papel ou usuário.',
         )
+      } else if (formalRevision && !insertion.revisionFieldsPersisted) {
+        setCompatibilityMessage(
+          'A revisão foi vinculada por metadata. Aplique a migration P-10A para persistir document_version_id formalmente.',
+        )
       }
 
       await supabase.from('audit_trail').insert({
         document_id: input.documentId,
         org_id: profile.org_id,
         user_id: profile.id,
-        action: 'submitted_for_review',
-        old_status: 'draft',
+        action: formalRevision ? 'formal_revision_submitted' : 'submitted_for_review',
+        old_status: formalRevision ? 'published' : 'draft',
         new_status: initialDocumentStatus,
-        metadata: { workflow_mode: persistenceMode },
+        metadata: {
+          workflow_mode: persistenceMode,
+          flow_context: formalRevision ? 'formal_revision' : 'document',
+          document_version_id: input.documentVersionId ?? null,
+          previous_revision: formalRevision ? (input.revisionNumber ?? 1) - 1 : null,
+          new_revision: input.revisionNumber ?? null,
+          actor: profile.id,
+        },
       })
 
       await notifyStepAssignment(
@@ -176,9 +226,19 @@ export function useApprovalFlow() {
       return true
     } catch (err: unknown) {
       if (documentMovedToReview && !workflowPersisted) {
+        if (formalRevision && input.documentVersionId) {
+          await supabase
+            .from('document_versions')
+            .update({ status: 'draft', submitted_at: null })
+            .eq('id', input.documentVersionId)
+            .eq('org_id', profile.org_id)
+        }
         await supabase
           .from('documents')
-          .update({ status: 'draft', updated_at: new Date().toISOString() })
+          .update({
+            status: formalRevision ? 'published' : 'draft',
+            updated_at: new Date().toISOString(),
+          })
           .eq('id', input.documentId)
           .eq('org_id', profile.org_id)
           .eq('status', initialDocumentStatus)
@@ -204,6 +264,9 @@ export function useApprovalFlow() {
     let documentMovedToReview = false
     let workflowPersisted = false
     let initialDocumentStatus = 'in_review'
+    let formalRevision = false
+    let documentVersionId: string | null = input.documentVersionId ?? null
+    let revisionNumber: number | null = input.revisionNumber ?? null
 
     try {
       const now = new Date().toISOString()
@@ -238,6 +301,10 @@ export function useApprovalFlow() {
           : 0
       const correctionRound = previousRound + 1
       const responseComment = input.responseComment?.trim() || null
+      formalRevision = input.flowContext === 'formal_revision'
+        && Boolean(input.documentVersionId ?? rejectedStep.document_version_id)
+      documentVersionId = input.documentVersionId ?? rejectedStep.document_version_id ?? null
+      revisionNumber = input.revisionNumber ?? rejectedStep.revision_number ?? null
 
       const { data: updatedDocument, error: updateError } = await supabase
         .from('documents')
@@ -254,6 +321,23 @@ export function useApprovalFlow() {
       }
       documentMovedToReview = true
 
+      if (formalRevision && documentVersionId) {
+        const { data: updatedVersion, error: versionError } = await supabase
+          .from('document_versions')
+          .update({
+            status: initialDocumentStatus,
+            submitted_at: now,
+          })
+          .eq('id', documentVersionId)
+          .eq('document_id', input.documentId)
+          .eq('org_id', profile.org_id)
+          .in('status', ['draft', 'rejected'])
+          .select('id')
+          .maybeSingle()
+        if (versionError) throw versionError
+        if (!updatedVersion) throw new Error('A revisão formal corrigida não pôde ser reenviada.')
+      }
+
       await closeOpenPendingSteps(input.documentId, now)
 
       const insertion = await insertWorkflowSteps(
@@ -264,6 +348,9 @@ export function useApprovalFlow() {
           correctionRound,
           rejectedStepId: rejectedStep.id,
           responseComment,
+          flowContext: formalRevision ? 'formal_revision' : 'document',
+          documentVersionId,
+          revisionNumber,
         },
       )
       workflowPersisted = true
@@ -288,6 +375,9 @@ export function useApprovalFlow() {
           response_comment: responseComment,
           workflow_mode: insertion.mode,
           correction_fields_persisted: insertion.correctionFieldsPersisted,
+          document_version_id: documentVersionId,
+          revision_number: revisionNumber,
+          flow_context: formalRevision ? 'formal_revision' : 'document',
         },
       })
       if (auditError) throw auditError
@@ -312,6 +402,13 @@ export function useApprovalFlow() {
           .eq('id', input.documentId)
           .eq('org_id', profile.org_id)
           .eq('status', initialDocumentStatus)
+        if (formalRevision && documentVersionId) {
+          await supabase
+            .from('document_versions')
+            .update({ status: 'rejected' })
+            .eq('id', documentVersionId)
+            .eq('org_id', profile.org_id)
+        }
       }
       setError(getErrorMessage(err, 'Erro ao reenviar documento corrigido'))
       return false
@@ -356,6 +453,9 @@ export function useApprovalFlow() {
         correction_round: correctionContext?.correctionRound ?? 0,
         resubmitted_from_step_id: correctionContext?.rejectedStepId ?? null,
         response_comment: index === 0 ? correctionContext?.responseComment ?? null : null,
+        flow_context: correctionContext?.flowContext ?? 'document',
+        document_version_id: correctionContext?.documentVersionId ?? null,
+        revision_number: correctionContext?.revisionNumber ?? null,
       },
     }))
 
@@ -364,8 +464,10 @@ export function useApprovalFlow() {
           .from('approval_flows')
           .insert(enterpriseRows.map((row) => ({
             ...row,
-            correction_round: correctionContext.correctionRound,
-            resubmitted_from_step_id: correctionContext.rejectedStepId,
+            correction_round: correctionContext.correctionRound ?? 0,
+            resubmitted_from_step_id: correctionContext.rejectedStepId ?? null,
+            document_version_id: correctionContext.documentVersionId ?? null,
+            revision_number: correctionContext.revisionNumber ?? null,
           })))
           .select('id')
       : await supabase.from('approval_flows').insert(enterpriseRows).select('id')
@@ -374,14 +476,19 @@ export function useApprovalFlow() {
       assertInsertedStepCount(result.data, workflowSteps.length)
       return {
         mode: 'enterprise',
-        correctionFieldsPersisted: Boolean(correctionContext),
+        correctionFieldsPersisted: correctionContext?.correctionRound !== undefined,
+        revisionFieldsPersisted: Boolean(correctionContext?.documentVersionId),
       }
     }
     if (correctionContext && isWorkflowFoundationUnavailable(result.error)) {
       result = await supabase.from('approval_flows').insert(enterpriseRows).select('id')
       if (!result.error) {
         assertInsertedStepCount(result.data, workflowSteps.length)
-        return { mode: 'enterprise', correctionFieldsPersisted: false }
+        return {
+          mode: 'enterprise',
+          correctionFieldsPersisted: false,
+          revisionFieldsPersisted: false,
+        }
       }
     }
     if (!isWorkflowFoundationUnavailable(result.error)) throw result.error
@@ -401,13 +508,20 @@ export function useApprovalFlow() {
         correction_round: correctionContext?.correctionRound ?? 0,
         resubmitted_from_step_id: correctionContext?.rejectedStepId ?? null,
         response_comment: index === 0 ? correctionContext?.responseComment ?? null : null,
+        flow_context: correctionContext?.flowContext ?? 'document',
+        document_version_id: correctionContext?.documentVersionId ?? null,
+        revision_number: correctionContext?.revisionNumber ?? null,
       },
     }))
 
     result = await supabase.from('approval_flows').insert(legacySlaRows).select('id')
     if (!result.error) {
       assertInsertedStepCount(result.data, workflowSteps.length)
-      return { mode: 'legacy_sla', correctionFieldsPersisted: false }
+      return {
+        mode: 'legacy_sla',
+        correctionFieldsPersisted: false,
+        revisionFieldsPersisted: false,
+      }
     }
     if (!isWorkflowFoundationUnavailable(result.error)) throw result.error
 
@@ -419,7 +533,11 @@ export function useApprovalFlow() {
     result = await supabase.from('approval_flows').insert(legacyBaseRows).select('id')
     if (result.error) throw result.error
     assertInsertedStepCount(result.data, workflowSteps.length)
-    return { mode: 'legacy_base', correctionFieldsPersisted: false }
+    return {
+      mode: 'legacy_base',
+      correctionFieldsPersisted: false,
+      revisionFieldsPersisted: false,
+    }
   }
 
   async function actOnStep(input: ActOnStepInput): Promise<boolean> {
@@ -438,18 +556,50 @@ export function useApprovalFlow() {
       }
       const nextStepStatus = input.action === 'approve' ? 'approved' : 'rejected'
 
-      const { data: pendingStep, error: pendingStepError } = await supabase
+      let pendingStepResult = await supabase
         .from('approval_flows')
-        .select('step, document_id, required_role, status, created_at')
+        .select(`
+          step,
+          document_id,
+          required_role,
+          status,
+          created_at,
+          document_version_id,
+          revision_number,
+          metadata
+        `)
         .eq('id', input.stepId)
         .eq('org_id', profile.org_id)
         .eq('status', 'pending')
         .single()
 
-      if (pendingStepError) throw pendingStepError
+      if (pendingStepResult.error && isWorkflowFoundationUnavailable(pendingStepResult.error)) {
+        pendingStepResult = await supabase
+          .from('approval_flows')
+          .select('step, document_id, required_role, status, created_at, metadata')
+          .eq('id', input.stepId)
+          .eq('org_id', profile.org_id)
+          .eq('status', 'pending')
+          .single()
+      }
+
+      if (pendingStepResult.error) throw pendingStepResult.error
+      const pendingStep = pendingStepResult.data
       if (!pendingStep || pendingStep.status !== 'pending') {
         throw new Error('Esta etapa não está pendente.')
       }
+      const pendingMetadata = (pendingStep.metadata ?? {}) as Record<string, unknown>
+      const documentVersionId =
+        pendingStep.document_version_id
+        ?? (typeof pendingMetadata.document_version_id === 'string'
+          ? pendingMetadata.document_version_id
+          : null)
+      const revisionNumber =
+        pendingStep.revision_number
+        ?? (typeof pendingMetadata.revision_number === 'number'
+          ? pendingMetadata.revision_number
+          : null)
+      const formalRevision = Boolean(documentVersionId)
 
       const { data: doc, error: docError } = await supabase
         .from('documents')
@@ -491,6 +641,16 @@ export function useApprovalFlow() {
         if (returnError) throw returnError
         if (!returnedDocument) throw new Error('O documento não pôde retornar para correção.')
 
+        if (formalRevision && documentVersionId) {
+          const { error: versionRejectError } = await supabase
+            .from('document_versions')
+            .update({ status: 'rejected' })
+            .eq('id', documentVersionId)
+            .eq('document_id', input.documentId)
+            .eq('org_id', profile.org_id)
+          if (versionRejectError) throw versionRejectError
+        }
+
         await closeOpenPendingSteps(input.documentId, now)
 
         const { error: auditError } = await supabase.from('audit_trail').insert({
@@ -507,12 +667,34 @@ export function useApprovalFlow() {
             correction_required: true,
             previous_status: doc.status,
             returned_to_author: true,
+            flow_context: formalRevision ? 'formal_revision' : 'document',
+            document_version_id: documentVersionId,
+            revision_number: revisionNumber,
           },
         })
         if (auditError) {
           setCompatibilityMessage(
             `A correção foi solicitada, mas o registro complementar de auditoria falhou: ${getErrorMessage(auditError, 'erro não identificado')}`,
           )
+        }
+
+        if (formalRevision) {
+          await supabase.from('audit_trail').insert({
+            document_id: input.documentId,
+            org_id: profile.org_id,
+            user_id: profile.id,
+            action: 'formal_revision_rejected',
+            old_status: doc.status,
+            new_status: 'draft',
+            metadata: {
+              document_id: input.documentId,
+              document_version_id: documentVersionId,
+              previous_revision: revisionNumber ? revisionNumber - 1 : null,
+              new_revision: revisionNumber,
+              actor: profile.id,
+              comment: input.comment,
+            },
+          })
         }
 
         await notifyDocumentAuthor(
@@ -548,6 +730,15 @@ export function useApprovalFlow() {
           .eq('id', input.documentId)
           .eq('org_id', profile.org_id)
 
+        if (formalRevision && documentVersionId) {
+          const { error: versionStatusError } = await supabase
+            .from('document_versions')
+            .update({ status: nextDocumentStatus })
+            .eq('id', documentVersionId)
+            .eq('org_id', profile.org_id)
+          if (versionStatusError) throw versionStatusError
+        }
+
         await supabase.from('audit_trail').insert({
           document_id: input.documentId,
           org_id: profile.org_id,
@@ -564,6 +755,13 @@ export function useApprovalFlow() {
           'approval_required',
           `Documento aguarda ${nextStep.step_label}`,
           nextStep.assignment_type ? 'enterprise' : compatibilityMode,
+        )
+      } else if (formalRevision && documentVersionId && revisionNumber !== null) {
+        await publishFormalRevision(
+          input.documentId,
+          documentVersionId,
+          revisionNumber,
+          now,
         )
       } else {
         await supabase
@@ -684,7 +882,15 @@ export function useApprovalFlow() {
 
     let result = await supabase
       .from('approval_flows')
-      .select('id, step, comment, correction_round, metadata')
+      .select(`
+        id,
+        step,
+        comment,
+        correction_round,
+        metadata,
+        document_version_id,
+        revision_number
+      `)
       .eq('id', stepId)
       .eq('document_id', documentId)
       .eq('org_id', profile.org_id)
@@ -761,6 +967,135 @@ export function useApprovalFlow() {
 
     if (result.error) throw result.error
     return result.data as NextStepRow | null
+  }
+
+  async function publishFormalRevision(
+    documentId: string,
+    documentVersionId: string,
+    revisionNumber: number,
+    now: string,
+  ) {
+    if (!profile) throw new Error('Usuário não autenticado')
+
+    const { data: version, error: versionError } = await supabase
+      .from('document_versions')
+      .select('id, revision, file_path, file_name, file_size, change_reason, metadata')
+      .eq('id', documentVersionId)
+      .eq('document_id', documentId)
+      .eq('org_id', profile.org_id)
+      .single()
+    if (versionError) throw versionError
+
+    const { data: document, error: documentError } = await supabase
+      .from('documents')
+      .select('revision, published_version_id, working_version_id')
+      .eq('id', documentId)
+      .eq('org_id', profile.org_id)
+      .single()
+    if (documentError) throw documentError
+
+    if (document.published_version_id && document.published_version_id !== documentVersionId) {
+      const { data: supersededVersion, error: supersedeError } = await supabase
+        .from('document_versions')
+        .update({
+          status: 'superseded',
+          superseded_at: now,
+        })
+        .eq('id', document.published_version_id)
+        .eq('org_id', profile.org_id)
+        .eq('status', 'published')
+        .select('id')
+        .maybeSingle()
+      if (supersedeError) throw supersedeError
+      if (!supersededVersion) {
+        throw new Error('A revisão publicada anterior não pôde ser marcada como superada.')
+      }
+
+      await supabase.from('audit_trail').insert({
+        document_id: documentId,
+        org_id: profile.org_id,
+        user_id: profile.id,
+        action: 'formal_revision_superseded',
+        old_status: 'published',
+        new_status: 'superseded',
+        metadata: {
+          document_id: documentId,
+          document_version_id: document.published_version_id,
+          previous_revision: document.revision,
+          new_revision: revisionNumber,
+          actor: profile.id,
+        },
+      })
+    }
+
+    const { data: publishedVersion, error: publishVersionError } = await supabase
+      .from('document_versions')
+      .update({
+        status: 'published',
+        approved_at: now,
+        published_at: now,
+        superseded_at: null,
+      })
+      .eq('id', documentVersionId)
+      .eq('org_id', profile.org_id)
+      .select('id')
+      .maybeSingle()
+    if (publishVersionError) throw publishVersionError
+    if (!publishedVersion) throw new Error('A nova revisão não pôde ser publicada.')
+
+    const metadata = (version.metadata ?? {}) as Record<string, unknown>
+    const nextReviewAt = typeof metadata.next_review_at === 'string'
+      ? metadata.next_review_at
+      : null
+    const { data: updatedDocument, error: updateDocumentError } = await supabase
+      .from('documents')
+      .update({
+        revision: revisionNumber,
+        file_path: version.file_path,
+        file_name: version.file_name,
+        file_size: version.file_size,
+        status: 'published',
+        published_at: now,
+        published_version_id: documentVersionId,
+        working_version_id: null,
+        ...(nextReviewAt ? { next_review_at: nextReviewAt } : {}),
+      })
+      .eq('id', documentId)
+      .eq('org_id', profile.org_id)
+      .select('id, revision, status')
+      .maybeSingle()
+    if (updateDocumentError) throw updateDocumentError
+    if (
+      !updatedDocument
+      || updatedDocument.status !== 'published'
+      || updatedDocument.revision !== revisionNumber
+    ) {
+      throw new Error('O documento mestre não pôde ser atualizado para a nova revisão.')
+    }
+
+    await supabase.from('audit_trail').insert({
+      document_id: documentId,
+      org_id: profile.org_id,
+      user_id: profile.id,
+      action: 'formal_revision_published',
+      old_status: 'pending_approval',
+      new_status: 'published',
+      metadata: {
+        document_id: documentId,
+        document_version_id: documentVersionId,
+        previous_revision: document.revision,
+        new_revision: revisionNumber,
+        change_reason: version.change_reason,
+        actor: profile.id,
+        file_name: version.file_name,
+      },
+    })
+
+    await notifyDocumentAuthor(
+      documentId,
+      'formal_revision_published',
+      `Revisão ${revisionNumber} aprovada e publicada`,
+    )
   }
 
   async function obsoleteDocument(documentId: string): Promise<boolean> {
