@@ -4,6 +4,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { getErrorMessage } from "@/lib/errorUtils";
 import { validateDocumentCreation } from "@/lib/documentCreationValidation";
 import { normalizeDocumentCreationPayload } from "@/lib/documentIntelligence";
+import { isDocumentTemplateSchemaUnavailable } from "@/lib/documentTemplateRules";
 import { isWorkflowFoundationUnavailable } from "@/lib/workflowCompatibility";
 
 /*
@@ -53,12 +54,18 @@ export interface CreateDocumentInput {
     mode?: string;
     completenessScore?: number;
     riskLevel?: string;
+    templateId?: string | null;
+    templateName?: string | null;
+    appliedRuleIds?: string[];
+    governanceScore?: number | null;
+    requiredFieldsMissing?: string[];
   };
 }
 
 export interface CreateDocumentResult {
   id: string;
   code: string;
+  warning?: string;
 }
 
 async function calculateFileHash(file: File) {
@@ -253,6 +260,12 @@ export function useCreateDocument() {
           next_review_at: input.next_review_at ?? null,
           has_file: Boolean(file_path),
           file_hash,
+          template_id: input.creationContext?.templateId ?? null,
+          template_name: input.creationContext?.templateName ?? null,
+          applied_rule_ids: input.creationContext?.appliedRuleIds ?? [],
+          governance_score: input.creationContext?.governanceScore ?? null,
+          required_fields_missing:
+            input.creationContext?.requiredFieldsMissing ?? [],
         },
       });
       if (auditError) {
@@ -261,7 +274,43 @@ export function useCreateDocument() {
         );
       }
 
-      return data as CreateDocumentResult;
+      let usageLogWarning: string | undefined;
+      const shouldLogTemplateUsage =
+        creationSource === "intelligent_creation" &&
+        (Boolean(input.creationContext?.templateId) ||
+          Boolean(input.creationContext?.appliedRuleIds?.length));
+      if (shouldLogTemplateUsage) {
+        const { error: usageLogError } = await supabase
+          .from("document_template_usage_logs")
+          .insert({
+            org_id: profile.org_id,
+            template_id: input.creationContext?.templateId ?? null,
+            document_id: data.id,
+            user_id: profile.id,
+            creation_mode: creationMode,
+            applied_rules: input.creationContext?.appliedRuleIds ?? [],
+            metadata: {
+              template_name: input.creationContext?.templateName ?? null,
+              governance_score: input.creationContext?.governanceScore ?? null,
+              required_fields_missing:
+                input.creationContext?.requiredFieldsMissing ?? [],
+              source: creationSource,
+            },
+          });
+
+        if (
+          usageLogError &&
+          !isDocumentTemplateSchemaUnavailable(usageLogError)
+        ) {
+          usageLogWarning =
+            "Documento criado, mas o registro de uso do template não foi salvo. Revise as policies de document_template_usage_logs.";
+        }
+      }
+
+      return {
+        ...(data as CreateDocumentResult),
+        warning: usageLogWarning,
+      };
     } catch (err: unknown) {
       const cleanupMessages: string[] = [];
 

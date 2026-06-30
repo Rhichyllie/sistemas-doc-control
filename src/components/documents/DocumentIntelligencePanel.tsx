@@ -18,6 +18,10 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import type { DocumentRiskLevel } from "@/lib/documentIntelligence";
+import type {
+  GovernanceRiskProfile,
+  RequiredFieldChecklistItem,
+} from "@/lib/documentTemplateRules";
 
 const RISK_META: Record<
   DocumentRiskLevel,
@@ -51,6 +55,17 @@ interface DocumentIntelligencePanelProps {
   warnings: string[];
   missingItems: string[];
   configurationMessage: string | null;
+  templateName: string | null;
+  ruleExplanations: Array<{
+    ruleId: string;
+    ruleName: string;
+    reason: string;
+    impact: string;
+    severity: string;
+  }>;
+  requiredFieldChecklist: RequiredFieldChecklistItem[];
+  governanceScore: number;
+  governanceRiskProfile: GovernanceRiskProfile;
   suggestionsApplied: boolean;
   suggestionsDisabled: boolean;
   onApplySuggestions: () => void;
@@ -67,6 +82,11 @@ export function DocumentIntelligencePanel({
   warnings,
   missingItems,
   configurationMessage,
+  templateName,
+  ruleExplanations,
+  requiredFieldChecklist,
+  governanceScore,
+  governanceRiskProfile,
   suggestionsApplied,
   suggestionsDisabled,
   onApplySuggestions,
@@ -108,6 +128,39 @@ export function DocumentIntelligencePanel({
             </p>
           </div>
 
+          {(templateName || ruleExplanations.length > 0) && (
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                    Governança enterprise
+                  </p>
+                  <p className="mt-1 text-sm font-medium">
+                    {templateName ?? "Políticas da organização"}
+                  </p>
+                </div>
+                <Badge variant="outline">{governanceScore}% aderente</Badge>
+              </div>
+              {ruleExplanations.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {ruleExplanations.slice(0, 3).map((rule) => (
+                    <div key={rule.ruleId} className="text-xs">
+                      <span className="font-medium">{rule.ruleName}:</span>{" "}
+                      <span className="text-muted-foreground">
+                        {rule.impact}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {governanceRiskProfile === "critical" && (
+                <p className="mt-2 text-xs font-medium text-destructive">
+                  Política crítica: todos os requisitos devem ser atendidos.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="rounded-lg border bg-muted/30 p-3">
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Sugestões
@@ -144,6 +197,28 @@ export function DocumentIntelligencePanel({
           <div className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
             <strong className="text-foreground">Leitura de risco:</strong>{" "}
             {risk.description}
+          </div>
+
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Campos obrigatórios
+            </p>
+            <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-1">
+              {requiredFieldChecklist.map((item) => (
+                <div
+                  key={item.field}
+                  className="flex items-center justify-between gap-2 text-xs"
+                >
+                  <span className="text-muted-foreground">{item.label}</span>
+                  <Badge
+                    variant={item.isComplete ? "secondary" : "destructive"}
+                    className="h-5"
+                  >
+                    {item.isComplete ? "OK" : "Pendente"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
           </div>
 
           {warnings.length > 0 && (

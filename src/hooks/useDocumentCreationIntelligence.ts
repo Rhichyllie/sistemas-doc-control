@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { DOC_TYPES } from "@/lib/constants";
+import { useDocumentTemplatesAndRules } from "@/hooks/useDocumentTemplatesAndRules";
 import {
   assessDocumentCompleteness,
   buildCreationRecommendations,
@@ -16,6 +17,11 @@ import {
   type DocumentRiskLevel,
   type DocumentTypeCode,
 } from "@/lib/documentIntelligence";
+import {
+  buildRequiredFieldChecklist,
+  calculateGovernanceScore,
+  mergeTemplateAndHeuristics,
+} from "@/lib/documentTemplateRules";
 import { supabase } from "@/lib/supabase";
 
 export interface IntelligentDocumentFormState {
@@ -179,6 +185,7 @@ export function useDocumentCreationIntelligence(
   const [configurationMessage, setConfigurationMessage] = useState<
     string | null
   >(null);
+  const templateGovernance = useDocumentTemplatesAndRules();
 
   useEffect(() => {
     let active = true;
@@ -285,13 +292,9 @@ export function useDocumentCreationIntelligence(
   const configuredReviewPeriod = documentTypes.find(
     (type) => type.value === effectiveType,
   )?.default_review_months;
-  const reviewPeriodSuggestion = suggestReviewPeriod({
+  const heuristicReviewPeriod = suggestReviewPeriod({
     doc_type: effectiveType,
     default_review_months: configuredReviewPeriod,
-  });
-  const nextReviewSuggestion = suggestNextReviewDate({
-    doc_type: effectiveType,
-    review_period_months: reviewPeriodSuggestion,
   });
   const initialRevisionSuggestion = calculateInitialRevision({
     mode,
@@ -316,8 +319,54 @@ export function useDocumentCreationIntelligence(
     [form, mode, profile?.id, selectedProject?.name],
   );
   const completeness = assessDocumentCompleteness(intelligenceInput);
-  const riskLevel: DocumentRiskLevel = classifyDocumentRisk(intelligenceInput);
-  const recommendations = buildCreationRecommendations(intelligenceInput);
+  const heuristicRiskLevel: DocumentRiskLevel =
+    classifyDocumentRisk(intelligenceInput);
+  const heuristicRecommendations =
+    buildCreationRecommendations(intelligenceInput);
+  const governanceInput = {
+    ...intelligenceInput,
+    org_id: profile?.org_id,
+    doc_type: form.doc_type || inferredType,
+    area: form.area || inferredArea,
+  };
+  const governanceCompletionInput = {
+    ...intelligenceInput,
+    org_id: profile?.org_id,
+  };
+  const governanceEvaluation = templateGovernance.evaluate(governanceInput);
+  const governanceDecision = mergeTemplateAndHeuristics({
+    heuristic: {
+      reviewPeriodMonths: heuristicReviewPeriod,
+      riskLevel: heuristicRiskLevel,
+      recommendations: heuristicRecommendations,
+    },
+    template: governanceEvaluation.template,
+    appliedRules: governanceEvaluation.appliedRules,
+    configuredReviewMonths: configuredReviewPeriod,
+  });
+  const reviewPeriodSuggestion = governanceDecision.reviewPeriodMonths;
+  const nextReviewSuggestion = suggestNextReviewDate({
+    doc_type: effectiveType,
+    review_period_months: reviewPeriodSuggestion,
+  });
+  const riskLevel: DocumentRiskLevel =
+    governanceDecision.riskProfile === "critical"
+      ? "high"
+      : governanceDecision.riskProfile;
+  const recommendations = governanceDecision.recommendations;
+  const requiredFieldChecklist = buildRequiredFieldChecklist(
+    governanceCompletionInput,
+    governanceEvaluation.template,
+    governanceEvaluation.appliedRules,
+  );
+  const requiredFieldsMissing = requiredFieldChecklist
+    .filter((item) => !item.isComplete)
+    .map((item) => item.field);
+  const governanceScore = calculateGovernanceScore(
+    governanceCompletionInput,
+    governanceEvaluation.template,
+    governanceEvaluation.appliedRules,
+  );
   const warnings = useMemo(() => {
     const items: string[] = [];
     if (!form.file) {
@@ -336,11 +385,28 @@ export function useDocumentCreationIntelligence(
     if (riskLevel === "high") {
       items.push("Revise os metadados críticos antes de criar o documento.");
     }
+    if (governanceDecision.riskProfile === "critical") {
+      items.push(
+        "Política documental crítica aplicada. Resolva todos os requisitos antes de criar.",
+      );
+    }
+    if (
+      governanceDecision.enforcedReviewPeriodMonths &&
+      form.review_period_months !==
+        governanceDecision.enforcedReviewPeriodMonths
+    ) {
+      items.push(
+        `A política exige revisão em ${governanceDecision.enforcedReviewPeriodMonths} meses.`,
+      );
+    }
     return items;
   }, [
     form.file,
     form.next_review_at,
+    form.review_period_months,
     form.revision,
+    governanceDecision.enforcedReviewPeriodMonths,
+    governanceDecision.riskProfile,
     initialRevisionSuggestion,
     riskLevel,
   ]);
@@ -363,9 +429,31 @@ export function useDocumentCreationIntelligence(
       if (type === "revision" || type === "all") {
         patch.revision = initialRevisionSuggestion;
       }
+      if (
+        type === "all" &&
+        !form.description.trim() &&
+        governanceDecision.defaultDescription
+      ) {
+        patch.description = governanceDecision.defaultDescription;
+      }
+      if (
+        type === "all" &&
+        capabilities.metadata &&
+        Object.keys(governanceDecision.defaultMetadata).length
+      ) {
+        patch.metadata = {
+          ...governanceDecision.defaultMetadata,
+          ...form.metadata,
+        };
+      }
       return patch;
     },
     [
+      capabilities.metadata,
+      form.description,
+      form.metadata,
+      governanceDecision.defaultDescription,
+      governanceDecision.defaultMetadata,
       inferredArea,
       inferredType,
       initialRevisionSuggestion,
@@ -395,8 +483,25 @@ export function useDocumentCreationIntelligence(
     documentTypes,
     areas,
     projects,
-    isLoadingConfigurations,
-    configurationMessage,
+    isLoadingConfigurations:
+      isLoadingConfigurations || templateGovernance.isLoading,
+    configurationMessage: [
+      configurationMessage,
+      templateGovernance.compatibilityMessage,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    selectedTemplate: governanceEvaluation.template,
+    appliedRules: governanceEvaluation.appliedRules,
+    ruleExplanations: governanceEvaluation.explanations,
+    requiredFieldChecklist,
+    requiredFieldsMissing,
+    governanceScore,
+    governanceRiskProfile: governanceDecision.riskProfile,
+    enforcedReviewPeriodMonths: governanceDecision.enforcedReviewPeriodMonths,
+    reviewSource: governanceDecision.reviewSource,
+    canUseTemplates: templateGovernance.canUseTemplates,
+    canUseRules: templateGovernance.canUseRules,
     applySuggestion,
   };
 }

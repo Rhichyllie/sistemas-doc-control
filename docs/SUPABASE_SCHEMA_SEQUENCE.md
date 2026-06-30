@@ -20,16 +20,20 @@ A sequência lógica oficial é:
 12. `11_TRAMITA_formal_revision_lifecycle`
 13. `12_TRAMITA_formal_revision_transactional_hardening`
 14. `13_TRAMITA_schema_doctor`
+15. `14_TRAMITA_document_templates_and_rules`
 
-No repositório, os cinco últimos ciclos correspondem a:
+No repositório, os seis últimos ciclos correspondem a:
 
 - `supabase/migrations/20260629_09_tramita_enterprise_schema_alignment_bridge.sql`;
 - `supabase/migrations/20260629_p9c1_decision_and_correction_cycle.sql`;
 - `supabase/migrations/20260629_p10a_formal_revision_lifecycle.sql`;
 - `supabase/migrations/20260629_p10a2_formal_revision_transactional_hardening.sql`;
 - `supabase/migrations/20260629_p10a3_schema_doctor.sql`.
+- `supabase/migrations/20260629_p10c_document_templates_and_rules.sql`.
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
+
+O ciclo 14 é a primeira camada configurável de regras da criação documental. Ele cria templates, políticas e logs de uso com RLS. Sem esse ciclo, a P-10B continua usando as heurísticas locais e não interrompe a criação.
 
 ## P-10B — Criação Documental Inteligente
 

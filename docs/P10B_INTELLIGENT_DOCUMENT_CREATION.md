@@ -428,3 +428,17 @@ O projeto ainda não possui runner de testes unitários configurado. Para evitar
 - importação formal controlada;
 - explicabilidade detalhada das sugestões;
 - integração opcional futura com IA, sem substituir as heurísticas locais.
+
+## Integração P-10C
+
+A P-10C adiciona templates e regras documentais configuráveis sobre a base da P-10B.
+
+Quando o ciclo 14 está disponível:
+
+- regras obrigatórias têm precedência sobre templates e heurísticas;
+- templates podem sugerir descrição, prazo, metadados e perfil de risco;
+- o painel mostra checklist e score de governança;
+- campos obrigatórios ausentes bloqueiam a criação;
+- auditoria e log registram template e regras aplicadas.
+
+Sem a migration P-10C, o carregamento usa fallback defensivo e toda a experiência P-10B/P-10B.1 continua funcional.

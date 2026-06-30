@@ -106,6 +106,14 @@ export function DocumentCreationStudio() {
     completenessScore: intelligence.completenessScore,
     riskLevel: intelligence.riskLevel,
     availableProjectIds: intelligence.projects.map((project) => project.id),
+    governance: {
+      templateId: intelligence.selectedTemplate?.id ?? null,
+      templateName: intelligence.selectedTemplate?.name ?? null,
+      appliedRuleIds: intelligence.appliedRules.map((rule) => rule.id),
+      governanceScore: intelligence.governanceScore,
+      requiredFieldsMissing: intelligence.requiredFieldsMissing,
+      enforcedReviewPeriodMonths: intelligence.enforcedReviewPeriodMonths,
+    },
   };
   const creationValidationErrors = creation.getValidationErrors(creationInput);
   const canCreate =
@@ -151,6 +159,7 @@ export function DocumentCreationStudio() {
     if (!result) return;
 
     toast.success(`Documento criado: ${result.code ?? "Gerando código..."}`);
+    if (result.warning) toast.warning(result.warning);
     navigate({
       to: "/authenticated/documents/$documentId",
       params: { documentId: result.id },
@@ -566,6 +575,9 @@ export function DocumentCreationStudio() {
               projects={intelligence.projects}
               completenessScore={intelligence.completenessScore}
               riskLevel={intelligence.riskLevel}
+              templateName={intelligence.selectedTemplate?.name ?? null}
+              governanceScore={intelligence.governanceScore}
+              appliedRulesCount={intelligence.appliedRules.length}
             />
           )}
 
@@ -655,6 +667,9 @@ export function DocumentCreationStudio() {
           projects={intelligence.projects}
           completenessScore={intelligence.completenessScore}
           riskLevel={intelligence.riskLevel}
+          templateName={intelligence.selectedTemplate?.name ?? null}
+          governanceScore={intelligence.governanceScore}
+          appliedRulesCount={intelligence.appliedRules.length}
         />
       </div>
     );
@@ -753,6 +768,11 @@ export function DocumentCreationStudio() {
           warnings={intelligence.warnings}
           missingItems={intelligence.missingItems}
           configurationMessage={intelligence.configurationMessage}
+          templateName={intelligence.selectedTemplate?.name ?? null}
+          ruleExplanations={intelligence.ruleExplanations}
+          requiredFieldChecklist={intelligence.requiredFieldChecklist}
+          governanceScore={intelligence.governanceScore}
+          governanceRiskProfile={intelligence.governanceRiskProfile}
           suggestionsApplied={suggestionsApplied}
           suggestionsDisabled={
             intelligence.isLoadingConfigurations || creation.loading

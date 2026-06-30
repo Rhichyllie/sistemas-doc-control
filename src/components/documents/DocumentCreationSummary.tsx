@@ -20,6 +20,9 @@ interface DocumentCreationSummaryProps {
   projects: DocumentProjectOption[];
   completenessScore: number;
   riskLevel: DocumentRiskLevel;
+  templateName: string | null;
+  governanceScore: number;
+  appliedRulesCount: number;
 }
 
 export function DocumentCreationSummary({
@@ -28,6 +31,9 @@ export function DocumentCreationSummary({
   projects,
   completenessScore,
   riskLevel,
+  templateName,
+  governanceScore,
+  appliedRulesCount,
 }: DocumentCreationSummaryProps) {
   const type = documentTypes.find((option) => option.value === form.doc_type);
   const project = projects.find((option) => option.id === form.project_id);
@@ -103,8 +109,23 @@ export function DocumentCreationSummary({
             <p className="text-sm font-medium">
               {completenessScore}% · risco {riskLabel}
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Governança {governanceScore}%
+            </p>
           </div>
         </div>
+
+        {(templateName || appliedRulesCount > 0) && (
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+            <strong>{templateName ?? "Políticas da organização"}</strong>
+            <span className="text-muted-foreground">
+              {" "}
+              · {appliedRulesCount} regra
+              {appliedRulesCount === 1 ? "" : "s"} aplicada
+              {appliedRulesCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        )}
 
         <div className="rounded-lg bg-muted/40 p-3 text-sm">
           Próxima revisão: <strong>{formattedReviewDate}</strong>

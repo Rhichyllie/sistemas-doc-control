@@ -14,6 +14,10 @@ import {
   validateDocumentCreation,
   validateSelectedProject,
 } from "@/lib/documentCreationValidation";
+import {
+  DOCUMENT_RULE_FIELD_LABELS,
+  type DocumentRuleField,
+} from "@/lib/documentTemplateRules";
 
 export interface CreateIntelligentDocumentInput {
   form: IntelligentDocumentFormState;
@@ -22,6 +26,14 @@ export interface CreateIntelligentDocumentInput {
   completenessScore: number;
   riskLevel: DocumentRiskLevel;
   availableProjectIds: string[];
+  governance: {
+    templateId: string | null;
+    templateName: string | null;
+    appliedRuleIds: string[];
+    governanceScore: number;
+    requiredFieldsMissing: DocumentRuleField[];
+    enforcedReviewPeriodMonths: number | null;
+  };
 }
 
 export function getIntelligentDocumentValidationErrors(
@@ -36,6 +48,22 @@ export function getIntelligentDocumentValidationErrors(
     availableProjectIds: input.availableProjectIds,
   });
   if (projectError) errors.push(projectError);
+  if (input.governance.requiredFieldsMissing.length) {
+    errors.push(
+      `Preencha os campos obrigatórios da política: ${input.governance.requiredFieldsMissing
+        .map((field) => DOCUMENT_RULE_FIELD_LABELS[field])
+        .join(", ")}.`,
+    );
+  }
+  if (
+    input.governance.enforcedReviewPeriodMonths &&
+    input.form.review_period_months !==
+      input.governance.enforcedReviewPeriodMonths
+  ) {
+    errors.push(
+      `A política documental exige revisão em ${input.governance.enforcedReviewPeriodMonths} meses. Aplique a sugestão antes de criar.`,
+    );
+  }
   return errors;
 }
 
@@ -88,6 +116,11 @@ export function useCreateIntelligentDocument() {
         mode: input.mode,
         completenessScore: input.completenessScore,
         riskLevel: input.riskLevel,
+        templateId: input.governance.templateId,
+        templateName: input.governance.templateName,
+        appliedRuleIds: input.governance.appliedRuleIds,
+        governanceScore: input.governance.governanceScore,
+        requiredFieldsMissing: input.governance.requiredFieldsMissing,
       },
     });
   }
