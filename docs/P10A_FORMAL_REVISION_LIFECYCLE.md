@@ -73,6 +73,14 @@ Arquivo:
 
 Nenhum SQL foi executado remotamente.
 
+### Pré-requisito de alinhamento
+
+A P-10A depende do ciclo lógico `09_TRAMITA_enterprise_schema_alignment_bridge`, versionado em `supabase/migrations/20260629_09_tramita_enterprise_schema_alignment_bridge.sql`.
+
+O bridge deve ser aplicado antes da migration P-10A. Ele normaliza os aliases de `approval_group_members`, completa os campos enterprise de `approval_flows` e prepara os ponteiros de revisão. Se o ambiente tiver `profile_id` sem `user_id`, ou qualquer divergência entre `user_id/profile_id`, execute primeiro o 09.
+
+A ordem manual completa está em `docs/SUPABASE_SCHEMA_SEQUENCE.md`.
+
 ### Campos em `document_versions`
 
 - `status`;

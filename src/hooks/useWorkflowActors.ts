@@ -36,6 +36,36 @@ export interface ApprovalGroupMember {
   created_at: string
 }
 
+interface ApprovalGroupMemberCompatibilityRow {
+  id: string
+  org_id: string
+  group_id: string
+  user_id?: string | null
+  profile_id?: string | null
+  role?: string | null
+  role_in_group?: string | null
+  is_active?: boolean | null
+  active?: boolean | null
+  created_at: string
+}
+
+function normalizeGroupMember(
+  member: ApprovalGroupMemberCompatibilityRow,
+): ApprovalGroupMember | null {
+  const userId = member.user_id ?? member.profile_id
+  if (!userId) return null
+
+  return {
+    id: member.id,
+    org_id: member.org_id,
+    group_id: member.group_id,
+    user_id: userId,
+    role: member.role ?? member.role_in_group ?? 'member',
+    is_active: member.is_active ?? member.active ?? true,
+    created_at: member.created_at,
+  }
+}
+
 export const WORKFLOW_ROLES = USER_ROLES.filter((role) =>
   ['reviewer', 'approver', 'manager', 'admin'].includes(role.value),
 )
@@ -101,14 +131,26 @@ export function useWorkflowActors() {
         throw groupsError
       }
 
-      const { data: memberData, error: membersError } = await supabase
+      const { data: enterpriseMemberData, error: enterpriseMembersError } = await supabase
         .from('approval_group_members')
         .select('id, org_id, group_id, user_id, role, is_active, created_at')
         .eq('org_id', currentProfile.org_id)
         .eq('is_active', true)
 
-      if (membersError) {
-        if (isWorkflowFoundationUnavailable(membersError)) {
+      let memberData = enterpriseMemberData as ApprovalGroupMemberCompatibilityRow[] | null
+      let usedLegacyMemberSchema = false
+
+      if (enterpriseMembersError && isWorkflowFoundationUnavailable(enterpriseMembersError)) {
+        const { data: legacyMemberData, error: legacyMembersError } = await supabase
+          .from('approval_group_members')
+          .select('id, org_id, group_id, profile_id, role_in_group, active, created_at')
+          .eq('org_id', currentProfile.org_id)
+          .eq('active', true)
+
+        if (!legacyMembersError) {
+          memberData = legacyMemberData as ApprovalGroupMemberCompatibilityRow[] | null
+          usedLegacyMemberSchema = true
+        } else if (isWorkflowFoundationUnavailable(legacyMembersError)) {
           setGroups((groupData ?? []) as ApprovalGroup[])
           setGroupMembers([])
           setCanUseGroups(false)
@@ -116,13 +158,25 @@ export function useWorkflowActors() {
             'Os grupos existem, mas seus membros ainda não estão disponíveis. Atribuições por grupo foram desativadas.',
           )
           return
+        } else {
+          throw legacyMembersError
         }
-        throw membersError
+      } else if (enterpriseMembersError) {
+        throw enterpriseMembersError
       }
 
       setGroups((groupData ?? []) as ApprovalGroup[])
-      setGroupMembers((memberData ?? []) as ApprovalGroupMember[])
+      setGroupMembers(
+        (memberData ?? [])
+          .map(normalizeGroupMember)
+          .filter((member): member is ApprovalGroupMember => Boolean(member)),
+      )
       setCanUseGroups(true)
+      if (usedLegacyMemberSchema) {
+        setCompatibilityMessage(
+          'Os membros dos grupos estão no schema legado. O bridge 09 mantém a operação e deve ser aplicado para normalizar os aliases.',
+        )
+      }
     } catch (err: unknown) {
       setGroups([])
       setGroupMembers([])

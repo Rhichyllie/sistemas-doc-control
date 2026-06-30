@@ -12,6 +12,8 @@ Tornar utilizável a fundação P-9A com:
 
 Esta fase não implementa workflow paralelo, votação, majority approval, ausência, férias, licença ou intervenção administrativa avançada.
 
+> **Compatibilidade de schema:** instalações antigas podem usar `profile_id`, `role_in_group` e `active` em `approval_group_members`. O bridge lógico 09 cria aliases sincronizados para `user_id/profile_id`, `role/role_in_group` e `is_active/active`. Os hooks de grupos tentam o contrato enterprise e fazem fallback para o legado quando necessário.
+
 ## Arquivos criados
 
 - `src/hooks/useApprovalGroups.ts`
@@ -54,9 +56,9 @@ Campos consumidos:
 - `id`;
 - `org_id`;
 - `group_id`;
-- `user_id`;
-- `role`;
-- `is_active`;
+- `user_id` ou `profile_id`;
+- `role` ou `role_in_group`;
+- `is_active` ou `active`;
 - `created_at`.
 
 ### `profiles`

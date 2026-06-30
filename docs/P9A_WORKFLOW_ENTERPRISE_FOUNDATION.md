@@ -6,6 +6,8 @@ Versionar a fundação enterprise do workflow documental do TRAMITA sem remover 
 
 A fase prepara atribuição por papel, usuário ou grupo, SLA versionado, instruções por etapa, dados de escalonamento futuro e compatibilidade com a fila e com o builder de fluxo existentes.
 
+> **Compatibilidade posterior:** alguns ambientes já possuíam `approval_group_members` com `profile_id`, `role_in_group` e `active`. O bridge lógico 09 adiciona e sincroniza os aliases `user_id/profile_id`, `role/role_in_group` e `is_active/active`. O frontend mantém fallback para o contrato legado quando o bridge ainda não estiver disponível.
+
 ## Auditoria do estado anterior
 
 ### Tabelas existentes nas migrations

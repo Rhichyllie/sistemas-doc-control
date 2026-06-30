@@ -1,4 +1,5 @@
 -- TRAMITA P-10A — Ciclo Formal de Revisão Documental
+-- Pré-requisito: 09_TRAMITA_enterprise_schema_alignment_bridge.
 -- Mantém documents como mestre e document_versions como revisões formais.
 
 BEGIN;
@@ -192,8 +193,8 @@ CREATE POLICY "versions_update_formal_revision"
                 FROM public.approval_group_members AS member
                 WHERE member.org_id = flow.org_id
                   AND member.group_id = flow.assignee_group_id
-                  AND member.user_id = auth.uid()
-                  AND member.is_active = true
+                  AND COALESCE(member.user_id, member.profile_id) = auth.uid()
+                  AND COALESCE(member.is_active, member.active, true) = true
               )
             )
           )
@@ -239,8 +240,8 @@ CREATE POLICY "docs_update_formal_revision_actor"
               FROM public.approval_group_members AS member
               WHERE member.org_id = flow.org_id
                 AND member.group_id = flow.assignee_group_id
-                AND member.user_id = auth.uid()
-                AND member.is_active = true
+                AND COALESCE(member.user_id, member.profile_id) = auth.uid()
+                AND COALESCE(member.is_active, member.active, true) = true
             )
           )
         )

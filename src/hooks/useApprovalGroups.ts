@@ -43,6 +43,38 @@ export interface ApprovalGroupInput {
   is_active?: boolean
 }
 
+type ApprovalGroupMemberSchema = 'enterprise' | 'legacy'
+
+interface ApprovalGroupMemberCompatibilityRow {
+  id: string
+  org_id: string
+  group_id: string
+  user_id?: string | null
+  profile_id?: string | null
+  role?: string | null
+  role_in_group?: string | null
+  is_active?: boolean | null
+  active?: boolean | null
+  created_at: string
+}
+
+function normalizeGroupMember(
+  member: ApprovalGroupMemberCompatibilityRow,
+): ApprovalGroupMemberRecord | null {
+  const userId = member.user_id ?? member.profile_id
+  if (!userId) return null
+
+  return {
+    id: member.id,
+    org_id: member.org_id,
+    group_id: member.group_id,
+    user_id: userId,
+    role: member.role ?? member.role_in_group ?? 'member',
+    is_active: member.is_active ?? member.active ?? true,
+    created_at: member.created_at,
+  }
+}
+
 function compatibilityText() {
   return 'Grupos de aprovação ainda não estão disponíveis neste ambiente. Aplique a migration P-9A para habilitar a administração.'
 }
@@ -56,6 +88,7 @@ export function useApprovalGroups(enabled = true) {
   const [error, setError] = useState<string | null>(null)
   const [canUseGroups, setCanUseGroups] = useState(false)
   const [canManageMembers, setCanManageMembers] = useState(false)
+  const [memberSchema, setMemberSchema] = useState<ApprovalGroupMemberSchema>('enterprise')
   const [compatibilityMessage, setCompatibilityMessage] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
@@ -65,6 +98,7 @@ export function useApprovalGroups(enabled = true) {
       setUsers([])
       setCanUseGroups(false)
       setCanManageMembers(false)
+      setMemberSchema('enterprise')
       setCompatibilityMessage(null)
       setIsLoading(false)
       return
@@ -108,27 +142,52 @@ export function useApprovalGroups(enabled = true) {
       setGroups((groupData ?? []) as ApprovalGroupRecord[])
       setCanUseGroups(true)
 
-      const { data: memberData, error: membersError } = await supabase
+      const { data: enterpriseMemberData, error: enterpriseMembersError } = await supabase
         .from('approval_group_members')
         .select('id, org_id, group_id, user_id, role, is_active, created_at')
         .eq('org_id', currentProfile.org_id)
         .order('created_at', { ascending: true })
 
-      if (membersError) {
-        if (isWorkflowFoundationUnavailable(membersError)) {
+      let memberData = enterpriseMemberData as ApprovalGroupMemberCompatibilityRow[] | null
+      let resolvedMemberSchema: ApprovalGroupMemberSchema = 'enterprise'
+
+      if (enterpriseMembersError && isWorkflowFoundationUnavailable(enterpriseMembersError)) {
+        const { data: legacyMemberData, error: legacyMembersError } = await supabase
+          .from('approval_group_members')
+          .select('id, org_id, group_id, profile_id, role_in_group, active, created_at')
+          .eq('org_id', currentProfile.org_id)
+          .order('created_at', { ascending: true })
+
+        if (!legacyMembersError) {
+          memberData = legacyMemberData as ApprovalGroupMemberCompatibilityRow[] | null
+          resolvedMemberSchema = 'legacy'
+        } else if (isWorkflowFoundationUnavailable(legacyMembersError)) {
           setMembers([])
           setCanManageMembers(false)
           setCompatibilityMessage(
             'Os grupos podem ser consultados, mas a tabela de membros ainda não está disponível.',
           )
           return
+        } else {
+          throw legacyMembersError
         }
-        throw membersError
+      } else if (enterpriseMembersError) {
+        throw enterpriseMembersError
       }
 
-      setMembers((memberData ?? []) as ApprovalGroupMemberRecord[])
+      setMembers(
+        (memberData ?? [])
+          .map(normalizeGroupMember)
+          .filter((member): member is ApprovalGroupMemberRecord => Boolean(member)),
+      )
+      setMemberSchema(resolvedMemberSchema)
       setCanUseGroups(true)
       setCanManageMembers(true)
+      if (resolvedMemberSchema === 'legacy') {
+        setCompatibilityMessage(
+          'Os membros dos grupos estão no schema legado. A administração usa os aliases antigos até a aplicação do bridge 09.',
+        )
+      }
     } catch (err: unknown) {
       setGroups([])
       setMembers([])
@@ -228,16 +287,30 @@ export function useApprovalGroups(enabled = true) {
     const result = existingMember
       ? await supabase
           .from('approval_group_members')
-          .update({ role, is_active: true })
+          .update(
+            memberSchema === 'enterprise'
+              ? { role, is_active: true }
+              : { role_in_group: role, active: true },
+          )
           .eq('id', existingMember.id)
           .eq('org_id', orgId)
-      : await supabase.from('approval_group_members').insert({
-          org_id: orgId,
-          group_id: groupId,
-          user_id: userId,
-          role,
-          is_active: true,
-        })
+      : await supabase.from('approval_group_members').insert(
+          memberSchema === 'enterprise'
+            ? {
+                org_id: orgId,
+                group_id: groupId,
+                user_id: userId,
+                role,
+                is_active: true,
+              }
+            : {
+                org_id: orgId,
+                group_id: groupId,
+                profile_id: userId,
+                role_in_group: role,
+                active: true,
+              },
+        )
 
     if (result.error) {
       handleMutationError(result.error, 'Erro ao adicionar membro ao grupo')
@@ -255,7 +328,7 @@ export function useApprovalGroups(enabled = true) {
     setError(null)
     const { error: mutationError } = await supabase
       .from('approval_group_members')
-      .update({ is_active: false })
+      .update(memberSchema === 'enterprise' ? { is_active: false } : { active: false })
       .eq('id', memberId)
       .eq('org_id', orgId)
 
@@ -275,7 +348,7 @@ export function useApprovalGroups(enabled = true) {
     setError(null)
     const { error: mutationError } = await supabase
       .from('approval_group_members')
-      .update({ role })
+      .update(memberSchema === 'enterprise' ? { role } : { role_in_group: role })
       .eq('id', memberId)
       .eq('org_id', orgId)
 

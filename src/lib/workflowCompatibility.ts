@@ -11,6 +11,9 @@ export type WorkflowAssignmentType = 'role' | 'user' | 'group'
 const WORKFLOW_FOUNDATION_TERMS = [
   'approval_groups',
   'approval_group_members',
+  'profile_id',
+  'role_in_group',
+  'is_active',
   'assignment_type',
   'assignee_user_id',
   'assignee_group_id',

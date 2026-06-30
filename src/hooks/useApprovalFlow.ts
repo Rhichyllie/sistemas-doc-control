@@ -1153,15 +1153,37 @@ export function useApprovalFlow() {
       && step.assignee_group_id
       && persistenceMode === 'enterprise'
     ) {
-      const { data: members, error: membersError } = await supabase
+      const { data: enterpriseMembers, error: enterpriseMembersError } = await supabase
         .from('approval_group_members')
         .select('user_id')
         .eq('group_id', step.assignee_group_id)
         .eq('org_id', profile?.org_id ?? '')
         .eq('is_active', true)
 
-      if (!membersError && members?.length) {
-        await notifyUsers(documentId, members.map((member) => member.user_id), type, title)
+      let memberUserIds = (enterpriseMembers ?? [])
+        .map((member) => member.user_id)
+        .filter((userId): userId is string => Boolean(userId))
+
+      if (
+        enterpriseMembersError
+        && isWorkflowFoundationUnavailable(enterpriseMembersError)
+      ) {
+        const { data: legacyMembers, error: legacyMembersError } = await supabase
+          .from('approval_group_members')
+          .select('profile_id')
+          .eq('group_id', step.assignee_group_id)
+          .eq('org_id', profile?.org_id ?? '')
+          .eq('active', true)
+
+        if (!legacyMembersError) {
+          memberUserIds = (legacyMembers ?? [])
+            .map((member) => member.profile_id)
+            .filter((userId): userId is string => Boolean(userId))
+        }
+      }
+
+      if (memberUserIds.length) {
+        await notifyUsers(documentId, memberUserIds, type, title)
         return
       }
     }
