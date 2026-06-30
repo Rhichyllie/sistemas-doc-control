@@ -41,6 +41,10 @@ A P-10C.1 não adiciona um novo ciclo SQL. Ela endurece diagnóstico, leitura, c
 
 As queries administrativas de conferência e manutenção estão em `docs/P10C_DOCUMENT_TEMPLATES_AND_RULES.md`.
 
+### Orientação P-10C.2
+
+A P-10C.2 também não adiciona ciclo SQL. Ela acrescenta orientação, explicabilidade, destaque de campos obrigatórios e simulação administrativa sobre as tabelas do ciclo 14.
+
 ## P-10B — Criação Documental Inteligente
 
 A P-10B não exige migration obrigatória. Ela usa o schema existente e aplica fallbacks locais quando tabelas de configuração ou campos opcionais não estão disponíveis.

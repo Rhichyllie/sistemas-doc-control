@@ -425,6 +425,25 @@ export function DocumentRuleForm({
                 rows={4}
               />
             </div>
+
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm md:col-span-2">
+              <p className="font-semibold">Prévia de impacto ao salvar</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Será aplicada quando o tipo for{" "}
+                {form.doc_type || "qualquer tipo"} e a área for{" "}
+                {form.area || "qualquer área"}.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {form.required_fields.length
+                  ? `Bloqueará a criação sem: ${form.required_fields
+                      .map((field) => DOCUMENT_RULE_FIELD_LABELS[field])
+                      .join(", ")}.`
+                  : "Não adiciona campos obrigatórios."}
+                {form.review_period_months
+                  ? ` Exigirá revisão em ${form.review_period_months} meses.`
+                  : ""}
+              </p>
+            </div>
           </div>
 
           {formError && (

@@ -560,3 +560,183 @@ returning id, org_id, name, condition, effects;
 - a confirmação definitiva de RLS/org exige as queries administrativas;
 - não há simulação de policy antes de salvar;
 - não há histórico versionado das alterações de regra.
+
+## P-10C.2 — Orientação e explicabilidade de políticas
+
+### Objetivo
+
+A P-10C.2 transforma o bloqueio técnico em orientação operacional. O usuário passa a entender:
+
+- qual template foi selecionado;
+- quais regras foram aplicadas;
+- por que cada regra corresponde ao documento;
+- quais campos são obrigatórios;
+- quem exige cada campo;
+- o que ainda falta;
+- quais exigências podem ser aplicadas automaticamente;
+- quando o documento está em conformidade.
+
+Essa fase não cria migration. Ela opera sobre o ciclo 14 existente.
+
+### Modelo de orientação
+
+`src/lib/documentPolicyGuidance.ts` recebe formulário, template, regras, checklist, score, conflitos e validações. O retorno usa quatro estados:
+
+- `fallback`: nenhuma política disponível ou aplicável;
+- `needs_attention`: política aplicada com orientações não bloqueantes;
+- `blocked`: há requisito ou validação impeditiva;
+- `ready`: documento em conformidade com as políticas aplicadas.
+
+Cada item obrigatório possui:
+
+- campo e label;
+- template/regra que o tornou obrigatório;
+- estado atendido ou pendente;
+- motivo documental;
+- ação prática;
+- severidade.
+
+### Painel de conformidade
+
+O painel do Novo Documento Inteligente apresenta:
+
+1. política aplicada e score de governança;
+2. nomes do template e regras;
+3. explicações curtas de correspondência e prioridade;
+4. checklist com motivo de cada requisito;
+5. bloqueios explícitos;
+6. próximas ações;
+7. estado final de conformidade.
+
+Fallbacks são tratados como modo operacional, não como erro:
+
+- sem políticas: inteligência local P-10B;
+- ciclo 14 ausente: modo heurístico;
+- leitura bloqueada: heurísticas locais com aviso de permissão;
+- políticas existentes, mas não aplicáveis: fallback para o contexto atual.
+
+### Campos obrigatórios no formulário
+
+Descrição, arquivo, tipo, área, projeto, revisão, confidencialidade e referência externa recebem indicação contextual quando exigidos por template/regra.
+
+O campo mostra:
+
+- badge **Obrigatório por política**;
+- origem da exigência;
+- motivo;
+- ação necessária;
+- microfeedback positivo quando atendido.
+
+Requisitos básicos do TRAMITA continuam válidos, mas não são apresentados como política enterprise quando não vierem de template/regra.
+
+### Aplicar exigências
+
+Quando há política aplicável, o botão passa a se chamar **Aplicar exigências**.
+
+Ele pode:
+
+- aplicar tipo e área sugeridos;
+- aplicar período obrigatório;
+- recalcular próxima revisão;
+- preencher descrição padrão quando vazia;
+- aplicar metadados padrão.
+
+Ele nunca:
+
+- anexa arquivo;
+- escolhe projeto;
+- define confidencialidade sem configuração;
+- inventa referências externas.
+
+Após a ação, o feedback informa quais itens ainda exigem intervenção manual.
+
+### Simulação administrativa
+
+A tela **Regras Documentais** possui uma simulação sem persistência.
+
+Entradas:
+
+- título;
+- tipo;
+- área;
+- projeto;
+- descrição;
+- arquivo sim/não;
+- opção de incluir políticas inativas.
+
+Saídas:
+
+- template selecionado;
+- regras aplicadas;
+- risco;
+- período;
+- checklist;
+- bloqueios;
+- explicação de regras aplicadas ou não aplicadas.
+
+Incluir políticas inativas permite avaliar o comportamento antes de ativá-las. A simulação não cria documento, template, regra ou log.
+
+Os formulários de template e regra também exibem uma prévia imediata do impacto antes do save, incluindo contexto, campos que bloquearão a criação, risco e período.
+
+### Exemplo PRO/SST
+
+Para template/regra PRO/SST exigindo descrição, arquivo e revisão em 12 meses:
+
+- título “Procedimento de Segurança Operacional” sugere PRO/SST;
+- painel identifica template e regra;
+- descrição e arquivo recebem destaque;
+- período diferente de 12 meses gera bloqueio e orientação;
+- **Aplicar exigências** corrige o prazo e descrição padrão disponível;
+- arquivo continua como ação manual;
+- após completar os requisitos, o painel mostra **Documento em conformidade**.
+
+### Testes manuais P-10C.2
+
+#### Cenário 1 — orientação PRO/SST
+
+1. mantenha template/regra PRO/SST ativos;
+2. abra o Novo Documento Inteligente;
+3. digite “Procedimento de Segurança Operacional”;
+4. confirme política aplicada;
+5. confirme descrição e arquivo como obrigatórios;
+6. confirme motivo de bloqueio junto aos campos e ao botão;
+7. preencha descrição;
+8. confirme que somente arquivo permanece pendente;
+9. anexe arquivo;
+10. confirme **Documento em conformidade**.
+
+#### Cenário 2 — aplicar exigências
+
+1. use período diferente de 12 meses;
+2. clique **Aplicar exigências**;
+3. confirme período de 12 meses e próxima revisão recalculada;
+4. confira o feedback sobre itens manuais restantes.
+
+#### Cenário 3 — sem políticas
+
+1. desative templates e regras;
+2. abra a criação inteligente;
+3. confirme inteligência local P-10B sem estado de erro.
+
+#### Cenário 4 — simulação administrativa
+
+1. abra **Regras Documentais**;
+2. use os valores PRO/SST pré-preenchidos;
+3. alterne descrição e arquivo;
+4. confirme checklist, bloqueios, risco e período;
+5. ative **Incluir políticas inativas** para avaliar configurações desativadas.
+
+#### Cenário 5 — criação antiga
+
+1. abra `/authenticated/documents`;
+2. use o diálogo antigo;
+3. confirme validação P-10B.1;
+4. confirme ausência de bloqueios P-10C.
+
+### Limitações P-10C.2
+
+- simulação usa metadados informados, sem ler conteúdo do arquivo;
+- não há sandbox SQL ou simulação real de RLS;
+- aplicação automática não preenche campos que exigem decisão humana;
+- regras complexas continuam limitadas ao motor JSON simples da P-10C;
+- o score é explicativo e não substitui aprovação documental.

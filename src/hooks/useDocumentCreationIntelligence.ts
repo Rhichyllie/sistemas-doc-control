@@ -369,7 +369,7 @@ export function useDocumentCreationIntelligence(
   );
   const warnings = useMemo(() => {
     const items: string[] = [];
-    if (!form.file) {
+    if (!form.file && !governanceDecision.requiredFields.includes("file")) {
       items.push(
         "Nenhum arquivo selecionado. O documento será criado como cadastro preliminar.",
       );
@@ -407,6 +407,7 @@ export function useDocumentCreationIntelligence(
     form.review_period_months,
     form.revision,
     governanceDecision.enforcedReviewPeriodMonths,
+    governanceDecision.requiredFields,
     governanceDecision.riskProfile,
     governanceDecision.warnings,
     initialRevisionSuggestion,

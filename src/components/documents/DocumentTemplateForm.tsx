@@ -414,6 +414,24 @@ export function DocumentTemplateForm({
               />
               Usar como padrão quando houver empate de prioridade e escopo
             </label>
+
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm md:col-span-2">
+              <p className="font-semibold">Prévia de impacto ao salvar</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Aplicável a {form.doc_type || "qualquer tipo"} /{" "}
+                {form.area || "qualquer área"}, com risco {form.risk_profile}.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {form.required_fields.length
+                  ? `Bloqueará a criação sem: ${form.required_fields
+                      .map((field) => DOCUMENT_RULE_FIELD_LABELS[field])
+                      .join(", ")}.`
+                  : "Não adiciona campos obrigatórios além do contrato base."}
+                {form.default_review_months
+                  ? ` Sugere revisão em ${form.default_review_months} meses.`
+                  : ""}
+              </p>
+            </div>
           </div>
 
           {formError && (

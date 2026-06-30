@@ -134,6 +134,14 @@ const RISK_WEIGHT: Record<GovernanceRiskProfile, number> = {
   critical: 3,
 };
 
+const KNOWN_CONDITION_KEYS = new Set([
+  "doc_type",
+  "area",
+  "project_id",
+  "tags_contains",
+  "metadata_contains",
+]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -260,15 +268,8 @@ function metadataContains(
 
 function matchesCondition(input: DocumentRuleInput, condition: unknown) {
   if (!isRecord(condition)) return false;
-  const knownKeys = new Set([
-    "doc_type",
-    "area",
-    "project_id",
-    "tags_contains",
-    "metadata_contains",
-  ]);
   const keys = Object.keys(condition);
-  if (keys.some((key) => !knownKeys.has(key))) return false;
+  if (keys.some((key) => !KNOWN_CONDITION_KEYS.has(key))) return false;
 
   return keys.every((key) => {
     const expected = condition[key];
@@ -385,6 +386,20 @@ export function mergeTemplateAndHeuristics({
   const hintRecommendations = uniqueStrings(
     template?.governance_hints.recommendations,
   );
+  const requiredFields = [
+    ...new Set([
+      ...(template?.required_fields ?? []),
+      ...ruleEffects.flatMap((effects) => effects.required_fields),
+    ]),
+  ];
+  const compatibleHeuristicRecommendations = requiredFields.includes("file")
+    ? heuristic.recommendations.filter(
+        (recommendation) =>
+          !recommendation
+            .toLowerCase()
+            .includes("documento sem arquivo pode ser usado"),
+      )
+    : heuristic.recommendations;
 
   return {
     reviewPeriodMonths,
@@ -399,15 +414,10 @@ export function mergeTemplateAndHeuristics({
       ...new Set([
         ...ruleEffects.flatMap((effects) => effects.recommendations),
         ...hintRecommendations,
-        ...heuristic.recommendations,
+        ...compatibleHeuristicRecommendations,
       ]),
     ],
-    requiredFields: [
-      ...new Set([
-        ...(template?.required_fields ?? []),
-        ...ruleEffects.flatMap((effects) => effects.required_fields),
-      ]),
-    ],
+    requiredFields,
     recommendedFields: [
       ...new Set([
         ...(template?.recommended_fields ?? []),
@@ -539,6 +549,106 @@ export function explainAppliedRules(appliedRules: DocumentRuleRecord[]) {
       reason: `Aplicada por ${describeCondition(rule.condition)}.`,
       impact: impacts.join("; ") || "Regra informativa sem efeito obrigatório.",
       severity: rule.severity,
+    };
+  });
+}
+
+export function explainTemplateSelection(
+  template: DocumentTemplateRecord | null,
+) {
+  if (!template) return null;
+  const matches = [
+    template.project_id ? "projeto" : null,
+    template.doc_type ? `tipo ${template.doc_type}` : null,
+    template.area ? `área ${template.area}` : null,
+  ].filter(Boolean);
+  return `O template "${template.name}" foi escolhido por prioridade ${template.priority}${
+    matches.length ? ` e correspondência com ${matches.join(" e ")}` : ""
+  }.`;
+}
+
+export function explainRuleEvaluation(
+  input: DocumentRuleInput,
+  rules: DocumentRuleRecord[],
+) {
+  return rules.map((rule) => {
+    if (!rule.is_active) {
+      return {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        applied: false,
+        explanation: `A regra "${rule.name}" não foi aplicada porque está inativa.`,
+      };
+    }
+    if (!input.org_id || rule.org_id !== input.org_id) {
+      return {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        applied: false,
+        explanation: `A regra "${rule.name}" não foi aplicada porque pertence a outra organização.`,
+      };
+    }
+    const condition = rule.condition;
+    const unknownKey = Object.keys(condition).find(
+      (key) => !KNOWN_CONDITION_KEYS.has(key),
+    );
+    if (unknownKey) {
+      return {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        applied: false,
+        explanation: `A regra "${rule.name}" não foi aplicada porque usa a condição desconhecida "${unknownKey}".`,
+      };
+    }
+    if (
+      condition.doc_type &&
+      normalizeComparable(condition.doc_type) !==
+        normalizeComparable(input.doc_type)
+    ) {
+      return {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        applied: false,
+        explanation: `A regra "${rule.name}" exige tipo ${String(condition.doc_type)}, mas o tipo atual é ${input.doc_type || "não definido"}.`,
+      };
+    }
+    if (
+      condition.area &&
+      normalizeComparable(condition.area) !== normalizeComparable(input.area)
+    ) {
+      return {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        applied: false,
+        explanation: `A regra "${rule.name}" exige área ${String(condition.area)}, mas a área atual é ${input.area || "não definida"}.`,
+      };
+    }
+    if (
+      condition.project_id &&
+      normalizeComparable(condition.project_id) !==
+        normalizeComparable(input.project_id)
+    ) {
+      return {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        applied: false,
+        explanation: `A regra "${rule.name}" não foi aplicada porque o projeto atual não corresponde ao configurado.`,
+      };
+    }
+    if (!matchesCondition(input, condition)) {
+      return {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        applied: false,
+        explanation: `A regra "${rule.name}" não foi aplicada porque tags ou metadados não correspondem às condições.`,
+      };
+    }
+
+    return {
+      ruleId: rule.id,
+      ruleName: rule.name,
+      applied: true,
+      explanation: `A regra "${rule.name}" foi aplicada porque ${describeCondition(condition)}.`,
     };
   });
 }

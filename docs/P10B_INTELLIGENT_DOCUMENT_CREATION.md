@@ -444,3 +444,5 @@ Quando o ciclo 14 está disponível:
 Sem a migration P-10C, o carregamento usa fallback defensivo e toda a experiência P-10B/P-10B.1 continua funcional.
 
 A P-10C.1 diferencia schema ausente, tabelas vazias, bloqueio por RLS e políticas não aplicáveis. Esses estados não alteram as heurísticas locais: quando nenhuma regra aplicável é encontrada, a P-10B permanece como fallback.
+
+A P-10C.2 apresenta esse fallback como modo heurístico e adiciona orientação de conformidade apenas à criação inteligente. O diálogo antigo continua usando somente o contrato de validação P-10B.1.

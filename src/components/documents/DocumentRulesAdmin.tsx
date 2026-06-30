@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentRuleForm } from "@/components/documents/DocumentRuleForm";
+import { DocumentPolicySimulator } from "@/components/documents/DocumentPolicySimulator";
 import { DocumentTemplateForm } from "@/components/documents/DocumentTemplateForm";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -205,6 +206,12 @@ export function DocumentRulesAdmin() {
           </CardContent>
         </Card>
       </div>
+
+      <DocumentPolicySimulator
+        templates={governance.templates}
+        rules={governance.rules}
+        projects={governance.projects}
+      />
 
       <Tabs defaultValue="templates">
         <TabsList>

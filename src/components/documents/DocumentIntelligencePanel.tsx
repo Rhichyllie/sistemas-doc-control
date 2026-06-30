@@ -3,6 +3,7 @@ import {
   ArrowRight,
   BrainCircuit,
   CheckCircle2,
+  CircleAlert,
   Lightbulb,
   ShieldAlert,
 } from "lucide-react";
@@ -18,10 +19,8 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import type { DocumentRiskLevel } from "@/lib/documentIntelligence";
-import type {
-  GovernanceRiskProfile,
-  RequiredFieldChecklistItem,
-} from "@/lib/documentTemplateRules";
+import type { DocumentPolicyGuidance } from "@/lib/documentPolicyGuidance";
+import type { GovernanceRiskProfile } from "@/lib/documentTemplateRules";
 
 const RISK_META: Record<
   DocumentRiskLevel,
@@ -55,19 +54,9 @@ interface DocumentIntelligencePanelProps {
   warnings: string[];
   missingItems: string[];
   configurationMessage: string | null;
-  templateName: string | null;
-  ruleExplanations: Array<{
-    ruleId: string;
-    ruleName: string;
-    reason: string;
-    impact: string;
-    severity: string;
-  }>;
-  requiredFieldChecklist: RequiredFieldChecklistItem[];
   governanceScore: number;
   governanceRiskProfile: GovernanceRiskProfile;
-  governanceWarnings: string[];
-  blockingReason: string | null;
+  policyGuidance: DocumentPolicyGuidance;
   suggestionsApplied: boolean;
   suggestionsDisabled: boolean;
   onApplySuggestions: () => void;
@@ -84,13 +73,9 @@ export function DocumentIntelligencePanel({
   warnings,
   missingItems,
   configurationMessage,
-  templateName,
-  ruleExplanations,
-  requiredFieldChecklist,
   governanceScore,
   governanceRiskProfile,
-  governanceWarnings,
-  blockingReason,
+  policyGuidance,
   suggestionsApplied,
   suggestionsDisabled,
   onApplySuggestions,
@@ -132,46 +117,44 @@ export function DocumentIntelligencePanel({
             </p>
           </div>
 
-          {(templateName || ruleExplanations.length > 0) && (
-            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-                    Governança enterprise
-                  </p>
-                  <p className="mt-1 text-sm font-medium">
-                    {templateName ?? "Políticas da organização"}
-                  </p>
-                </div>
-                <Badge variant="outline">{governanceScore}% aderente</Badge>
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                  Política aplicada
+                </p>
+                <p className="mt-1 text-sm font-medium">
+                  {policyGuidance.title}
+                </p>
               </div>
-              {ruleExplanations.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {ruleExplanations.slice(0, 3).map((rule) => (
-                    <div key={rule.ruleId} className="text-xs">
-                      <span className="font-medium">{rule.ruleName}:</span>{" "}
-                      <span className="text-muted-foreground">
-                        {rule.impact}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {governanceRiskProfile === "critical" && (
-                <p className="mt-2 text-xs font-medium text-destructive">
-                  Política crítica: todos os requisitos devem ser atendidos.
-                </p>
-              )}
-              {governanceWarnings.map((warning) => (
-                <p
-                  key={warning}
-                  className="mt-2 text-xs font-medium text-amber-800"
-                >
-                  {warning}
-                </p>
-              ))}
+              <Badge variant="outline">{governanceScore}% aderente</Badge>
             </div>
-          )}
+            <p className="mt-2 text-xs text-muted-foreground">
+              {policyGuidance.summary}
+            </p>
+            {policyGuidance.appliedPolicyNames.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {policyGuidance.appliedPolicyNames.map((name) => (
+                  <Badge key={name} variant="secondary">
+                    {name}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            {policyGuidance.explanation.slice(0, 3).map((explanation) => (
+              <p
+                key={explanation}
+                className="mt-2 text-xs text-muted-foreground"
+              >
+                {explanation}
+              </p>
+            ))}
+            {governanceRiskProfile === "critical" && (
+              <p className="mt-2 text-xs font-medium text-destructive">
+                Política crítica: todos os requisitos devem ser atendidos.
+              </p>
+            )}
+          </div>
 
           <div className="rounded-lg border bg-muted/30 p-3">
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -198,10 +181,16 @@ export function DocumentIntelligencePanel({
               {suggestionsApplied ? (
                 <>
                   <CheckCircle2 className="h-4 w-4" />
-                  Sugestões aplicadas
+                  {policyGuidance.appliedPolicyNames.length
+                    ? "Exigências aplicadas"
+                    : "Sugestões aplicadas"}
                 </>
               ) : (
-                "Aplicar sugestões"
+                <>
+                  {policyGuidance.appliedPolicyNames.length
+                    ? "Aplicar exigências"
+                    : "Aplicar sugestões"}
+                </>
               )}
             </Button>
           </div>
@@ -216,28 +205,62 @@ export function DocumentIntelligencePanel({
               Campos obrigatórios
             </p>
             <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-1">
-              {requiredFieldChecklist.map((item) => (
+              {policyGuidance.requiredItems.map((item) => (
                 <div
                   key={item.field}
-                  className="flex items-center justify-between gap-2 text-xs"
+                  className={`rounded-md border p-2.5 text-xs ${
+                    item.isSatisfied
+                      ? "border-emerald-200 bg-emerald-50"
+                      : "border-amber-200 bg-amber-50"
+                  }`}
                 >
-                  <span className="text-muted-foreground">{item.label}</span>
-                  <Badge
-                    variant={item.isComplete ? "secondary" : "destructive"}
-                    className="h-5"
-                  >
-                    {item.isComplete ? "OK" : "Pendente"}
-                  </Badge>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      {item.isSatisfied ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" />
+                      ) : (
+                        <CircleAlert className="h-3.5 w-3.5 text-amber-700" />
+                      )}
+                      {item.label}
+                    </span>
+                    <Badge
+                      variant={item.isSatisfied ? "secondary" : "destructive"}
+                      className="h-5"
+                    >
+                      {item.isSatisfied ? "Atendido" : "Pendente"}
+                    </Badge>
+                  </div>
+                  <p className="mt-1.5 text-muted-foreground">{item.reason}</p>
                 </div>
               ))}
             </div>
           </div>
 
-          {blockingReason && (
+          {policyGuidance.status === "blocked" && (
             <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              <strong>Criação bloqueada:</strong> {blockingReason}
+              <strong>Criação bloqueada por política documental.</strong>
+              <ul className="mt-1.5 list-disc space-y-1 pl-4">
+                {policyGuidance.blockingReasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
             </div>
           )}
+
+          <div className="rounded-md border px-3 py-2">
+            <p className="text-xs font-semibold">Próximas ações</p>
+            {policyGuidance.nextActions.length > 0 ? (
+              <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                {policyGuidance.nextActions.map((action) => (
+                  <li key={action}>{action}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-xs text-emerald-700">
+                Documento pronto para criação.
+              </p>
+            )}
+          </div>
 
           {warnings.length > 0 && (
             <div className="space-y-2">

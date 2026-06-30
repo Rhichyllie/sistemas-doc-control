@@ -13,6 +13,7 @@ import type {
   IntelligentDocumentFormState,
 } from "@/hooks/useDocumentCreationIntelligence";
 import type { DocumentRiskLevel } from "@/lib/documentIntelligence";
+import type { DocumentPolicyGuidance } from "@/lib/documentPolicyGuidance";
 
 interface DocumentCreationSummaryProps {
   form: IntelligentDocumentFormState;
@@ -23,6 +24,7 @@ interface DocumentCreationSummaryProps {
   templateName: string | null;
   governanceScore: number;
   appliedRulesCount: number;
+  policyGuidance: DocumentPolicyGuidance;
 }
 
 export function DocumentCreationSummary({
@@ -34,6 +36,7 @@ export function DocumentCreationSummary({
   templateName,
   governanceScore,
   appliedRulesCount,
+  policyGuidance,
 }: DocumentCreationSummaryProps) {
   const type = documentTypes.find((option) => option.value === form.doc_type);
   const project = projects.find((option) => option.id === form.project_id);
@@ -126,6 +129,28 @@ export function DocumentCreationSummary({
             </span>
           </div>
         )}
+
+        <div
+          className={
+            policyGuidance.status === "blocked"
+              ? "rounded-lg border border-destructive/30 bg-destructive/5 p-3"
+              : policyGuidance.status === "ready"
+                ? "rounded-lg border border-emerald-200 bg-emerald-50 p-3"
+                : "rounded-lg border bg-muted/30 p-3"
+          }
+        >
+          <p className="text-sm font-semibold">{policyGuidance.title}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {policyGuidance.summary}
+          </p>
+          {policyGuidance.blockingReasons.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-destructive">
+              {policyGuidance.blockingReasons.slice(0, 4).map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          )}
+        </div>
 
         <div className="rounded-lg bg-muted/40 p-3 text-sm">
           Próxima revisão: <strong>{formattedReviewDate}</strong>
