@@ -896,6 +896,7 @@ export function DocumentCreationStudio() {
               codePreview={intelligence.codePreview}
               codePreviewLoading={intelligence.codePreviewLoading}
               codeCompatibilityMessage={intelligence.codeCompatibilityMessage}
+              suggestedTramite={intelligence.suggestedTramite}
               reviewPeriodLabel={
                 reviewScheduleMode === "date"
                   ? "Data específica"
@@ -996,6 +997,7 @@ export function DocumentCreationStudio() {
           codePreview={intelligence.codePreview}
           codePreviewLoading={intelligence.codePreviewLoading}
           codeCompatibilityMessage={intelligence.codeCompatibilityMessage}
+          suggestedTramite={intelligence.suggestedTramite}
           reviewPeriodLabel={
             reviewScheduleMode === "date"
               ? "Data específica"
@@ -1114,6 +1116,10 @@ export function DocumentCreationStudio() {
           codePreviewLoading={intelligence.codePreviewLoading}
           codeCompatibilityMessage={intelligence.codeCompatibilityMessage}
           selectedProject={intelligence.selectedProject ?? null}
+          suggestedTramite={intelligence.suggestedTramite}
+          tramiteCompatibilityMessage={
+            intelligence.tramiteCompatibilityMessage
+          }
           suggestionsApplied={suggestionsApplied}
           suggestionsDisabled={
             intelligence.isLoadingConfigurations || creation.loading

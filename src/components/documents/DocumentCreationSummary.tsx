@@ -1,4 +1,4 @@
-import { FileText, FolderKanban, ShieldCheck } from "lucide-react";
+import { FileText, FolderKanban, ShieldCheck, Workflow } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { DocumentCodePreviewCard } from "@/components/documents/DocumentCodePreviewCard";
 import {
@@ -16,6 +16,7 @@ import type {
 import type { DocumentRiskLevel } from "@/lib/documentIntelligence";
 import type { DocumentPolicyGuidance } from "@/lib/documentPolicyGuidance";
 import type { DocumentCodePreview } from "@/lib/documentCodePatterns";
+import type { DocumentTramiteTemplate } from "@/lib/documentTramiteModel";
 
 interface DocumentCreationSummaryProps {
   form: IntelligentDocumentFormState;
@@ -31,6 +32,7 @@ interface DocumentCreationSummaryProps {
   codePreviewLoading: boolean;
   codeCompatibilityMessage: string | null;
   reviewPeriodLabel?: string;
+  suggestedTramite: DocumentTramiteTemplate | null;
 }
 
 export function DocumentCreationSummary({
@@ -47,6 +49,7 @@ export function DocumentCreationSummary({
   codePreviewLoading,
   codeCompatibilityMessage,
   reviewPeriodLabel,
+  suggestedTramite,
 }: DocumentCreationSummaryProps) {
   const type = documentTypes.find((option) => option.value === form.doc_type);
   const project = projects.find((option) => option.id === form.project_id);
@@ -152,6 +155,19 @@ export function DocumentCreationSummary({
               {appliedRulesCount === 1 ? "" : "s"} aplicada
               {appliedRulesCount === 1 ? "" : "s"}
             </span>
+          </div>
+        )}
+
+        {suggestedTramite && (
+          <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm dark:border-violet-800 dark:bg-violet-950/30">
+            <div className="flex items-center gap-2 font-semibold">
+              <Workflow className="h-4 w-4 text-violet-700" />
+              Trâmite sugerido: {suggestedTramite.name}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {suggestedTramite.current_version?.graph.nodes.length ?? 0}{" "}
+              etapas. A criação não inicia o modelo automaticamente nesta fase.
+            </p>
           </div>
         )}
 

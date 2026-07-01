@@ -4,6 +4,7 @@ import { DOC_TYPES } from "@/lib/constants";
 import { useDocumentTemplatesAndRules } from "@/hooks/useDocumentTemplatesAndRules";
 import { useDocumentCodePreview } from "@/hooks/useDocumentCodePreview";
 import { useProjectOptions } from "@/hooks/useProjectOptions";
+import { useDocumentTramiteSuggestion } from "@/hooks/useDocumentTramiteSuggestion";
 import {
   assessDocumentCompleteness,
   buildCreationRecommendations,
@@ -257,6 +258,11 @@ export function useDocumentCreationIntelligence(
     projectId: form.project_id || null,
     projectCode: selectedProject?.code || null,
   });
+  const tramiteSuggestion = useDocumentTramiteSuggestion({
+    docType: form.doc_type || inferredType,
+    area: form.area || inferredArea,
+    projectId: form.project_id || null,
+  });
   const effectiveType = inferredType ?? (form.doc_type as DocumentTypeCode);
   const configuredReviewPeriod = documentTypes.find(
     (type) => type.value === effectiveType,
@@ -499,6 +505,8 @@ export function useDocumentCreationIntelligence(
     codePreviewLoading: coding.isLoading,
     codePreviewError: coding.error,
     codeCompatibilityMessage: coding.compatibilityMessage,
+    suggestedTramite: tramiteSuggestion.suggestedTramite,
+    tramiteCompatibilityMessage: tramiteSuggestion.compatibilityMessage,
     applySuggestion,
   };
 }

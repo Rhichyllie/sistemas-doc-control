@@ -927,3 +927,10 @@ a mensagem que o usuário verá na criação.
 - não existe campo de responsável na criação inteligente atual;
 - palavra-chave considera título ou descrição informados, sem ler arquivo;
 - calendário útil, feriados e SLA permanecem fora desta fase.
+
+## Integração P-12
+
+Políticas e templates de criação continuam definindo requisitos e padrões do
+documento. A P-12 acrescenta uma sugestão separada de caminho documental
+publicado. Nesta fase, regras P-10C não executam trâmites e a ausência de modelo
+P-12 nunca bloqueia a criação.

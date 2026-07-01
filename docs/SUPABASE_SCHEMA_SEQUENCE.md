@@ -23,8 +23,9 @@ A sequência lógica oficial é:
 15. `14_TRAMITA_document_templates_and_rules`
 16. `15_TRAMITA_intelligent_document_coding`
 17. `16_TRAMITA_projects_operational_contexts`
+18. `17_TRAMITA_document_tramite_modeler`
 
-No repositório, os oito últimos ciclos correspondem a:
+No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 
 - `supabase/migrations/20260629_09_tramita_enterprise_schema_alignment_bridge.sql`;
 - `supabase/migrations/20260629_p9c1_decision_and_correction_cycle.sql`;
@@ -34,6 +35,7 @@ No repositório, os oito últimos ciclos correspondem a:
 - `supabase/migrations/20260629_p10c_document_templates_and_rules.sql`.
 - `supabase/migrations/20260629_p11_intelligent_document_coding.sql`.
 - `supabase/migrations/20260630_p11a_projects_operational_contexts.sql`.
+- `supabase/migrations/20260630_p12_document_tramite_modeler.sql`.
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
@@ -84,6 +86,13 @@ O ciclo 16 transforma o catálogo legado de projetos em uma entidade
 operacional/documental multi-organização. Ele preserva colunas e dados antigos,
 adiciona contexto de obra/contrato/unidade, status operacionais, RLS e
 compatibilidade para projetos sem `org_id` ou código.
+
+## P-12 — Modelador de Trâmites Documentais
+
+O ciclo 17 cria modelos versionados, grafos, projeções de etapas/conexões,
+eventos e publicação transacional. Ele não substitui `approval_flows` e não
+executa modelos em documentos. A geração segura de instâncias fica reservada
+para uma fase posterior.
 
 ## Hardening P-9A.1 — Grupos de Aprovação
 

@@ -7,6 +7,7 @@ import {
   FolderKanban,
   Lightbulb,
   ShieldAlert,
+  Workflow,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { DocumentCodePreviewCard } from "@/components/documents/DocumentCodePreviewCard";
@@ -28,6 +29,7 @@ import {
   getProjectStatusLabel,
   type ProjectOperationalContext,
 } from "@/lib/projectOperationalContext";
+import type { DocumentTramiteTemplate } from "@/lib/documentTramiteModel";
 
 const RISK_META: Record<
   DocumentRiskLevel,
@@ -71,6 +73,8 @@ interface DocumentIntelligencePanelProps {
   codePreviewLoading: boolean;
   codeCompatibilityMessage: string | null;
   selectedProject: ProjectOperationalContext | null;
+  suggestedTramite: DocumentTramiteTemplate | null;
+  tramiteCompatibilityMessage: string | null;
 }
 
 export function DocumentIntelligencePanel({
@@ -94,6 +98,8 @@ export function DocumentIntelligencePanel({
   codePreviewLoading,
   codeCompatibilityMessage,
   selectedProject,
+  suggestedTramite,
+  tramiteCompatibilityMessage,
 }: DocumentIntelligencePanelProps) {
   const risk = RISK_META[riskLevel];
 
@@ -231,6 +237,33 @@ export function DocumentIntelligencePanel({
                     .join(" · ")}
                 </p>
               </div>
+            )}
+            {suggestedTramite && (
+              <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 dark:border-violet-800 dark:bg-violet-950/30">
+                <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                  <Workflow className="h-3.5 w-3.5" />
+                  Trâmite sugerido
+                </p>
+                <p className="mt-2 text-sm font-semibold">
+                  {suggestedTramite.name}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {suggestedTramite.current_version?.graph.nodes.length ?? 0}{" "}
+                  etapas · primeira ação:{" "}
+                  {suggestedTramite.current_version?.graph.nodes.find(
+                    (node) => node.node_type !== "start",
+                  )?.label ?? "a definir"}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Sugestão informativa. A execução automática ainda não está
+                  habilitada.
+                </p>
+              </div>
+            )}
+            {tramiteCompatibilityMessage && (
+              <p className="px-1 text-xs text-amber-700 dark:text-amber-300">
+                {tramiteCompatibilityMessage}
+              </p>
             )}
             <DocumentCodePreviewCard
               preview={codePreview}

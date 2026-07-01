@@ -29,6 +29,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/authenticat
 import { Route as AuthenticatedConfiguracoesRouteImport } from './routes/authenticated/configuracoes'
 import { Route as AuthenticatedAtividadesRouteImport } from './routes/authenticated/atividades'
 import { Route as AuthenticatedDocumentsDocumentIdRouteImport } from './routes/authenticated/documents.$documentId'
+import { Route as AuthenticatedDocumentosTramitesRouteImport } from './routes/authenticated/documentos/tramites'
 import { Route as AuthenticatedDocumentosRegrasRouteImport } from './routes/authenticated/documentos/regras'
 import { Route as AuthenticatedDocumentosNovoInteligenteRouteImport } from './routes/authenticated/documentos/novo-inteligente'
 import { Route as AuthenticatedDocumentosCodificacaoRouteImport } from './routes/authenticated/documentos/codificacao'
@@ -142,6 +143,12 @@ const AuthenticatedDocumentsDocumentIdRoute =
     path: '/$documentId',
     getParentRoute: () => AuthenticatedDocumentsRoute,
   } as any)
+const AuthenticatedDocumentosTramitesRoute =
+  AuthenticatedDocumentosTramitesRouteImport.update({
+    id: '/documentos/tramites',
+    path: '/documentos/tramites',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDocumentosRegrasRoute =
   AuthenticatedDocumentosRegrasRouteImport.update({
     id: '/documentos/regras',
@@ -184,6 +191,7 @@ export interface FileRoutesByFullPath {
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
+  '/authenticated/documentos/tramites': typeof AuthenticatedDocumentosTramitesRoute
   '/authenticated/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
 }
 export interface FileRoutesByTo {
@@ -209,6 +217,7 @@ export interface FileRoutesByTo {
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
+  '/authenticated/documentos/tramites': typeof AuthenticatedDocumentosTramitesRoute
   '/authenticated/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
 }
 export interface FileRoutesById {
@@ -235,6 +244,7 @@ export interface FileRoutesById {
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
+  '/authenticated/documentos/tramites': typeof AuthenticatedDocumentosTramitesRoute
   '/authenticated/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
 }
 export interface FileRouteTypes {
@@ -262,6 +272,7 @@ export interface FileRouteTypes {
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
+    | '/authenticated/documentos/tramites'
     | '/authenticated/documents/$documentId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -287,6 +298,7 @@ export interface FileRouteTypes {
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
+    | '/authenticated/documentos/tramites'
     | '/authenticated/documents/$documentId'
   id:
     | '__root__'
@@ -312,6 +324,7 @@ export interface FileRouteTypes {
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
+    | '/authenticated/documentos/tramites'
     | '/authenticated/documents/$documentId'
   fileRoutesById: FileRoutesById
 }
@@ -464,6 +477,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDocumentsDocumentIdRouteImport
       parentRoute: typeof AuthenticatedDocumentsRoute
     }
+    '/authenticated/documentos/tramites': {
+      id: '/authenticated/documentos/tramites'
+      path: '/documentos/tramites'
+      fullPath: '/authenticated/documentos/tramites'
+      preLoaderRoute: typeof AuthenticatedDocumentosTramitesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/authenticated/documentos/regras': {
       id: '/authenticated/documentos/regras'
       path: '/documentos/regras'
@@ -522,6 +542,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDocumentosCodificacaoRoute: typeof AuthenticatedDocumentosCodificacaoRoute
   AuthenticatedDocumentosNovoInteligenteRoute: typeof AuthenticatedDocumentosNovoInteligenteRoute
   AuthenticatedDocumentosRegrasRoute: typeof AuthenticatedDocumentosRegrasRoute
+  AuthenticatedDocumentosTramitesRoute: typeof AuthenticatedDocumentosTramitesRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -545,6 +566,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDocumentosNovoInteligenteRoute:
     AuthenticatedDocumentosNovoInteligenteRoute,
   AuthenticatedDocumentosRegrasRoute: AuthenticatedDocumentosRegrasRoute,
+  AuthenticatedDocumentosTramitesRoute: AuthenticatedDocumentosTramitesRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

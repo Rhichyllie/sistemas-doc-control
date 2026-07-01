@@ -467,6 +467,13 @@ Sem a P-11A, o catálogo legado continua disponível por fallback. Projetos
 arquivados, cancelados ou encerrados não aparecem por padrão para novos
 documentos.
 
+## Integração P-12
+
+Quando o ciclo P-12 estiver disponível, o Novo Documento Inteligente pode
+mostrar um modelo de trâmite publicado compatível com tipo, área e projeto. A
+sugestão é informativa, não bloqueia a criação e não gera `approval_flows`,
+tarefas ou notificações. A execução transacional fica para fase posterior.
+
 ## Revisão flexível — P-10C.3
 
 O Novo Documento Inteligente permite informar o período de revisão em dias,
