@@ -71,6 +71,22 @@ operacional/documental multi-organização. Ele preserva colunas e dados antigos
 adiciona contexto de obra/contrato/unidade, status operacionais, RLS e
 compatibilidade para projetos sem `org_id` ou código.
 
+## Hardening P-9A.1 — Grupos de Aprovação
+
+A P-9A.1 é um repair complementar, não um novo ciclo principal. O arquivo
+`supabase/migrations/20260630_p9a1_approval_groups_code_repair.sql` deve ser
+aplicado depois da criação das tabelas de grupos (08/P-9A). Ele:
+
+- alinha instalações em que `approval_groups.code` é obrigatório;
+- adiciona e preenche `code` onde a fundação P-9A original não o criou;
+- normaliza códigos e protege unicidade por organização;
+- mantém grupo opcional no workflow;
+- não substitui o bridge 09 dos aliases de membros.
+
+O frontend reconhece separadamente schema ausente, parcial, incompatível,
+legado, vazio e bloqueado por RLS. Um erro de validação de dados não é mais
+reportado como migration ausente.
+
 ## P-10B — Criação Documental Inteligente
 
 A P-10B não exige migration obrigatória. Ela usa o schema existente e aplica fallbacks locais quando tabelas de configuração ou campos opcionais não estão disponíveis.

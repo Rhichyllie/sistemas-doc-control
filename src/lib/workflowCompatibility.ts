@@ -64,6 +64,14 @@ const WORKFLOW_FOUNDATION_TERMS = [
   'relationship',
 ]
 
+const WORKFLOW_FOUNDATION_MISSING_SCHEMA_TERMS = [
+  'does not exist',
+  'could not find',
+  'schema cache',
+  'undefined column',
+  'unknown column',
+]
+
 export function isWorkflowFoundationUnavailable(error: unknown) {
   if (!error || typeof error !== 'object') return false
   const record = error as Record<string, unknown>
@@ -73,8 +81,16 @@ export function isWorkflowFoundationUnavailable(error: unknown) {
     .join(' ')
     .toLowerCase()
 
-  return WORKFLOW_FOUNDATION_ERROR_CODES.has(code)
-    || WORKFLOW_FOUNDATION_TERMS.some((term) => message.includes(term))
+  if (WORKFLOW_FOUNDATION_ERROR_CODES.has(code)) return true
+
+  const mentionsWorkflowSchema = WORKFLOW_FOUNDATION_TERMS.some(
+    (term) => message.includes(term),
+  )
+  const describesMissingSchema = WORKFLOW_FOUNDATION_MISSING_SCHEMA_TERMS.some(
+    (term) => message.includes(term),
+  )
+
+  return mentionsWorkflowSchema && describesMissingSchema
 }
 
 export function isWorkflowRpcUnavailable(error: unknown) {

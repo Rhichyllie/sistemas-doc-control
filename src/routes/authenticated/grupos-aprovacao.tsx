@@ -17,6 +17,12 @@ import {
   type ApprovalGroupRecord,
   useApprovalGroups,
 } from '@/hooks/useApprovalGroups'
+import {
+  describeApprovalGroupScope,
+  normalizeApprovalGroupCode,
+  suggestApprovalGroupCode,
+  validateApprovalGroupInput,
+} from '@/lib/approvalGroupUtils'
 import { USER_ROLES } from '@/lib/constants'
 import { toast } from 'sonner'
 
@@ -32,16 +38,20 @@ const MEMBER_ROLES = [
 
 interface GroupFormState {
   name: string
+  code: string
   description: string
   scope: string
   project_id: string | null
+  is_active: boolean
 }
 
 const EMPTY_GROUP_FORM: GroupFormState = {
   name: '',
+  code: '',
   description: '',
   scope: 'organization',
   project_id: null,
+  is_active: true,
 }
 
 function getUserRoleLabel(role: string) {
@@ -61,8 +71,9 @@ function ApprovalGroupsPage() {
     users,
     isLoading,
     error,
-    canUseGroups,
+    canCreateGroups,
     canManageMembers,
+    schemaStatus,
     compatibilityMessage,
     createGroup,
     updateGroup,
@@ -70,11 +81,13 @@ function ApprovalGroupsPage() {
     addMember,
     removeMember,
     updateMemberRole,
+    clearError,
     refresh,
   } = useApprovalGroups(Boolean(canManage))
   const [groupDialogOpen, setGroupDialogOpen] = useState(false)
   const [editingGroup, setEditingGroup] = useState<ApprovalGroupRecord | null>(null)
   const [groupForm, setGroupForm] = useState<GroupFormState>(EMPTY_GROUP_FORM)
+  const [codeManuallyEdited, setCodeManuallyEdited] = useState(false)
   const [memberGroup, setMemberGroup] = useState<ApprovalGroupRecord | null>(null)
   const [memberUserId, setMemberUserId] = useState('')
   const [memberRole, setMemberRole] = useState('member')
@@ -102,7 +115,9 @@ function ApprovalGroupsPage() {
   function openCreateGroup() {
     setEditingGroup(null)
     setGroupForm(EMPTY_GROUP_FORM)
+    setCodeManuallyEdited(false)
     setValidationError(null)
+    clearError()
     setGroupDialogOpen(true)
   }
 
@@ -110,24 +125,33 @@ function ApprovalGroupsPage() {
     setEditingGroup(group)
     setGroupForm({
       name: group.name,
+      code: group.code,
       description: group.description ?? '',
       scope: group.scope,
       project_id: group.project_id,
+      is_active: group.is_active,
     })
+    setCodeManuallyEdited(true)
     setValidationError(null)
+    clearError()
     setGroupDialogOpen(true)
   }
 
   async function handleSaveGroup() {
-    if (!groupForm.name.trim()) {
-      setValidationError('Informe o nome do grupo.')
+    const validation = validateApprovalGroupInput(groupForm)
+    if (!validation.isValid) {
+      setValidationError(
+        validation.errors.name ?? validation.errors.code ?? 'Revise os dados do grupo.',
+      )
       return
     }
 
+    const normalizedForm = { ...groupForm, code: validation.normalizedCode }
+    setGroupForm(normalizedForm)
     setSaving(true)
     const success = editingGroup
-      ? await updateGroup(editingGroup.id, groupForm)
-      : await createGroup(groupForm)
+      ? await updateGroup(editingGroup.id, normalizedForm)
+      : await createGroup(normalizedForm)
     setSaving(false)
 
     if (success) {
@@ -148,6 +172,7 @@ function ApprovalGroupsPage() {
     setMemberUserId('')
     setMemberRole('member')
     setValidationError(null)
+    clearError()
   }
 
   async function handleAddMember() {
@@ -180,7 +205,7 @@ function ApprovalGroupsPage() {
             Organize responsáveis reutilizáveis para revisão e aprovação de documentos.
           </p>
         </div>
-        <Button onClick={openCreateGroup} disabled={!canUseGroups}>
+        <Button onClick={openCreateGroup} disabled={!canCreateGroups}>
           <Plus className="h-4 w-4" /> Novo grupo
         </Button>
       </div>
@@ -188,11 +213,21 @@ function ApprovalGroupsPage() {
       {compatibilityMessage && (
         <Alert>
           <ShieldCheck className="h-4 w-4" />
-          <AlertTitle>Modo de compatibilidade</AlertTitle>
+          <AlertTitle>
+            {schemaStatus === 'rls_blocked'
+              ? 'Acesso bloqueado'
+              : schemaStatus === 'schema_missing'
+                ? 'Schema não instalado'
+                : schemaStatus === 'schema_incompatible'
+                  ? 'Repair de schema necessário'
+                  : schemaStatus === 'schema_partial'
+                    ? 'Schema parcial'
+                    : 'Compatibilidade de schema'}
+          </AlertTitle>
           <AlertDescription>{compatibilityMessage}</AlertDescription>
         </Alert>
       )}
-      {error && (
+      {error && !groupDialogOpen && !memberGroup && (
         <Alert variant="destructive">
           <AlertTitle>Não foi possível concluir a operação</AlertTitle>
           <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
@@ -211,12 +246,12 @@ function ApprovalGroupsPage() {
 
       {isLoading ? (
         <Card><CardContent className="p-6 text-muted-foreground">Carregando grupos de aprovação...</CardContent></Card>
-      ) : !canUseGroups ? (
+      ) : groups.length === 0 && !canCreateGroups ? (
         <Card>
           <EmptyState
             icon={<UsersRound className="h-5 w-5" />}
             title="Administração de grupos indisponível."
-            description="Aplique a migration P-9A no Supabase para criar as tabelas de grupos e membros."
+            description={compatibilityMessage ?? 'Verifique o contrato e as políticas das tabelas de grupos.'}
           />
         </Card>
       ) : groups.length === 0 ? (
@@ -225,7 +260,7 @@ function ApprovalGroupsPage() {
             icon={<UsersRound className="h-5 w-5" />}
             title="Nenhum grupo de aprovação criado."
             description="Crie um grupo para reunir revisores, aprovadores ou responsáveis de uma área."
-            action={<Button onClick={openCreateGroup}>Criar primeiro grupo</Button>}
+            action={<Button onClick={openCreateGroup} disabled={!canCreateGroups}>Criar primeiro grupo</Button>}
           />
         </Card>
       ) : (
@@ -240,11 +275,12 @@ function ApprovalGroupsPage() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <CardTitle>{group.name}</CardTitle>
+                      <Badge variant="outline" className="font-mono">{group.code}</Badge>
                       <Badge variant={group.is_active ? 'default' : 'secondary'}>
                         {group.is_active ? 'Ativo' : 'Inativo'}
                       </Badge>
                       <Badge variant="outline">
-                        {group.scope === 'project' ? 'Projeto' : 'Organização'}
+                        {describeApprovalGroupScope(group)}
                       </Badge>
                     </div>
                     <CardDescription className="mt-1">
@@ -252,7 +288,7 @@ function ApprovalGroupsPage() {
                     </CardDescription>
                   </div>
                   <div className="flex flex-wrap justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => openEditGroup(group)}>
+                    <Button size="sm" variant="outline" disabled={!canCreateGroups} onClick={() => openEditGroup(group)}>
                       <Pencil className="h-4 w-4" /> Editar
                     </Button>
                     <Button
@@ -266,6 +302,7 @@ function ApprovalGroupsPage() {
                     <Button
                       size="sm"
                       variant={group.is_active ? 'destructive' : 'secondary'}
+                      disabled={!canCreateGroups}
                       onClick={() => handleToggleGroup(group)}
                     >
                       {group.is_active ? 'Desativar' : 'Ativar'}
@@ -352,11 +389,40 @@ function ApprovalGroupsPage() {
                 id="group-name"
                 value={groupForm.name}
                 onChange={(event) => {
-                  setGroupForm((current) => ({ ...current, name: event.target.value }))
+                  const name = event.target.value
+                  setGroupForm((current) => ({
+                    ...current,
+                    name,
+                    code: codeManuallyEdited ? current.code : suggestApprovalGroupCode(name),
+                  }))
                   setValidationError(null)
+                  clearError()
                 }}
                 placeholder="Ex.: Engenharia"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="group-code">Código do grupo</Label>
+              <Input
+                id="group-code"
+                value={groupForm.code}
+                onChange={(event) => {
+                  setCodeManuallyEdited(true)
+                  setGroupForm((current) => ({
+                    ...current,
+                    code: normalizeApprovalGroupCode(event.target.value),
+                  }))
+                  setValidationError(null)
+                  clearError()
+                }}
+                placeholder="Ex.: APROVACAO-SST"
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Preview: <span className="font-mono font-medium text-foreground">
+                  {normalizeApprovalGroupCode(groupForm.code) || 'CODIGO-DO-GRUPO'}
+                </span>
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="group-description">Descrição</Label>
@@ -384,7 +450,24 @@ function ApprovalGroupsPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Situação</Label>
+              <Select
+                value={groupForm.is_active ? 'active' : 'inactive'}
+                onValueChange={(value) => setGroupForm((current) => ({
+                  ...current,
+                  is_active: value === 'active',
+                }))}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Ativo</SelectItem>
+                  <SelectItem value="inactive">Inativo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             {validationError && <p className="text-sm text-destructive">{validationError}</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setGroupDialogOpen(false)}>Cancelar</Button>
@@ -437,6 +520,7 @@ function ApprovalGroupsPage() {
               </Select>
             </div>
             {validationError && <p className="text-sm text-destructive">{validationError}</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setMemberGroup(null)}>Cancelar</Button>

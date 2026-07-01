@@ -70,9 +70,12 @@ export function WorkflowStepRoutingFields({
           <SelectContent>
             <SelectItem value="role">Papel</SelectItem>
             <SelectItem value="user">Usuário específico</SelectItem>
-            <SelectItem value="group" disabled={!canUseGroups}>Grupo de aprovação</SelectItem>
+            <SelectItem value="group" disabled={!canUseGroups || groups.length === 0}>Grupo de aprovação</SelectItem>
           </SelectContent>
         </Select>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Você pode aprovar por papel, usuário específico ou grupo reutilizável.
+        </p>
         {!canUseGroups && (
           <p className="mt-1 text-xs text-muted-foreground">
             {compatibilityMessage ?? 'Grupos de aprovação ainda não estão disponíveis neste ambiente.'}

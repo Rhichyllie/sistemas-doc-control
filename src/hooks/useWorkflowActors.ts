@@ -16,6 +16,7 @@ export interface WorkflowActorUser {
 export interface ApprovalGroup {
   id: string
   org_id: string
+  code: string
   name: string
   description: string | null
   scope: string
@@ -24,6 +25,21 @@ export interface ApprovalGroup {
   metadata: Record<string, unknown>
   created_at: string
   updated_at: string
+}
+
+interface ApprovalGroupCompatibilityRow {
+  id: string
+  org_id: string
+  code?: string | null
+  name: string
+  description?: string | null
+  scope?: string | null
+  project_id?: string | null
+  is_active?: boolean | null
+  active?: boolean | null
+  metadata?: Record<string, unknown> | null
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 export interface ApprovalGroupMember {
@@ -63,6 +79,23 @@ function normalizeGroupMember(
     role: member.role ?? member.role_in_group ?? 'member',
     is_active: member.is_active ?? member.active ?? true,
     created_at: member.created_at,
+  }
+}
+
+function normalizeApprovalGroup(group: ApprovalGroupCompatibilityRow): ApprovalGroup {
+  const createdAt = group.created_at ?? new Date(0).toISOString()
+  return {
+    id: group.id,
+    org_id: group.org_id,
+    code: group.code ?? '',
+    name: group.name,
+    description: group.description ?? null,
+    scope: group.scope ?? 'organization',
+    project_id: group.project_id ?? null,
+    is_active: group.is_active ?? group.active ?? true,
+    metadata: group.metadata ?? {},
+    created_at: createdAt,
+    updated_at: group.updated_at ?? createdAt,
   }
 }
 
@@ -111,24 +144,53 @@ export function useWorkflowActors() {
       if (usersError) throw usersError
       setUsers((userData ?? []) as WorkflowActorUser[])
 
-      const { data: groupData, error: groupsError } = await supabase
+      const enterpriseGroupsResult = await supabase
         .from('approval_groups')
-        .select('id, org_id, name, description, scope, project_id, is_active, metadata, created_at, updated_at')
+        .select('id, org_id, code, name, description, scope, project_id, is_active, metadata, created_at, updated_at')
         .eq('org_id', currentProfile.org_id)
         .eq('is_active', true)
         .order('name', { ascending: true })
 
-      if (groupsError) {
-        if (isWorkflowFoundationUnavailable(groupsError)) {
-          setGroups([])
-          setGroupMembers([])
-          setCanUseGroups(false)
-          setCompatibilityMessage(
-            'Grupos de aprovação ainda não estão disponíveis neste ambiente. O workflow continua operando por papel ou usuário.',
-          )
-          return
+      let groupData = enterpriseGroupsResult.data as ApprovalGroupCompatibilityRow[] | null
+      let usedLegacyGroupSchema = false
+
+      if (enterpriseGroupsResult.error && isWorkflowFoundationUnavailable(enterpriseGroupsResult.error)) {
+        const legacyGroupsResult = await supabase
+          .from('approval_groups')
+          .select('id, org_id, code, name, description, active, created_at')
+          .eq('org_id', currentProfile.org_id)
+          .eq('active', true)
+          .order('name', { ascending: true })
+
+        if (!legacyGroupsResult.error) {
+          groupData = legacyGroupsResult.data as ApprovalGroupCompatibilityRow[] | null
+          usedLegacyGroupSchema = true
+        } else if (isWorkflowFoundationUnavailable(legacyGroupsResult.error)) {
+          const p9aGroupsResult = await supabase
+            .from('approval_groups')
+            .select('id, org_id, name, description, scope, project_id, is_active, metadata, created_at, updated_at')
+            .eq('org_id', currentProfile.org_id)
+            .eq('is_active', true)
+            .order('name', { ascending: true })
+
+          if (!p9aGroupsResult.error) {
+            groupData = p9aGroupsResult.data as ApprovalGroupCompatibilityRow[] | null
+          } else if (isWorkflowFoundationUnavailable(p9aGroupsResult.error)) {
+            setGroups([])
+            setGroupMembers([])
+            setCanUseGroups(false)
+            setCompatibilityMessage(
+              'Grupos de aprovação não estão disponíveis. O workflow continua operando por papel ou usuário.',
+            )
+            return
+          } else {
+            throw p9aGroupsResult.error
+          }
+        } else {
+          throw legacyGroupsResult.error
         }
-        throw groupsError
+      } else if (enterpriseGroupsResult.error) {
+        throw enterpriseGroupsResult.error
       }
 
       const { data: enterpriseMemberData, error: enterpriseMembersError } = await supabase
@@ -151,7 +213,7 @@ export function useWorkflowActors() {
           memberData = legacyMemberData as ApprovalGroupMemberCompatibilityRow[] | null
           usedLegacyMemberSchema = true
         } else if (isWorkflowFoundationUnavailable(legacyMembersError)) {
-          setGroups((groupData ?? []) as ApprovalGroup[])
+          setGroups((groupData ?? []).map(normalizeApprovalGroup))
           setGroupMembers([])
           setCanUseGroups(false)
           setCompatibilityMessage(
@@ -165,16 +227,16 @@ export function useWorkflowActors() {
         throw enterpriseMembersError
       }
 
-      setGroups((groupData ?? []) as ApprovalGroup[])
+      setGroups((groupData ?? []).map(normalizeApprovalGroup))
       setGroupMembers(
         (memberData ?? [])
           .map(normalizeGroupMember)
           .filter((member): member is ApprovalGroupMember => Boolean(member)),
       )
       setCanUseGroups(true)
-      if (usedLegacyMemberSchema) {
+      if (usedLegacyGroupSchema || usedLegacyMemberSchema) {
         setCompatibilityMessage(
-          'Os membros dos grupos estão no schema legado. O bridge 09 mantém a operação e deve ser aplicado para normalizar os aliases.',
+          'Grupos disponíveis em schema legado compatível. Papel e usuário continuam alternativas independentes no roteamento.',
         )
       }
     } catch (err: unknown) {
