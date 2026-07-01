@@ -6,6 +6,7 @@ import {
   isDocumentCodingCompatibilityError,
   normalizeCodeToken,
   rankCodePatterns,
+  validateCodePattern,
   type DocumentCodeContext,
   type DocumentCodePattern,
   type DocumentCodePatternScope,
@@ -47,6 +48,29 @@ interface UseDocumentCodePatternsOptions {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isProjectCatalogCompatibilityError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  const code = String(record.code ?? "").toUpperCase();
+  const message = [record.message, record.details, record.hint]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return (
+    code === "42703" ||
+    (message.includes("column") &&
+      message.includes("does not exist") &&
+      (message.includes("projects.code") ||
+        message.includes("projects.org_id") ||
+        message.includes("code") ||
+        message.includes("org_id")))
+  );
+}
+
+function fallbackProjectCode(id: string) {
+  return `PROJ${id.replaceAll("-", "").slice(0, 6).toUpperCase()}`;
 }
 
 function normalizeScope(value: unknown): DocumentCodePatternScope {
@@ -225,13 +249,49 @@ export function useDocumentCodePatterns(
       );
     }
 
-    if (projectsResult.error) {
+    let projectRows: Array<Record<string, unknown>> = [];
+    if (
+      projectsResult.error &&
+      isProjectCatalogCompatibilityError(projectsResult.error)
+    ) {
+      const projectsWithoutCodeResult = await supabase
+        .from("projects")
+        .select("id, name")
+        .eq("org_id", profile.org_id)
+        .order("name", { ascending: true });
+      if (!projectsWithoutCodeResult.error) {
+        projectRows = (projectsWithoutCodeResult.data ?? []) as Array<
+          Record<string, unknown>
+        >;
+      } else if (
+        isProjectCatalogCompatibilityError(projectsWithoutCodeResult.error)
+      ) {
+        const legacyProjectsResult = await supabase
+          .from("projects")
+          .select("id, name")
+          .order("name", { ascending: true });
+        if (!legacyProjectsResult.error) {
+          projectRows = (legacyProjectsResult.data ?? []) as Array<
+            Record<string, unknown>
+          >;
+        }
+      }
+    } else if (!projectsResult.error) {
+      projectRows = (projectsResult.data ?? []) as Array<
+        Record<string, unknown>
+      >;
+    }
+
+    if (projectsResult.error && projectRows.length === 0) {
       setProjects([]);
     } else {
       setProjects(
-        (projectsResult.data ?? []).map((project) => ({
+        projectRows.map((project) => ({
           id: String(project.id),
-          code: String(project.code ?? ""),
+          code:
+            typeof project.code === "string" && project.code.trim()
+              ? project.code
+              : fallbackProjectCode(String(project.id)),
           name: String(project.name ?? "Projeto"),
         })),
       );
@@ -258,6 +318,12 @@ export function useDocumentCodePatterns(
       setError(null);
       setLastMutationMessage(null);
       const payload = mutationPayload(input, profile.org_id, profile.id);
+      const validation = validateCodePattern(payload);
+      if (!validation.isValid) {
+        setIsSaving(false);
+        setError(validation.errors[0]);
+        return false;
+      }
       const result = id
         ? await supabase
             .from("document_code_patterns")

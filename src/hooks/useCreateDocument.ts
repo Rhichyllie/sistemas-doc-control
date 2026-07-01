@@ -196,6 +196,8 @@ export function useCreateDocument() {
       let codeGenerationMode =
         input.creationContext?.codePreviewMode ?? "legacy";
       let codeGenerationWarning: string | undefined;
+      let codeCollisionWarning = false;
+      let codeCollisionSkips = 0;
 
       if (input.creationContext?.requestCodeAllocation) {
         const allocationResult = await supabase.rpc("allocate_document_code", {
@@ -243,6 +245,15 @@ export function useCreateDocument() {
               : null;
           codeGenerationMode =
             typeof allocation.mode === "string" ? allocation.mode : "allocated";
+          codeCollisionWarning = allocation.collision_warning === true;
+          codeCollisionSkips =
+            Number.isInteger(allocation.collision_skips) &&
+            Number(allocation.collision_skips) > 0
+              ? Number(allocation.collision_skips)
+              : 0;
+          if (codeCollisionWarning) {
+            codeGenerationWarning = `O código previsto já estava em uso. A sequência avançou ${codeCollisionSkips} ${codeCollisionSkips === 1 ? "posição" : "posições"} e o código final é ${finalCode}.`;
+          }
         }
       }
       const creationMode = input.creationContext?.mode ?? "standard";
@@ -329,6 +340,8 @@ export function useCreateDocument() {
           code_final: finalCode,
           code_pattern_id: codePatternId,
           code_generation_mode: codeGenerationMode,
+          code_collision_warning: codeCollisionWarning,
+          code_collision_skips: codeCollisionSkips,
         },
       });
       if (auditError) {

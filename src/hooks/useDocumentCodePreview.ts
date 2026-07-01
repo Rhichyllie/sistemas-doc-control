@@ -51,6 +51,8 @@ function normalizeRpcPreview(value: unknown): DocumentCodePreview | null {
       Number.isInteger(value.next_number) && Number(value.next_number) >= 0
         ? Number(value.next_number)
         : null,
+    collisionWarning: value.collision_warning === true,
+    existingCode: value.existing_code === true,
     tokens: Object.fromEntries(
       Object.entries(rawTokens).map(([key, tokenValue]) => [
         key,
@@ -131,6 +133,8 @@ function unavailablePreview(): DocumentCodePreview {
     code: null,
     sequenceKey: null,
     nextNumber: null,
+    collisionWarning: false,
+    existingCode: false,
     tokens: {},
     explanation: [],
   };
@@ -225,16 +229,31 @@ export function useDocumentCodePreview({
         projectCode,
       })[0];
       if (match) {
-        setCodePreview(
-          previewLocalDocumentCode(match, {
-            orgId: profile.org_id,
-            orgCode: org?.code_prefix,
-            docType: normalizedType,
-            area: normalizedArea,
-            projectId,
-            projectCode,
-          }),
-        );
+        const localPreview = previewLocalDocumentCode(match, {
+          orgId: profile.org_id,
+          orgCode: org?.code_prefix,
+          docType: normalizedType,
+          area: normalizedArea,
+          projectId,
+          projectCode,
+        });
+        if (localPreview.code) {
+          const existingResult = await supabase
+            .from("documents")
+            .select("id")
+            .eq("org_id", profile.org_id)
+            .eq("code", localPreview.code)
+            .limit(1);
+          if (currentRequest !== requestId.current) return;
+          if (!existingResult.error && (existingResult.data?.length ?? 0) > 0) {
+            localPreview.existingCode = true;
+            localPreview.collisionWarning = true;
+            localPreview.explanation.push(
+              "O código estimado já existe; a alocação final avançará a sequência.",
+            );
+          }
+        }
+        setCodePreview(localPreview);
         setCompatibilityMessage(
           "A função de preview ainda não está disponível. Esta é uma estimativa local; o banco confirmará o código final.",
         );

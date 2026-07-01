@@ -72,6 +72,8 @@ export interface DocumentCodePreview {
   code: string | null;
   sequenceKey: string | null;
   nextNumber: number | null;
+  collisionWarning: boolean;
+  existingCode: boolean;
   tokens: Record<string, string>;
   explanation: string[];
 }
@@ -83,6 +85,7 @@ export interface DocumentCodePatternValidation {
 }
 
 const TOKEN_EXPRESSION = /\{([A-Z_]+)\}/g;
+const ANY_TOKEN_EXPRESSION = /\{([^{}]*)\}/g;
 
 function comparable(value: string | null | undefined) {
   return normalizeCodeToken(value).toLowerCase();
@@ -103,6 +106,12 @@ function specificity(pattern: DocumentCodePattern) {
     Number(Boolean(pattern.doc_type)) * 4 +
     Number(Boolean(pattern.area)) * 2
   );
+}
+
+function fallbackProjectCode(projectId: string | null | undefined) {
+  return projectId
+    ? `PROJ${projectId.replaceAll("-", "").slice(0, 6).toUpperCase()}`
+    : "GERAL";
 }
 
 export function normalizeCodeToken(value: unknown) {
@@ -161,7 +170,7 @@ export function renderDocumentCodePattern(
     AREA: normalizeCodeToken(context.area),
     TYPE: normalizeCodeToken(context.docType),
     PROJECT: normalizeCodeToken(
-      context.projectCode || context.projectId || "GERAL",
+      context.projectCode || fallbackProjectCode(context.projectId),
     ),
     YEAR: String(date.getFullYear()),
     MONTH: String(date.getMonth() + 1).padStart(2, "0"),
@@ -235,9 +244,8 @@ export function validateCodePattern(
   const errors: string[] = [];
   const warnings: string[] = [];
   const expression = pattern.pattern.trim().toUpperCase();
-  const tokens = [...expression.matchAll(TOKEN_EXPRESSION)].map(
-    (match) => match[1],
-  );
+  const tokenMatches = [...expression.matchAll(ANY_TOKEN_EXPRESSION)];
+  const tokens = tokenMatches.map((match) => match[1].trim());
 
   if (!expression) errors.push("Informe o padrão de código.");
   if (!tokens.includes("SEQ")) {
@@ -251,7 +259,17 @@ export function validateCodePattern(
     ),
   ];
   if (unknownTokens.length) {
-    errors.push(`Tokens não reconhecidos: ${unknownTokens.join(", ")}.`);
+    errors.push(
+      `Tokens não reconhecidos: ${unknownTokens
+        .map((token) => token || "(vazio)")
+        .join(", ")}.`,
+    );
+  }
+  const expressionWithoutTokens = expression.replace(ANY_TOKEN_EXPRESSION, "");
+  if (/[{}]/.test(expressionWithoutTokens)) {
+    errors.push(
+      "O padrão possui chaves malformadas. Use tokens no formato {TOKEN}.",
+    );
   }
   if (!normalizeCodeToken(pattern.prefix)) {
     errors.push("Informe um prefixo válido.");
@@ -285,7 +303,7 @@ export function validateCodePattern(
   }
   if (tokens.includes("PROJECT") && !pattern.project_id) {
     warnings.push(
-      "O token {PROJECT} ficará vazio quando nenhum projeto estiver selecionado.",
+      "O token {PROJECT} usará GERAL quando nenhum projeto estiver selecionado.",
     );
   }
   if (tokens.includes("ORG")) {
@@ -312,6 +330,8 @@ export function previewLocalDocumentCode(
       code: null,
       sequenceKey: null,
       nextNumber: null,
+      collisionWarning: false,
+      existingCode: false,
       tokens: {},
       explanation: validation.errors,
     };
@@ -326,6 +346,8 @@ export function previewLocalDocumentCode(
     code: rendered.code || null,
     sequenceKey: buildSequenceKey(context, pattern),
     nextNumber: sequenceNumber,
+    collisionWarning: false,
+    existingCode: false,
     tokens: rendered.tokens,
     explanation: [
       ...explainCodePattern(pattern, context),

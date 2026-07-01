@@ -54,6 +54,14 @@ preview e alocação final. Ele preserva o trigger legado e endurece seu cálcul
 contra concorrência. Sem o ciclo 15, a criação continua usando o formato
 automático legado.
 
+### Hardening P-11.1
+
+A P-11.1 não cria novo ciclo. Como o ciclo 15 ainda não havia sido aplicado, o
+hardening foi incorporado diretamente em
+`20260629_p11_intelligent_document_coding.sql`. Ele adiciona detecção e salto
+de colisões, aviso no preview, compatibilidade dinâmica com catálogos legados
+de projetos e validação defensiva de tokens.
+
 ## P-10B — Criação Documental Inteligente
 
 A P-10B não exige migration obrigatória. Ela usa o schema existente e aplica fallbacks locais quando tabelas de configuração ou campos opcionais não estão disponíveis.

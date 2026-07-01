@@ -46,6 +46,15 @@ CREATE TABLE IF NOT EXISTS public.document_code_patterns (
     CHECK (LENGTH(BTRIM(pattern)) > 0),
   CONSTRAINT document_code_patterns_sequence_token_check
     CHECK (POSITION('{SEQ}' IN UPPER(pattern)) > 0),
+  CONSTRAINT document_code_patterns_known_tokens_check
+    CHECK (
+      REGEXP_REPLACE(
+        UPPER(pattern),
+        '\{(PREFIX|AREA|TYPE|PROJECT|YEAR|MONTH|SEQ|ORG|CUSTOM)\}',
+        '',
+        'g'
+      ) !~ '[{}]'
+    ),
   CONSTRAINT document_code_patterns_tokens_check
     CHECK (jsonb_typeof(tokens) IN ('array', 'object'))
 );
@@ -259,6 +268,95 @@ AS $$
   )
 $$;
 
+CREATE OR REPLACE FUNCTION public.resolve_document_project_code(
+  p_project_id UUID,
+  p_org_id UUID
+)
+RETURNS TEXT
+LANGUAGE PLPGSQL
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_has_org_id BOOLEAN;
+  v_has_code BOOLEAN;
+  v_project_exists BOOLEAN := false;
+  v_project_code TEXT;
+BEGIN
+  IF p_project_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  IF to_regclass('public.projects') IS NULL THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '42P01',
+      MESSAGE = 'Catálogo de projetos indisponível para resolver o código documental.',
+      HINT = 'Aplique o schema base de projetos antes da P-11.';
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'projects'
+      AND column_name = 'org_id'
+  ) INTO v_has_org_id;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'projects'
+      AND column_name = 'code'
+  ) INTO v_has_code;
+
+  IF v_has_org_id THEN
+    EXECUTE '
+      SELECT EXISTS (
+        SELECT 1
+        FROM public.projects
+        WHERE id = $1
+          AND (org_id = $2 OR org_id IS NULL)
+      )
+    '
+    INTO v_project_exists
+    USING p_project_id, p_org_id;
+  ELSE
+    EXECUTE '
+      SELECT EXISTS (
+        SELECT 1
+        FROM public.projects
+        WHERE id = $1
+      )
+    '
+    INTO v_project_exists
+    USING p_project_id;
+  END IF;
+
+  IF NOT v_project_exists THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '42501',
+      MESSAGE = 'Projeto não encontrado ou não disponível para a organização atual.';
+  END IF;
+
+  IF v_has_code THEN
+    EXECUTE '
+      SELECT NULLIF(BTRIM(code::TEXT), '''')
+      FROM public.projects
+      WHERE id = $1
+    '
+    INTO v_project_code
+    USING p_project_id;
+  END IF;
+
+  RETURN COALESCE(
+    v_project_code,
+    'PROJ' || UPPER(SUBSTRING(REPLACE(p_project_id::TEXT, '-', '') FROM 1 FOR 6))
+  );
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.resolve_document_code_pattern(
   p_org_id UUID,
   p_doc_type TEXT,
@@ -340,10 +438,12 @@ BEGIN
   v_code := REPLACE(v_code, '{ORG}', public.normalize_document_code_token(p_org_code));
   v_code := REPLACE(v_code, '{CUSTOM}', public.normalize_document_code_token(v_custom));
 
-  IF v_code ~ '\{[A-Za-z_]+\}' THEN
+  IF v_code ~ '[{}]' THEN
     RAISE EXCEPTION USING
       ERRCODE = '22023',
-      MESSAGE = 'O padrão contém tokens não reconhecidos.';
+      MESSAGE = 'Padrão de código inválido: token não reconhecido ou chaves malformadas.',
+      DETAIL = 'Expressão configurada: ' || p_pattern.pattern,
+      HINT = 'Use somente {PREFIX}, {AREA}, {TYPE}, {PROJECT}, {YEAR}, {MONTH}, {SEQ}, {ORG} e {CUSTOM}.';
   END IF;
 
   RETURN UPPER(BTRIM(v_code));
@@ -371,6 +471,7 @@ DECLARE
   v_sequence_key TEXT;
   v_next_number INTEGER;
   v_code TEXT;
+  v_existing_code BOOLEAN := false;
 BEGIN
   IF v_actor_id IS NULL THEN
     RAISE EXCEPTION USING
@@ -390,6 +491,8 @@ BEGIN
       'available', false,
       'mode', 'legacy_fallback',
       'code', NULL,
+      'collision_warning', false,
+      'existing_code', false,
       'explanation', jsonb_build_array('Defina tipo e área para visualizar o código previsto.')
     );
   END IF;
@@ -399,16 +502,10 @@ BEGIN
   WHERE id = v_org_id;
 
   IF p_project_id IS NOT NULL THEN
-    SELECT code INTO v_project_code
-    FROM public.projects
-    WHERE id = p_project_id
-      AND org_id = v_org_id;
-
-    IF v_project_code IS NULL THEN
-      RAISE EXCEPTION USING
-        ERRCODE = '42501',
-        MESSAGE = 'Projeto não encontrado na organização atual.';
-    END IF;
+    v_project_code := public.resolve_document_project_code(
+      p_project_id,
+      v_org_id
+    );
   END IF;
 
   SELECT * INTO v_pattern
@@ -436,6 +533,13 @@ BEGIN
         ELSE LPAD(v_next_number::TEXT, 4, '0')
       END;
 
+    SELECT EXISTS (
+      SELECT 1
+      FROM public.documents
+      WHERE org_id = v_org_id
+        AND code = v_code
+    ) INTO v_existing_code;
+
     RETURN jsonb_build_object(
       'available', true,
       'mode', 'legacy_fallback',
@@ -444,6 +548,8 @@ BEGIN
       'code', v_code,
       'sequence_key', UPPER(p_area) || ':' || UPPER(p_doc_type),
       'next_number', v_next_number,
+      'collision_warning', v_existing_code,
+      'existing_code', v_existing_code,
       'tokens', jsonb_build_object(
         'ORG', v_org_code,
         'AREA', UPPER(p_area),
@@ -453,6 +559,11 @@ BEGIN
       'explanation', jsonb_build_array(
         'Nenhum padrão P-11 corresponde ao contexto.',
         'Preview baseado no trigger legado; o número final é definido no insert.'
+      ) || CASE
+        WHEN v_existing_code THEN jsonb_build_array(
+          'O código previsto já existe; a criação confirmará outro número livre.'
+        )
+        ELSE '[]'::JSONB
       )
     );
   END IF;
@@ -485,6 +596,13 @@ BEGIN
     v_next_number
   );
 
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.documents
+    WHERE org_id = v_org_id
+      AND code = v_code
+  ) INTO v_existing_code;
+
   RETURN jsonb_build_object(
     'available', true,
     'mode', 'configured',
@@ -493,6 +611,8 @@ BEGIN
     'code', v_code,
     'sequence_key', v_sequence_key,
     'next_number', v_next_number,
+    'collision_warning', v_existing_code,
+    'existing_code', v_existing_code,
     'tokens', jsonb_build_object(
       'PREFIX', v_pattern.prefix,
       'ORG', v_org_code,
@@ -506,6 +626,11 @@ BEGIN
     'explanation', jsonb_build_array(
       'Padrão "' || v_pattern.name || '" selecionado por prioridade e contexto.',
       'O preview não reserva o número; criações concorrentes podem alterar o código final.'
+    ) || CASE
+      WHEN v_existing_code THEN jsonb_build_array(
+        'O código previsto já existe; a alocação avançará até encontrar um código livre.'
+      )
+      ELSE '[]'::JSONB
     )
   );
 END;
@@ -536,6 +661,9 @@ DECLARE
   v_sequence_number INTEGER;
   v_generated_code TEXT;
   v_legacy_regex TEXT;
+  v_code_in_use BOOLEAN := false;
+  v_collision_skips INTEGER := 0;
+  v_skipped_codes JSONB := '[]'::JSONB;
 BEGIN
   IF v_actor_id IS NULL THEN
     RAISE EXCEPTION USING
@@ -599,6 +727,14 @@ BEGIN
       'pattern_id', v_existing_event.pattern_id,
       'sequence_key', v_existing_event.sequence_key,
       'sequence_number', v_existing_event.sequence_number,
+      'collision_warning', COALESCE(
+        (v_existing_event.metadata->>'collision_warning')::BOOLEAN,
+        false
+      ),
+      'collision_skips', COALESCE(
+        (v_existing_event.metadata->>'collision_skips')::INTEGER,
+        0
+      ),
       'idempotent', true
     );
   END IF;
@@ -608,16 +744,10 @@ BEGIN
   WHERE id = v_org_id;
 
   IF p_project_id IS NOT NULL THEN
-    SELECT code INTO v_project_code
-    FROM public.projects
-    WHERE id = p_project_id
-      AND org_id = v_org_id;
-
-    IF v_project_code IS NULL THEN
-      RAISE EXCEPTION USING
-        ERRCODE = '42501',
-        MESSAGE = 'Projeto não encontrado na organização atual.';
-    END IF;
+    v_project_code := public.resolve_document_project_code(
+      p_project_id,
+      v_org_id
+    );
   END IF;
 
   SELECT * INTO v_pattern
@@ -648,7 +778,9 @@ BEGIN
       'code', v_document.code,
       'pattern_id', NULL,
       'sequence_key', UPPER(p_area) || ':' || UPPER(p_doc_type),
-      'sequence_number', NULL
+      'sequence_number', NULL,
+      'collision_warning', false,
+      'collision_skips', 0
     );
   END IF;
 
@@ -686,9 +818,20 @@ BEGIN
       'code', v_document.code,
       'pattern_id', v_pattern.id,
       'sequence_key', NULL,
-      'sequence_number', NULL
+      'sequence_number', NULL,
+      'collision_warning', false,
+      'collision_skips', 0
     );
   END IF;
+
+  -- Usa a mesma trava do trigger legado para evitar corrida entre o código
+  -- provisório do INSERT e a alocação configurada.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(
+      v_org_id::TEXT || ':' || UPPER(p_area) || ':' || UPPER(p_doc_type),
+      0
+    )
+  );
 
   v_sequence_key := CASE v_pattern.sequence_reset
     WHEN 'yearly' THEN 'year:' || TO_CHAR(p_reference_date, 'YYYY')
@@ -717,15 +860,55 @@ BEGIN
     updated_at = NOW()
   RETURNING last_number INTO v_sequence_number;
 
-  v_generated_code := public.render_document_code_pattern(
-    v_pattern,
-    p_doc_type,
-    p_area,
-    v_project_code,
-    v_org_code,
-    p_reference_date,
-    v_sequence_number
-  );
+  LOOP
+    v_generated_code := public.render_document_code_pattern(
+      v_pattern,
+      p_doc_type,
+      p_area,
+      v_project_code,
+      v_org_code,
+      p_reference_date,
+      v_sequence_number
+    );
+
+    -- Padrões diferentes podem produzir o mesmo texto. A trava por código
+    -- serializa a checagem também entre sequence_keys distintas.
+    PERFORM pg_advisory_xact_lock(
+      hashtextextended(
+        v_org_id::TEXT || ':document-code:' || v_generated_code,
+        0
+      )
+    );
+
+    SELECT EXISTS (
+      SELECT 1
+      FROM public.documents
+      WHERE org_id = v_org_id
+        AND code = v_generated_code
+        AND id <> p_document_id
+    ) INTO v_code_in_use;
+
+    EXIT WHEN NOT v_code_in_use;
+
+    v_collision_skips := v_collision_skips + 1;
+    v_skipped_codes := v_skipped_codes || jsonb_build_array(v_generated_code);
+
+    IF v_collision_skips > 100000 THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '54000',
+        MESSAGE = 'Não foi possível encontrar um código documental livre.',
+        HINT = 'Revise o padrão, a chave de sequência e os códigos existentes.';
+    END IF;
+
+    UPDATE public.document_code_sequences
+    SET
+      last_number = last_number + 1,
+      updated_at = NOW()
+    WHERE org_id = v_org_id
+      AND pattern_id = v_pattern.id
+      AND sequence_key = v_sequence_key
+    RETURNING last_number INTO v_sequence_number;
+  END LOOP;
 
   UPDATE public.documents
   SET code = v_generated_code
@@ -755,7 +938,10 @@ BEGIN
       'previous_code', v_document.code,
       'doc_type', UPPER(p_doc_type),
       'area', UPPER(p_area),
-      'project_id', p_project_id
+      'project_id', p_project_id,
+      'collision_warning', v_collision_skips > 0,
+      'collision_skips', v_collision_skips,
+      'skipped_codes', v_skipped_codes
     ),
     v_actor_id
   );
@@ -768,6 +954,9 @@ BEGIN
     'pattern_name', v_pattern.name,
     'sequence_key', v_sequence_key,
     'sequence_number', v_sequence_number,
+    'collision_warning', v_collision_skips > 0,
+    'collision_skips', v_collision_skips,
+    'skipped_codes', v_skipped_codes,
     'previous_code', v_document.code,
     'idempotent', false
   );
@@ -775,6 +964,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.resolve_document_code_pattern(UUID, TEXT, TEXT, UUID) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.resolve_document_project_code(UUID, UUID) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.render_document_code_pattern(
   public.document_code_patterns,
   TEXT,

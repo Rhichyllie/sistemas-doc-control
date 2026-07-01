@@ -152,7 +152,12 @@ Parâmetros:
 Seleciona o melhor padrão e lê a próxima sequência sem reservá-la. Se não
 existir padrão, retorna preview no formato legado.
 
-O preview é uma estimativa. Outra criação pode reservar o número antes.
+O preview é uma estimativa. Outra criação pode reservar o número antes. O
+retorno informa:
+
+- `existing_code`: o código previsto já existe na organização;
+- `collision_warning`: a alocação precisará avançar a sequência;
+- explicação adicional para orientar o usuário.
 
 ### `allocate_document_code`
 
@@ -171,9 +176,11 @@ A função:
 3. retorna a alocação existente se a chamada for repetida;
 4. preserva código manual não reconhecido como legado;
 5. incrementa a sequência com upsert atômico;
-6. atualiza `documents.code`;
-7. registra `document_code_events`;
-8. retorna código, padrão, chave e número.
+6. renderiza e trava o candidato por organização/código;
+7. consulta `documents` e avança até encontrar código livre;
+8. atualiza `documents.code`;
+9. registra `document_code_events`;
+10. retorna código, padrão, chave, número e saltos por colisão.
 
 ## Integração com a criação
 
@@ -187,7 +194,9 @@ O Novo Documento Inteligente:
   - `code_preview`;
   - `code_final`;
   - `code_pattern_id`;
-  - `code_generation_mode`.
+  - `code_generation_mode`;
+  - `code_collision_warning`;
+  - `code_collision_skips`.
 
 O diálogo antigo continua sem chamar a P-11 e depende do gatilho legado.
 
@@ -208,6 +217,50 @@ usa advisory lock por organização/área/tipo.
 Números alocados não são reutilizados. Se uma etapa posterior da criação
 falhar e o documento for compensado, pode existir lacuna. Isso é intencional:
 reutilizar números prejudicaria rastreabilidade.
+
+## Hardening P-11.1
+
+A P-11.1 foi incorporada à migration do ciclo 15 antes da primeira aplicação.
+Não existe novo ciclo SQL.
+
+### Colisões
+
+Uma sequência P-11 nova pode começar em `0001` enquanto documentos legados já
+ocupam `0001`, `0002` ou números posteriores. A alocação agora:
+
+1. inicia em `sequence_start` quando ainda não há linha de sequência;
+2. confronta cada candidato com `documents.code` na mesma organização;
+3. usa advisory lock por código, inclusive entre padrões diferentes;
+4. incrementa a sequência enquanto o candidato estiver ocupado;
+5. registra `collision_warning`, `collision_skips` e `skipped_codes`;
+6. somente então atualiza o documento.
+
+Assim, `sequence_start = 1` produz `0001` quando ele está livre. Se `0001` e
+`0002` já existirem, o primeiro código configurado será `0003`. Lacunas são
+aceitas e números ocupados nunca são reutilizados.
+
+### Catálogo legado de projetos
+
+`resolve_document_project_code` consulta a estrutura do catálogo antes de
+montar SQL dinâmico:
+
+- com `projects.org_id`, aceita o projeto da organização e registros legados
+  ainda sem organização;
+- sem `projects.org_id`, valida apenas a existência do `id`;
+- com `projects.code`, usa o código cadastrado;
+- sem `projects.code` ou com código vazio, usa
+  `PROJ` + seis caracteres seguros do UUID;
+- com `project_id = null`, não consulta o catálogo.
+
+O frontend administrativo tenta primeiro `id/code/name` por organização,
+depois `id/name` por organização e, por último, o contrato legado protegido
+pelas policies existentes.
+
+### Tokens
+
+O formulário e o hook rejeitam tokens desconhecidos ou chaves malformadas
+antes do save. A tabela possui check para os tokens permitidos e o render SQL
+retorna erro com expressão e orientação legível caso encontre chaves residuais.
 
 ## Queries de conferência
 
@@ -336,6 +389,7 @@ from pg_proc
 where pronamespace = 'public'::regnamespace
   and proname in (
     'generate_document_code',
+    'resolve_document_project_code',
     'preview_document_code',
     'allocate_document_code'
   )
@@ -390,12 +444,13 @@ order by proname;
 - `{CUSTOM}` aceita um valor normalizado pelo campo de token personalizado;
 - `separator`, `include_year` e `include_month` são metadados; o formato efetivo
   é definido explicitamente pela expressão `pattern`;
-- instalações com projetos legados sem `org_id` precisam alinhar o schema base;
+- catálogos sem `org_id` dependem das policies legadas para restringir a
+  listagem administrativa;
 - a criação ainda coordena Storage, documento, versão e auditoria no cliente;
 - compensação posterior pode deixar lacuna de sequência, mas não duplica
   número;
-- conflitos entre expressões de padrões diferentes são bloqueados pela
-  constraint única de `documents.code` por organização.
+- colisões são puladas pela alocação; a constraint única permanece como última
+  barreira de integridade.
 
 ## Próximos passos
 
