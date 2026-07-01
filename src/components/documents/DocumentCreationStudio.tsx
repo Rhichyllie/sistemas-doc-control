@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { DocumentCreationModeSelector } from "@/components/documents/DocumentCreationModeSelector";
 import { DocumentCreationSummary } from "@/components/documents/DocumentCreationSummary";
 import { DocumentIntelligencePanel } from "@/components/documents/DocumentIntelligencePanel";
+import { DocumentReviewPeriodInput } from "@/components/documents/DocumentReviewPeriodInput";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,6 +53,13 @@ import {
   type DocumentPolicyAvailability,
 } from "@/lib/documentPolicyGuidance";
 import type { DocumentRuleField } from "@/lib/documentTemplateRules";
+import {
+  calculateNextReviewDate,
+  estimateReviewMonthsFromDate,
+  formatReviewPeriod,
+  reviewPeriodToMonths,
+  type DocumentReviewPeriod,
+} from "@/lib/documentReviewPeriod";
 import { cn } from "@/lib/utils";
 
 const GUIDED_STEPS = [
@@ -86,6 +94,13 @@ export function DocumentCreationStudio() {
   const [guidedStep, setGuidedStep] = useState(0);
   const [suggestionsApplied, setSuggestionsApplied] = useState(false);
   const [form, setForm] = useState<IntelligentDocumentFormState>(INITIAL_FORM);
+  const [reviewScheduleMode, setReviewScheduleMode] = useState<
+    "period" | "date"
+  >("period");
+  const [reviewPeriod, setReviewPeriod] = useState<DocumentReviewPeriod>({
+    value: 24,
+    unit: "months",
+  });
   const intelligence = useDocumentCreationIntelligence(form, mode);
   const creation = useCreateIntelligentDocument();
 
@@ -98,10 +113,15 @@ export function DocumentCreationStudio() {
   }
 
   function applyAllSuggestions() {
-    setForm((current) => ({
-      ...current,
-      ...intelligence.applySuggestion("all"),
-    }));
+    const patch = intelligence.applySuggestion("all");
+    setForm((current) => ({ ...current, ...patch }));
+    if (patch.review_period_months) {
+      setReviewPeriod({
+        value: patch.review_period_months,
+        unit: "months",
+      });
+      setReviewScheduleMode("period");
+    }
     setSuggestionsApplied(true);
     if (intelligence.selectedTemplate || intelligence.appliedRules.length > 0) {
       const manualItems = policyGuidance.requiredItems.filter(
@@ -125,6 +145,30 @@ export function DocumentCreationStudio() {
     } else {
       toast.success("Sugestões aplicadas aos metadados.");
     }
+  }
+
+  function applyReviewPeriod(period: DocumentReviewPeriod) {
+    const reviewMonths = reviewPeriodToMonths(period);
+    setSuggestionsApplied(false);
+    setReviewPeriod(period);
+    setReviewScheduleMode("period");
+    setForm((current) => ({
+      ...current,
+      review_period_months: reviewMonths,
+      next_review_at: calculateNextReviewDate(period),
+    }));
+  }
+
+  function applySpecificReviewDate(date: string) {
+    const estimatedMonths = estimateReviewMonthsFromDate(date);
+    setSuggestionsApplied(false);
+    setReviewScheduleMode("date");
+    setForm((current) => ({
+      ...current,
+      next_review_at: date,
+      review_period_months:
+        estimatedMonths ?? current.review_period_months,
+    }));
   }
 
   const creationInput = {
@@ -316,7 +360,7 @@ export function DocumentCreationStudio() {
             id="intelligent-title"
             value={form.title}
             onChange={(event) => updateField("title", event.target.value)}
-            placeholder="Ex.: Procedimento de Segurança Operacional"
+            placeholder="Ex.: Certificado Técnico de Calibração"
             autoFocus
           />
           <p className="text-xs text-muted-foreground">
@@ -511,7 +555,7 @@ export function DocumentCreationStudio() {
 
   function renderGovernance() {
     return (
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label>Revisão inicial</Label>
           <Input value={form.revision} readOnly />
@@ -519,75 +563,109 @@ export function DocumentCreationStudio() {
             Documento novo nasce em revisão 0.
           </p>
         </div>
-        <div
-          className={cn(
-            "space-y-2",
-            intelligence.enforcedReviewPeriodMonths &&
-              (form.review_period_months ===
-              intelligence.enforcedReviewPeriodMonths
-                ? "rounded-lg border border-emerald-200 bg-emerald-50/50 p-3"
-                : "rounded-lg border border-amber-300 bg-amber-50/60 p-3"),
-          )}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Label htmlFor="review-period">Período de revisão</Label>
+        <div className="space-y-2">
+          <Label>Como definir a próxima revisão?</Label>
+          <Select
+            value={reviewScheduleMode}
+            onValueChange={(value) =>
+              setReviewScheduleMode(value as "period" | "date")
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="period">Por período flexível</SelectItem>
+              <SelectItem value="date">Por data específica</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Não considera feriados ou calendário útil nesta fase.
+          </p>
+        </div>
+
+        {reviewScheduleMode === "period" ? (
+          <div
+            className={cn(
+              "md:col-span-2",
+              intelligence.enforcedReviewPeriodMonths &&
+                (form.review_period_months ===
+                intelligence.enforcedReviewPeriodMonths
+                  ? "rounded-lg border border-emerald-200 bg-emerald-50/50 p-3"
+                  : "rounded-lg border border-amber-300 bg-amber-50/60 p-3"),
+            )}
+          >
+            <DocumentReviewPeriodInput
+              id="review-period"
+              label="Período de revisão"
+              value={reviewPeriod}
+              onChange={applyReviewPeriod}
+              requiredByPolicy={Boolean(
+                intelligence.enforcedReviewPeriodMonths,
+              )}
+              description={`Próxima revisão calculada: ${form.next_review_at || "não definida"}.`}
+            />
+            {form.review_period_months !==
+              intelligence.reviewPeriodSuggestion && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  applyReviewPeriod({
+                    value: intelligence.reviewPeriodSuggestion,
+                    unit: "months",
+                  })
+                }
+              >
+                Aplicar sugestão de {intelligence.reviewPeriodSuggestion} meses
+              </Button>
+            )}
             {intelligence.enforcedReviewPeriodMonths && (
-              <Badge variant="outline">Obrigatório por política</Badge>
+              <p
+                className={cn(
+                  "text-xs",
+                  form.review_period_months ===
+                    intelligence.enforcedReviewPeriodMonths
+                    ? "text-emerald-700"
+                    : "text-amber-800",
+                )}
+              >
+                A política exige {intelligence.enforcedReviewPeriodMonths} meses.
+                {form.review_period_months ===
+                intelligence.enforcedReviewPeriodMonths
+                  ? " Requisito atendido."
+                  : " O prazo precisa ser mantido para liberar a criação."}
+              </p>
             )}
           </div>
-          <div className="relative">
+        ) : (
+          <div
+            className={cn(
+              policyFieldClass("next_review_at"),
+              "md:col-span-2",
+            )}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label htmlFor="next-review">Data específica da revisão</Label>
+              {renderPolicyBadge("next_review_at")}
+            </div>
             <Input
-              id="review-period"
-              type="number"
-              min={1}
-              max={120}
-              value={form.review_period_months}
-              onChange={(event) =>
-                updateField(
-                  "review_period_months",
-                  Math.max(1, Number(event.target.value) || 1),
-                )
-              }
+              id="next-review"
+              type="date"
+              value={form.next_review_at}
+              onChange={(event) => applySpecificReviewDate(event.target.value)}
             />
-            <span className="pointer-events-none absolute right-3 top-2.5 text-xs text-muted-foreground">
-              meses
-            </span>
-          </div>
-          {form.review_period_months !==
-            intelligence.reviewPeriodSuggestion && (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() =>
-                setForm((current) => ({
-                  ...current,
-                  ...intelligence.applySuggestion("review"),
-                }))
-              }
-            >
-              Aplicar {intelligence.reviewPeriodSuggestion} meses
-            </Button>
-          )}
-          {intelligence.enforcedReviewPeriodMonths && (
-            <p
-              className={cn(
-                "text-xs",
-                form.review_period_months ===
-                  intelligence.enforcedReviewPeriodMonths
-                  ? "text-emerald-700"
-                  : "text-amber-800",
-              )}
-            >
-              A política exige {intelligence.enforcedReviewPeriodMonths} meses.
-              {form.review_period_months ===
-              intelligence.enforcedReviewPeriodMonths
-                ? " Requisito atendido."
-                : " Aplique o prazo obrigatório."}
+            <p className="text-xs text-muted-foreground">
+              O período equivalente é mantido apenas para compatibilidade; a
+              data escolhida é a referência operacional.
             </p>
-          )}
-        </div>
-        <div className={policyFieldClass("next_review_at")}>
+            {renderPolicyHint("next_review_at")}
+          </div>
+        )}
+
+        {reviewScheduleMode === "period" && (
+          <div className={cn(policyFieldClass("next_review_at"), "md:col-span-2")}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Label htmlFor="next-review">Próxima revisão</Label>
             {renderPolicyBadge("next_review_at")}
@@ -596,12 +674,14 @@ export function DocumentCreationStudio() {
             id="next-review"
             type="date"
             value={form.next_review_at}
-            onChange={(event) =>
-              updateField("next_review_at", event.target.value)
-            }
+            readOnly
           />
+          <p className="text-xs text-muted-foreground">
+            Calculada automaticamente a partir de {formatReviewPeriod(reviewPeriod)}.
+          </p>
           {renderPolicyHint("next_review_at")}
         </div>
+        )}
       </div>
     );
   }
@@ -816,6 +896,11 @@ export function DocumentCreationStudio() {
               codePreview={intelligence.codePreview}
               codePreviewLoading={intelligence.codePreviewLoading}
               codeCompatibilityMessage={intelligence.codeCompatibilityMessage}
+              reviewPeriodLabel={
+                reviewScheduleMode === "date"
+                  ? "Data específica"
+                  : formatReviewPeriod(reviewPeriod)
+              }
             />
           )}
 
@@ -911,6 +996,11 @@ export function DocumentCreationStudio() {
           codePreview={intelligence.codePreview}
           codePreviewLoading={intelligence.codePreviewLoading}
           codeCompatibilityMessage={intelligence.codeCompatibilityMessage}
+          reviewPeriodLabel={
+            reviewScheduleMode === "date"
+              ? "Data específica"
+              : formatReviewPeriod(reviewPeriod)
+          }
         />
       </div>
     );

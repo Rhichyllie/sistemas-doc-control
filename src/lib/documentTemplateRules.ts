@@ -1,4 +1,9 @@
 import type { DocumentRiskLevel } from "@/lib/documentIntelligence";
+import { DOC_TYPES } from "@/lib/constants";
+import {
+  formatReviewPeriod,
+  readStoredReviewPeriod,
+} from "@/lib/documentReviewPeriod";
 
 export const DOCUMENT_RULE_FIELD_KEYS = [
   "title",
@@ -138,6 +143,8 @@ const KNOWN_CONDITION_KEYS = new Set([
   "doc_type",
   "area",
   "project_id",
+  "title_contains",
+  "description_contains",
   "tags_contains",
   "metadata_contains",
 ]);
@@ -148,6 +155,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function normalizeComparable(value: unknown) {
   return typeof value === "string" ? value.trim().toLowerCase() : value;
+}
+
+function containsComparable(value: string | null | undefined, expected: unknown) {
+  if (typeof expected !== "string" || !expected.trim()) return false;
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .includes(
+      expected
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
+        .toLowerCase(),
+    );
 }
 
 function uniqueFields(value: unknown): DocumentRuleField[] {
@@ -284,6 +306,12 @@ function matchesCondition(input: DocumentRuleInput, condition: unknown) {
     }
     if (key === "metadata_contains") {
       return metadataContains(input.metadata, expected);
+    }
+    if (key === "title_contains") {
+      return containsComparable(input.title, expected);
+    }
+    if (key === "description_contains") {
+      return containsComparable(input.description, expected);
     }
     return (
       normalizeComparable(input[key as "doc_type" | "area" | "project_id"]) ===
@@ -512,11 +540,43 @@ export function calculateGovernanceScore(
   );
 }
 
-function describeCondition(condition: Record<string, unknown>) {
+function documentTypeLabel(value: unknown) {
+  return (
+    DOC_TYPES.find((type) => type.value === String(value))?.label ??
+    String(value)
+  );
+}
+
+const AREA_LABELS: Record<string, string> = {
+  SGI: "Sistema de Gestão Integrada",
+  ENG: "Engenharia",
+  OPS: "Operações",
+  MNT: "Manutenção",
+  SST: "Saúde e Segurança",
+  MA: "Meio Ambiente",
+  QUA: "Qualidade",
+  ADM: "Administrativo",
+};
+
+function areaLabel(value: unknown) {
+  return AREA_LABELS[String(value)] ?? String(value);
+}
+
+export function describeDocumentPolicyCondition(
+  condition: Record<string, unknown>,
+) {
   const parts: string[] = [];
-  if (condition.doc_type) parts.push(`tipo ${String(condition.doc_type)}`);
-  if (condition.area) parts.push(`área ${String(condition.area)}`);
-  if (condition.project_id) parts.push("projeto selecionado");
+  if (condition.doc_type)
+    parts.push(`tipo documental “${documentTypeLabel(condition.doc_type)}”`);
+  if (condition.area)
+    parts.push(`área “${areaLabel(condition.area)}”`);
+  if (condition.project_id) parts.push("projeto específico selecionado");
+  if (condition.title_contains)
+    parts.push(`título contendo “${String(condition.title_contains)}”`);
+  if (condition.description_contains)
+    parts.push(
+      `descrição contendo “${String(condition.description_contains)}”`,
+    );
   if (condition.tags_contains) parts.push("tags correspondentes");
   if (condition.metadata_contains) parts.push("metadados correspondentes");
   return parts.length ? parts.join(" e ") : "todos os documentos";
@@ -534,7 +594,14 @@ export function explainAppliedRules(appliedRules: DocumentRuleRecord[]) {
       );
     }
     if (effects.review_period_months) {
-      impacts.push(`define revisão em ${effects.review_period_months} meses`);
+      impacts.push(
+        `define revisão em ${formatReviewPeriod(
+          readStoredReviewPeriod(
+            rule.effects.review_period,
+            effects.review_period_months,
+          ),
+        )}`,
+      );
     }
     if (effects.risk_level) {
       impacts.push(`define risco ${effects.risk_level}`);
@@ -546,7 +613,7 @@ export function explainAppliedRules(appliedRules: DocumentRuleRecord[]) {
     return {
       ruleId: rule.id,
       ruleName: rule.name,
-      reason: `Aplicada por ${describeCondition(rule.condition)}.`,
+      reason: `Aplicada a ${describeDocumentPolicyCondition(rule.condition)}.`,
       impact: impacts.join("; ") || "Regra informativa sem efeito obrigatório.",
       severity: rule.severity,
     };
@@ -564,7 +631,11 @@ export function explainTemplateSelection(
   ].filter(Boolean);
   return `O template "${template.name}" foi escolhido por prioridade ${template.priority}${
     matches.length ? ` e correspondência com ${matches.join(" e ")}` : ""
-  }.`;
+  }. ${
+    template.required_fields.length
+      ? "Ele contém exigências legadas que ainda podem bloquear a criação."
+      : "Este template apenas sugere valores; ele não bloqueia a criação."
+  }`;
 }
 
 export function explainRuleEvaluation(
@@ -635,6 +706,28 @@ export function explainRuleEvaluation(
         explanation: `A regra "${rule.name}" não foi aplicada porque o projeto atual não corresponde ao configurado.`,
       };
     }
+    if (
+      condition.title_contains &&
+      !containsComparable(input.title, condition.title_contains)
+    ) {
+      return {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        applied: false,
+        explanation: `A regra "${rule.name}" não foi aplicada porque o título não contém “${String(condition.title_contains)}”.`,
+      };
+    }
+    if (
+      condition.description_contains &&
+      !containsComparable(input.description, condition.description_contains)
+    ) {
+      return {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        applied: false,
+        explanation: `A regra "${rule.name}" não foi aplicada porque a descrição não contém “${String(condition.description_contains)}”.`,
+      };
+    }
     if (!matchesCondition(input, condition)) {
       return {
         ruleId: rule.id,
@@ -648,9 +741,72 @@ export function explainRuleEvaluation(
       ruleId: rule.id,
       ruleName: rule.name,
       applied: true,
-      explanation: `A regra "${rule.name}" foi aplicada porque ${describeCondition(condition)}.`,
+      explanation: `A regra "${rule.name}" foi aplicada porque corresponde a ${describeDocumentPolicyCondition(condition)}.`,
     };
   });
+}
+
+export function describeTemplatePolicy(template: DocumentTemplateRecord) {
+  const reviewPeriod = readStoredReviewPeriod(
+    template.governance_hints.review_period,
+    template.default_review_months,
+  );
+  const context = [
+    template.doc_type
+      ? `documentos do tipo ${documentTypeLabel(template.doc_type)}`
+      : null,
+    template.area ? `da área ${areaLabel(template.area)}` : null,
+    template.project_id ? "do projeto selecionado" : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const suggestions = [
+    template.default_description ? "uma estrutura inicial de descrição" : null,
+    template.default_review_months
+      ? `revisão em ${formatReviewPeriod(reviewPeriod)}`
+      : null,
+    template.recommended_fields.length
+      ? `o preenchimento de ${template.recommended_fields
+          .map((field) => DOCUMENT_RULE_FIELD_LABELS[field].toLowerCase())
+          .join(", ")}`
+      : null,
+  ].filter(Boolean);
+
+  return `${context ? `Para ${context}, ` : ""}sugere ${
+    suggestions.join(", ") || "valores padrão para a criação"
+  }. Templates orientam o usuário e não bloqueiam por si só.${
+    template.required_fields.length
+      ? " Este template legado ainda possui exigências obrigatórias configuradas."
+      : ""
+  }`;
+}
+
+export function describeRulePolicy(rule: DocumentRuleRecord) {
+  const effects = normalizeRuleEffects(rule.effects);
+  const reviewPeriod = readStoredReviewPeriod(
+    rule.effects.review_period,
+    effects.review_period_months,
+  );
+  const impacts = [
+    effects.required_fields.length
+      ? `exige ${effects.required_fields
+          .map((field) => DOCUMENT_RULE_FIELD_LABELS[field].toLowerCase())
+          .join(", ")}`
+      : null,
+    effects.review_period_months
+      ? `mantém revisão em ${formatReviewPeriod(reviewPeriod)}`
+      : null,
+    effects.risk_level ? `eleva o risco para ${effects.risk_level}` : null,
+    effects.recommendations.length ? "mostra orientações ao usuário" : null,
+  ].filter(Boolean);
+
+  return `Quando corresponder a ${describeDocumentPolicyCondition(
+    rule.condition,
+  )}, ${impacts.join(", ") || "apresenta uma orientação informativa"}.${
+    effects.required_fields.length
+      ? " A criação será bloqueada enquanto os requisitos não forem atendidos."
+      : ""
+  }`;
 }
 
 export function isDocumentTemplateSchemaUnavailable(error: unknown) {

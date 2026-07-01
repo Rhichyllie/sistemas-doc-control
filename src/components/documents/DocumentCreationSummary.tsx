@@ -30,6 +30,7 @@ interface DocumentCreationSummaryProps {
   codePreview: DocumentCodePreview;
   codePreviewLoading: boolean;
   codeCompatibilityMessage: string | null;
+  reviewPeriodLabel?: string;
 }
 
 export function DocumentCreationSummary({
@@ -45,6 +46,7 @@ export function DocumentCreationSummary({
   codePreview,
   codePreviewLoading,
   codeCompatibilityMessage,
+  reviewPeriodLabel,
 }: DocumentCreationSummaryProps) {
   const type = documentTypes.find((option) => option.value === form.doc_type);
   const project = projects.find((option) => option.id === form.project_id);
@@ -91,7 +93,9 @@ export function DocumentCreationSummary({
           <Badge>{type?.label || form.doc_type || "Tipo pendente"}</Badge>
           <Badge variant="secondary">{form.area || "Área pendente"}</Badge>
           <Badge variant="outline">Revisão {form.revision}</Badge>
-          <Badge variant="outline">{form.review_period_months} meses</Badge>
+          <Badge variant="outline">
+            {reviewPeriodLabel ?? `${form.review_period_months} meses`}
+          </Badge>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">

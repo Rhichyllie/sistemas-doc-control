@@ -108,7 +108,7 @@ export function DocumentIntelligencePanel({
                 Inteligência documental
               </CardTitle>
               <CardDescription className="mt-1">
-                Leitura heurística dos metadados atuais.
+                Orientação combinada entre políticas e inteligência local.
               </CardDescription>
             </div>
             <Badge variant="outline" className={risk.className}>
@@ -197,13 +197,13 @@ export function DocumentIntelligencePanel({
                 <>
                   <CheckCircle2 className="h-4 w-4" />
                   {policyGuidance.appliedPolicyNames.length
-                    ? "Exigências aplicadas"
+                    ? "Política aplicada"
                     : "Sugestões aplicadas"}
                 </>
               ) : (
                 <>
                   {policyGuidance.appliedPolicyNames.length
-                    ? "Aplicar exigências"
+                    ? "Aplicar política sugerida"
                     : "Aplicar sugestões"}
                 </>
               )}

@@ -749,3 +749,181 @@ previsto, sem transformar a ausência do ciclo 15 em bloqueio.
 
 Sem P-11, templates e regras P-10C continuam funcionando e o código é gerado
 pelo trigger legado.
+
+## P-10C.3 — Simplificação Inteligente de Templates e Regras
+
+### Objetivo
+
+A P-10C.3 substitui a administração orientada por estrutura técnica por uma
+experiência orientada à intenção do cliente. O usuário responde o que deseja
+controlar, onde a política se aplica, quais informações são necessárias e
+qual impacto espera na criação.
+
+Não foi criada migration. Templates, regras, condições e efeitos continuam
+persistidos nas tabelas do ciclo 14. Campos flexíveis, como a unidade original
+do período, usam os JSONB já existentes (`governance_hints` e `effects`).
+
+### Problemas corrigidos
+
+- ações de criar template/regra estavam escondidas dentro das abas;
+- o simulador ocupava protagonismo antes das políticas;
+- PRO/SST era o exemplo padrão de toda a experiência;
+- prioridade, condição e efeitos apareciam como conceitos principais;
+- template e regra pareciam ter o mesmo comportamento;
+- revisão aceitava somente um número rígido de meses;
+- o impacto só ficava claro depois de preencher quase todo o formulário.
+
+### Nova organização
+
+A rota `/authenticated/documentos/regras` possui:
+
+1. **Políticas ativas** — mostra em linguagem operacional tudo que afeta a
+   criação agora;
+2. **Templates de criação** — padrões que sugerem valores;
+3. **Regras de bloqueio e exigência** — controles que podem impedir a criação;
+4. **Testar política** — ferramenta auxiliar, recolhida por padrão.
+
+O cabeçalho expõe:
+
+- **Nova política documental**;
+- **Novo template**;
+- **Nova regra avançada**.
+
+### Assistente de política documental
+
+`DocumentPolicyWizard` conduz seis etapas:
+
+1. objetivo;
+2. contexto de aplicação;
+3. requisitos ou recomendações;
+4. revisão e risco;
+5. impacto;
+6. identificação e formato de persistência.
+
+O assistente gera `DocumentTemplateMutationInput` e/ou
+`DocumentRuleMutationInput`. O usuário não escreve JSON.
+
+Condições disponíveis:
+
+- toda a organização;
+- tipo documental;
+- área;
+- projeto;
+- combinação tipo + área;
+- palavra-chave no título.
+
+As condições `title_contains` e `description_contains` passaram a ser
+reconhecidas pelo motor de regras. Condições desconhecidas continuam sendo
+ignoradas defensivamente.
+
+### Template x regra
+
+- **Template** sugere descrição, prazo e campos recomendados. Novos templates
+  não criam bloqueio por campo obrigatório.
+- **Regra** exige campos, prazo ou risco e pode bloquear a criação.
+- Templates antigos com `required_fields` são preservados e identificados como
+  exigência legada para não alterar políticas existentes silenciosamente.
+
+### Revisão flexível
+
+Os atalhos de 6, 12, 24 e 36 meses continuam disponíveis, mas não são limites.
+O usuário pode digitar:
+
+- dias;
+- meses;
+- anos.
+
+Na criação inteligente também é possível escolher uma data específica. O
+valor convertido em meses mantém compatibilidade com `documents`, enquanto
+`next_review_at` preserva a data operacional calculada ou escolhida.
+
+Exemplos:
+
+- 18 meses;
+- 90 dias;
+- 2 anos;
+- data específica informada no documento.
+
+Não há cálculo de feriados ou dias úteis.
+
+### Testar impacto da política
+
+O antigo bloco **Simulação rápida** foi renomeado e movido para uma aba
+auxiliar. Ele permite testar:
+
+- título;
+- tipo;
+- área;
+- projeto;
+- presença de descrição;
+- presença de arquivo;
+- próxima revisão.
+
+Exemplos disponíveis:
+
+- certificado técnico vencendo;
+- contrato sem responsável;
+- procedimento operacional sem arquivo;
+- registro de inspeção com evidência;
+- documento de projeto sem projeto.
+
+O resultado separa políticas aplicadas, requisitos, bloqueios, recomendações e
+a mensagem que o usuário verá na criação.
+
+### Testes manuais P-10C.3
+
+#### Cenário 1 — tela reorganizada
+
+1. abrir `/authenticated/documentos/regras`;
+2. confirmar **Nova política documental** no cabeçalho;
+3. confirmar as quatro áreas da administração;
+4. confirmar que o teste de impacto está recolhido;
+5. confirmar exemplos variados sem PRO/SST como padrão.
+
+#### Cenário 2 — certificado exige arquivo
+
+1. criar uma política;
+2. escolher **Exigir informações obrigatórias**;
+3. aplicar por palavra-chave no título: `Certificado`;
+4. selecionar arquivo obrigatório;
+5. salvar como regra;
+6. abrir a criação inteligente com `Certificado Técnico`;
+7. confirmar bloqueio sem arquivo e liberação após anexar.
+
+#### Cenário 3 — template para contrato
+
+1. criar template chamado `Contratos com revisão bienal`;
+2. selecionar período sugerido de 24 meses;
+3. salvar como template;
+4. confirmar que aparece como sugestão, não como bloqueio.
+
+#### Cenário 4 — revisão flexível
+
+1. informar 18 meses;
+2. informar 90 dias;
+3. informar 2 anos;
+4. confirmar recálculo de `next_review_at`;
+5. escolher data específica na criação inteligente.
+
+#### Cenário 5 — teste de impacto
+
+1. abrir a aba **Testar política**;
+2. escolher `Documento de projeto sem projeto`;
+3. clicar **Usar exemplo**;
+4. confirmar regras aplicáveis e bloqueios em linguagem clara.
+
+#### Cenário 6 — criação antiga
+
+1. abrir o diálogo antigo em `/authenticated/documents`;
+2. criar um rascunho;
+3. confirmar que políticas P-10C não adicionaram novos bloqueios.
+
+### Limitações P-10C.3
+
+- período em dias é convertido para meses por arredondamento para manter o
+  contrato atual, mas a data calculada permanece exata em `next_review_at`;
+- templates antigos com requisitos obrigatórios continuam bloqueando;
+- salvar template e regra é composto por duas gravações e não é transacional;
+- não existe campo de responsável na criação inteligente atual;
+- palavra-chave considera título ou descrição informados, sem ler arquivo;
+- calendário útil, feriados e SLA permanecem fora desta fase.

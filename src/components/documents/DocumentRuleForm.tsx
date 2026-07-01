@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { DocumentReviewPeriodInput } from "@/components/documents/DocumentReviewPeriodInput";
 import type {
   DocumentRuleMutationInput,
   DocumentRulesProject,
@@ -34,14 +35,22 @@ import {
   type DocumentRuleSeverity,
   type GovernanceRiskProfile,
 } from "@/lib/documentTemplateRules";
+import {
+  formatReviewPeriod,
+  readStoredReviewPeriod,
+  reviewPeriodToMonths,
+  validateReviewPeriod,
+} from "@/lib/documentReviewPeriod";
 
 const AREAS = [
-  { value: "SGI", label: "SGI — Sistema de Gestão Integrada" },
-  { value: "ENG", label: "ENG — Engenharia" },
-  { value: "OPS", label: "OPS — Operações" },
-  { value: "MNT", label: "MNT — Manutenção" },
-  { value: "SST", label: "SST — Saúde e Segurança" },
-  { value: "MA", label: "MA — Meio Ambiente" },
+  { value: "SGI", label: "Sistema de Gestão Integrada" },
+  { value: "ENG", label: "Engenharia" },
+  { value: "OPS", label: "Operações" },
+  { value: "MNT", label: "Manutenção" },
+  { value: "SST", label: "Saúde e Segurança" },
+  { value: "MA", label: "Meio Ambiente" },
+  { value: "QUA", label: "Qualidade" },
+  { value: "ADM", label: "Administrativo" },
 ];
 
 interface DocumentRuleFormProps {
@@ -57,6 +66,10 @@ interface DocumentRuleFormProps {
 
 function initialState(rule: DocumentRuleRecord | null) {
   const effects = normalizeRuleEffects(rule?.effects);
+  const reviewPeriod = readStoredReviewPeriod(
+    rule?.effects.review_period,
+    effects.review_period_months,
+  );
   return {
     name: rule?.name ?? "",
     description: rule?.description ?? "",
@@ -71,10 +84,17 @@ function initialState(rule: DocumentRuleRecord | null) {
       typeof rule?.condition.project_id === "string"
         ? rule.condition.project_id
         : "",
+    title_contains:
+      typeof rule?.condition.title_contains === "string"
+        ? rule.condition.title_contains
+        : "",
+    description_contains:
+      typeof rule?.condition.description_contains === "string"
+        ? rule.condition.description_contains
+        : "",
     required_fields: effects.required_fields,
-    review_period_months: effects.review_period_months
-      ? String(effects.review_period_months)
-      : "",
+    enforce_review_period: effects.review_period_months !== null,
+    review_period: reviewPeriod,
     risk_level: effects.risk_level ?? "",
     recommendations: effects.recommendations.join("\n"),
   };
@@ -112,8 +132,8 @@ export function DocumentRuleForm({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const priority = Number(form.priority);
-    const reviewMonths = form.review_period_months
-      ? Number(form.review_period_months)
+    const reviewMonths = form.enforce_review_period
+      ? reviewPeriodToMonths(form.review_period)
       : null;
 
     if (form.name.trim().length < 3) {
@@ -126,13 +146,13 @@ export function DocumentRuleForm({
       );
       return;
     }
-    if (
-      reviewMonths !== null &&
-      (!Number.isInteger(reviewMonths) ||
-        reviewMonths < 1 ||
-        reviewMonths > 120)
-    ) {
-      setFormError("O período obrigatório deve ficar entre 1 e 120 meses.");
+    const reviewError = form.enforce_review_period
+      ? validateReviewPeriod(form.review_period)
+      : null;
+    if (reviewError || (reviewMonths !== null && reviewMonths > 120)) {
+      setFormError(
+        reviewError ?? "O período convertido não pode superar 120 meses.",
+      );
       return;
     }
 
@@ -142,6 +162,8 @@ export function DocumentRuleForm({
     const conditionUpdates = {
       doc_type: form.doc_type || undefined,
       area: form.area || undefined,
+      title_contains: form.title_contains.trim() || undefined,
+      description_contains: form.description_contains.trim() || undefined,
       project_id: canUseProjects
         ? form.project_id || undefined
         : rule?.condition.project_id,
@@ -163,6 +185,12 @@ export function DocumentRuleForm({
         ? form.required_fields
         : undefined,
       review_period_months: reviewMonths ?? undefined,
+      review_period: form.enforce_review_period
+        ? form.review_period
+        : undefined,
+      review_enforcement: form.enforce_review_period
+        ? "required"
+        : undefined,
       risk_level: form.risk_level || undefined,
       recommendations: recommendations.length ? recommendations : undefined,
     };
@@ -193,7 +221,8 @@ export function DocumentRuleForm({
               {rule ? "Editar regra" : "Nova regra documental"}
             </DialogTitle>
             <DialogDescription>
-              Configure condições e efeitos por campos guiados.
+              Regras exigem ou bloqueiam. Configure em linguagem operacional;
+              o JSON permanece interno.
             </DialogDescription>
           </DialogHeader>
 
@@ -209,7 +238,7 @@ export function DocumentRuleForm({
                     name: event.target.value,
                   }))
                 }
-                placeholder="Ex.: IT de manutenção"
+                placeholder="Ex.: Certificados técnicos exigem arquivo"
               />
             </div>
             <div className="space-y-2 md:col-span-2">
@@ -227,7 +256,9 @@ export function DocumentRuleForm({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="rule-priority">Prioridade</Label>
+              <Label htmlFor="rule-priority">
+                Ordem de aplicação (avançado)
+              </Label>
               <Input
                 id="rule-priority"
                 type="number"
@@ -241,6 +272,10 @@ export function DocumentRuleForm({
                   }))
                 }
               />
+              <p className="text-xs text-muted-foreground">
+                Números menores prevalecem quando duas regras definem prazos
+                diferentes.
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Severidade</Label>
@@ -345,12 +380,55 @@ export function DocumentRuleForm({
                 </Select>
               </div>
             )}
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="rule-title-contains">
+                Palavra ou expressão no título
+              </Label>
+              <Input
+                id="rule-title-contains"
+                value={form.title_contains}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    title_contains: event.target.value,
+                  }))
+                }
+                placeholder="Ex.: Certificado"
+              />
+              <p className="text-xs text-muted-foreground">
+                Opcional. A regra só será aplicada quando o título contiver
+                esta expressão.
+              </p>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="rule-description-contains">
+                Palavra ou expressão na descrição
+              </Label>
+              <Input
+                id="rule-description-contains"
+                value={form.description_contains}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    description_contains: event.target.value,
+                  }))
+                }
+                placeholder="Ex.: validade anual"
+              />
+              <p className="text-xs text-muted-foreground">
+                Opcional. Pode ser combinada com tipo, área, projeto e título.
+              </p>
+            </div>
 
             <div className="md:col-span-2">
               <p className="text-sm font-semibold">Efeitos da regra</p>
             </div>
             <div className="space-y-3 md:col-span-2">
               <Label>Campos obrigatórios</Label>
+              <p className="text-xs text-muted-foreground">
+                A criação inteligente ficará bloqueada enquanto estes itens
+                estiverem ausentes.
+              </p>
               <div className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2 md:grid-cols-3">
                 {DOCUMENT_RULE_FIELD_KEYS.map((field) => (
                   <label
@@ -368,22 +446,31 @@ export function DocumentRuleForm({
                 ))}
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="rule-review">Período obrigatório</Label>
-              <Input
-                id="rule-review"
-                type="number"
-                min={1}
-                max={120}
-                value={form.review_period_months}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    review_period_months: event.target.value,
-                  }))
-                }
-                placeholder="Sem imposição"
-              />
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.enforce_review_period}
+                  onCheckedChange={(checked) =>
+                    setForm((current) => ({
+                      ...current,
+                      enforce_review_period: checked === true,
+                    }))
+                  }
+                />
+                Exigir prazo de revisão
+              </label>
+              {form.enforce_review_period && (
+                <DocumentReviewPeriodInput
+                  id="rule-review"
+                  label="Prazo obrigatório"
+                  value={form.review_period}
+                  onChange={(review_period) =>
+                    setForm((current) => ({ ...current, review_period }))
+                  }
+                  requiredByPolicy
+                  description="A criação será bloqueada se o período for alterado."
+                />
+              )}
             </div>
             <div className="space-y-2">
               <Label>Risco mínimo</Label>
@@ -429,9 +516,23 @@ export function DocumentRuleForm({
             <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm md:col-span-2">
               <p className="font-semibold">Prévia de impacto ao salvar</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Será aplicada quando o tipo for{" "}
-                {form.doc_type || "qualquer tipo"} e a área for{" "}
-                {form.area || "qualquer área"}.
+                Será aplicada a{" "}
+                {form.title_contains || form.description_contains
+                  ? `documentos com ${
+                      form.title_contains
+                        ? `“${form.title_contains}” no título`
+                        : ""
+                    }${
+                      form.title_contains && form.description_contains
+                        ? " e "
+                        : ""
+                    }${
+                      form.description_contains
+                        ? `“${form.description_contains}” na descrição`
+                        : ""
+                    }`
+                  : "documentos que correspondam ao contexto selecionado"}
+                .
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {form.required_fields.length
@@ -439,8 +540,8 @@ export function DocumentRuleForm({
                       .map((field) => DOCUMENT_RULE_FIELD_LABELS[field])
                       .join(", ")}.`
                   : "Não adiciona campos obrigatórios."}
-                {form.review_period_months
-                  ? ` Exigirá revisão em ${form.review_period_months} meses.`
+                {form.enforce_review_period
+                  ? ` Exigirá revisão em ${formatReviewPeriod(form.review_period)}.`
                   : ""}
               </p>
             </div>

@@ -466,3 +466,21 @@ contrato, local e status.
 Sem a P-11A, o catálogo legado continua disponível por fallback. Projetos
 arquivados, cancelados ou encerrados não aparecem por padrão para novos
 documentos.
+
+## Revisão flexível — P-10C.3
+
+O Novo Documento Inteligente permite informar o período de revisão em dias,
+meses ou anos. Os atalhos de 6, 12, 24 e 36 meses são somente presets.
+
+Também é possível informar uma data específica. Nesse caso,
+`next_review_at` é a referência operacional e `review_period_months` mantém um
+valor equivalente para compatibilidade com o schema atual.
+
+Uma política pode:
+
+- sugerir prazo, permitindo alteração;
+- exigir prazo, bloqueando divergência;
+- exigir que o usuário informe uma data de próxima revisão;
+- manter a heurística local como fallback.
+
+A criação antiga permanece fora dos bloqueios P-10C.

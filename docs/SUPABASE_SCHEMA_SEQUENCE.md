@@ -49,6 +49,13 @@ As queries administrativas de conferência e manutenção estão em `docs/P10C_D
 
 A P-10C.2 também não adiciona ciclo SQL. Ela acrescenta orientação, explicabilidade, destaque de campos obrigatórios e simulação administrativa sobre as tabelas do ciclo 14.
 
+### Simplificação P-10C.3
+
+A P-10C.3 não adiciona ciclo SQL. Ela reorganiza a administração por intenção,
+adiciona o assistente de política, condições guiadas por palavra-chave,
+explicações operacionais, teste de impacto e revisão flexível. A persistência
+continua usando as tabelas e colunas JSONB do ciclo 14.
+
 ## P-11 — Codificação Documental Inteligente
 
 O ciclo 15 cria padrões, sequências e eventos de código, além das RPCs de

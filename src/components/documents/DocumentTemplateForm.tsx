@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { DocumentReviewPeriodInput } from "@/components/documents/DocumentReviewPeriodInput";
 import type {
   DocumentRulesProject,
   DocumentTemplateMutationInput,
@@ -32,16 +33,22 @@ import {
   type DocumentTemplateRecord,
   type GovernanceRiskProfile,
 } from "@/lib/documentTemplateRules";
+import {
+  formatReviewPeriod,
+  readStoredReviewPeriod,
+  reviewPeriodToMonths,
+  validateReviewPeriod,
+} from "@/lib/documentReviewPeriod";
 
 const AREAS = [
-  { value: "SGI", label: "SGI — Sistema de Gestão Integrada" },
-  { value: "ENG", label: "ENG — Engenharia" },
-  { value: "OPS", label: "OPS — Operações" },
-  { value: "MNT", label: "MNT — Manutenção" },
-  { value: "SST", label: "SST — Saúde e Segurança" },
-  { value: "MA", label: "MA — Meio Ambiente" },
-  { value: "QUA", label: "QUA — Qualidade" },
-  { value: "ADM", label: "ADM — Administrativo" },
+  { value: "SGI", label: "Sistema de Gestão Integrada" },
+  { value: "ENG", label: "Engenharia" },
+  { value: "OPS", label: "Operações" },
+  { value: "MNT", label: "Manutenção" },
+  { value: "SST", label: "Saúde e Segurança" },
+  { value: "MA", label: "Meio Ambiente" },
+  { value: "QUA", label: "Qualidade" },
+  { value: "ADM", label: "Administrativo" },
 ];
 
 interface DocumentTemplateFormProps {
@@ -56,6 +63,10 @@ interface DocumentTemplateFormProps {
 }
 
 function initialState(template: DocumentTemplateRecord | null) {
+  const reviewPeriod = readStoredReviewPeriod(
+    template?.governance_hints.review_period,
+    template?.default_review_months ?? null,
+  );
   return {
     name: template?.name ?? "",
     description: template?.description ?? "",
@@ -65,10 +76,11 @@ function initialState(template: DocumentTemplateRecord | null) {
     priority: String(template?.priority ?? 100),
     template_scope: template?.template_scope ?? "organization",
     default_description: template?.default_description ?? "",
-    default_review_months: template?.default_review_months
-      ? String(template.default_review_months)
-      : "",
-    required_fields: template?.required_fields ?? [],
+    use_review_period: template
+      ? template.default_review_months !== null
+      : false,
+    review_period: reviewPeriod,
+    recommended_fields: template?.recommended_fields ?? [],
     risk_profile: template?.risk_profile ?? "medium",
     is_default: template?.is_default ?? false,
   };
@@ -94,20 +106,20 @@ export function DocumentTemplateForm({
     }
   }, [open, template]);
 
-  function toggleRequiredField(field: DocumentRuleField, checked: boolean) {
+  function toggleRecommendedField(field: DocumentRuleField, checked: boolean) {
     setForm((current) => ({
       ...current,
-      required_fields: checked
-        ? [...new Set([...current.required_fields, field])]
-        : current.required_fields.filter((item) => item !== field),
+      recommended_fields: checked
+        ? [...new Set([...current.recommended_fields, field])]
+        : current.recommended_fields.filter((item) => item !== field),
     }));
   }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const priority = Number(form.priority);
-    const reviewMonths = form.default_review_months
-      ? Number(form.default_review_months)
+    const reviewMonths = form.use_review_period
+      ? reviewPeriodToMonths(form.review_period)
       : null;
 
     if (form.name.trim().length < 3) {
@@ -120,18 +132,27 @@ export function DocumentTemplateForm({
       );
       return;
     }
-    if (
-      reviewMonths !== null &&
-      (!Number.isInteger(reviewMonths) ||
-        reviewMonths < 1 ||
-        reviewMonths > 120)
-    ) {
-      setFormError("O período padrão deve ficar entre 1 e 120 meses.");
+    const reviewError = form.use_review_period
+      ? validateReviewPeriod(form.review_period)
+      : null;
+    if (reviewError || (reviewMonths !== null && reviewMonths > 120)) {
+      setFormError(
+        reviewError ?? "O período convertido não pode superar 120 meses.",
+      );
       return;
     }
     if (form.template_scope === "project" && !form.project_id) {
       setFormError("Selecione um projeto para um template de projeto.");
       return;
+    }
+
+    const governanceHints = { ...(template?.governance_hints ?? {}) };
+    if (form.use_review_period) {
+      governanceHints.review_period = form.review_period;
+      governanceHints.review_behavior = "suggested";
+    } else {
+      delete governanceHints.review_period;
+      delete governanceHints.review_behavior;
     }
 
     setFormError(null);
@@ -147,14 +168,14 @@ export function DocumentTemplateForm({
       template_scope: form.template_scope,
       default_description: form.default_description,
       default_review_months: reviewMonths,
-      required_fields: form.required_fields,
+      required_fields: template?.required_fields ?? [],
       risk_profile: form.risk_profile,
       is_active: template?.is_active ?? true,
       is_default: form.is_default,
       default_title_pattern: template?.default_title_pattern ?? null,
-      governance_hints: template?.governance_hints ?? {},
+      governance_hints: governanceHints,
       default_metadata: template?.default_metadata ?? {},
-      recommended_fields: template?.recommended_fields ?? [],
+      recommended_fields: form.recommended_fields,
     });
     if (success) onOpenChange(false);
   }
@@ -168,7 +189,8 @@ export function DocumentTemplateForm({
               {template ? "Editar template" : "Novo template documental"}
             </DialogTitle>
             <DialogDescription>
-              Defina padrões e requisitos sem expor a configuração JSON.
+              Templates sugerem padrões durante a criação. Eles não devem ser
+              usados como bloqueio; para exigências, crie uma regra.
             </DialogDescription>
           </DialogHeader>
 
@@ -184,7 +206,7 @@ export function DocumentTemplateForm({
                     name: event.target.value,
                   }))
                 }
-                placeholder="Ex.: Procedimento de SST"
+                placeholder="Ex.: Contratos com revisão bienal"
               />
             </div>
             <div className="space-y-2 md:col-span-2">
@@ -203,7 +225,7 @@ export function DocumentTemplateForm({
             </div>
 
             <div className="space-y-2">
-              <Label>Escopo</Label>
+              <Label>Onde este template será sugerido?</Label>
               <Select
                 value={form.template_scope}
                 onValueChange={(value) =>
@@ -228,7 +250,9 @@ export function DocumentTemplateForm({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="template-priority">Prioridade</Label>
+              <Label htmlFor="template-priority">
+                Ordem de aplicação (avançado)
+              </Label>
               <Input
                 id="template-priority"
                 type="number"
@@ -243,7 +267,8 @@ export function DocumentTemplateForm({
                 }
               />
               <p className="text-xs text-muted-foreground">
-                Números menores são avaliados primeiro.
+                Use apenas para desempatar templates aplicáveis. Números
+                menores são avaliados primeiro.
               </p>
             </div>
 
@@ -324,22 +349,30 @@ export function DocumentTemplateForm({
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="template-review">Revisão padrão</Label>
-              <Input
-                id="template-review"
-                type="number"
-                min={1}
-                max={120}
-                value={form.default_review_months}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    default_review_months: event.target.value,
-                  }))
-                }
-                placeholder="Usar configuração do tipo"
-              />
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.use_review_period}
+                  onCheckedChange={(checked) =>
+                    setForm((current) => ({
+                      ...current,
+                      use_review_period: checked === true,
+                    }))
+                  }
+                />
+                Sugerir prazo de revisão
+              </label>
+              {form.use_review_period && (
+                <DocumentReviewPeriodInput
+                  id="template-review"
+                  label="Prazo sugerido"
+                  value={form.review_period}
+                  onChange={(review_period) =>
+                    setForm((current) => ({ ...current, review_period }))
+                  }
+                  description="O usuário poderá alterar este prazo na criação."
+                />
+              )}
             </div>
             <div className="space-y-2">
               <Label>Perfil de risco</Label>
@@ -383,7 +416,11 @@ export function DocumentTemplateForm({
             </div>
 
             <div className="space-y-3 md:col-span-2">
-              <Label>Campos obrigatórios</Label>
+              <Label>Campos recomendados pelo template</Label>
+              <p className="text-xs text-muted-foreground">
+                Estes campos orientam o preenchimento. Use uma regra quando
+                precisar bloquear a criação.
+              </p>
               <div className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2 md:grid-cols-3">
                 {DOCUMENT_RULE_FIELD_KEYS.map((field) => (
                   <label
@@ -391,9 +428,9 @@ export function DocumentTemplateForm({
                     className="flex items-center gap-2 text-sm"
                   >
                     <Checkbox
-                      checked={form.required_fields.includes(field)}
+                      checked={form.recommended_fields.includes(field)}
                       onCheckedChange={(checked) =>
-                        toggleRequiredField(field, checked === true)
+                        toggleRecommendedField(field, checked === true)
                       }
                     />
                     {DOCUMENT_RULE_FIELD_LABELS[field]}
@@ -415,6 +452,17 @@ export function DocumentTemplateForm({
               Usar como padrão quando houver empate de prioridade e escopo
             </label>
 
+            {template && template.required_fields.length > 0 && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 md:col-span-2">
+                Este template legado ainda exige:{" "}
+                {template.required_fields
+                  .map((field) => DOCUMENT_RULE_FIELD_LABELS[field])
+                  .join(", ")}
+                . A exigência foi preservada para não quebrar políticas
+                existentes. Para novas configurações, use uma regra.
+              </div>
+            )}
+
             <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm md:col-span-2">
               <p className="font-semibold">Prévia de impacto ao salvar</p>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -422,13 +470,13 @@ export function DocumentTemplateForm({
                 {form.area || "qualquer área"}, com risco {form.risk_profile}.
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {form.required_fields.length
-                  ? `Bloqueará a criação sem: ${form.required_fields
+                {form.recommended_fields.length
+                  ? `Sugere preencher: ${form.recommended_fields
                       .map((field) => DOCUMENT_RULE_FIELD_LABELS[field])
                       .join(", ")}.`
-                  : "Não adiciona campos obrigatórios além do contrato base."}
-                {form.default_review_months
-                  ? ` Sugere revisão em ${form.default_review_months} meses.`
+                  : "Não adiciona recomendações de campos."}
+                {form.use_review_period
+                  ? ` Sugere revisão em ${formatReviewPeriod(form.review_period)}.`
                   : ""}
               </p>
             </div>
