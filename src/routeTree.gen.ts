@@ -15,6 +15,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/authenticated/r
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedTrilhaDeAuditoriaRouteImport } from './routes/authenticated/trilha-de-auditoria'
 import { Route as AuthenticatedSchemaDoctorRouteImport } from './routes/authenticated/schema-doctor'
+import { Route as AuthenticatedProjetosRouteImport } from './routes/authenticated/projetos'
 import { Route as AuthenticatedProjetistasRouteImport } from './routes/authenticated/projetistas'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/authenticated/projects'
 import { Route as AuthenticatedMeuPerfilRouteImport } from './routes/authenticated/meu-perfil'
@@ -64,6 +65,11 @@ const AuthenticatedSchemaDoctorRoute =
     path: '/schema-doctor',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedProjetosRoute = AuthenticatedProjetosRouteImport.update({
+  id: '/projetos',
+  path: '/projetos',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedProjetistasRoute =
   AuthenticatedProjetistasRouteImport.update({
     id: '/projetistas',
@@ -172,6 +178,7 @@ export interface FileRoutesByFullPath {
   '/authenticated/meu-perfil': typeof AuthenticatedMeuPerfilRoute
   '/authenticated/projects': typeof AuthenticatedProjectsRoute
   '/authenticated/projetistas': typeof AuthenticatedProjetistasRoute
+  '/authenticated/projetos': typeof AuthenticatedProjetosRoute
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
@@ -196,6 +203,7 @@ export interface FileRoutesByTo {
   '/authenticated/meu-perfil': typeof AuthenticatedMeuPerfilRoute
   '/authenticated/projects': typeof AuthenticatedProjectsRoute
   '/authenticated/projetistas': typeof AuthenticatedProjetistasRoute
+  '/authenticated/projetos': typeof AuthenticatedProjetosRoute
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
@@ -221,6 +229,7 @@ export interface FileRoutesById {
   '/authenticated/meu-perfil': typeof AuthenticatedMeuPerfilRoute
   '/authenticated/projects': typeof AuthenticatedProjectsRoute
   '/authenticated/projetistas': typeof AuthenticatedProjetistasRoute
+  '/authenticated/projetos': typeof AuthenticatedProjetosRoute
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
@@ -247,6 +256,7 @@ export interface FileRouteTypes {
     | '/authenticated/meu-perfil'
     | '/authenticated/projects'
     | '/authenticated/projetistas'
+    | '/authenticated/projetos'
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
     | '/authenticated/documentos/codificacao'
@@ -271,6 +281,7 @@ export interface FileRouteTypes {
     | '/authenticated/meu-perfil'
     | '/authenticated/projects'
     | '/authenticated/projetistas'
+    | '/authenticated/projetos'
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
     | '/authenticated/documentos/codificacao'
@@ -295,6 +306,7 @@ export interface FileRouteTypes {
     | '/authenticated/meu-perfil'
     | '/authenticated/projects'
     | '/authenticated/projetistas'
+    | '/authenticated/projetos'
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
     | '/authenticated/documentos/codificacao'
@@ -352,6 +364,13 @@ declare module '@tanstack/react-router' {
       path: '/schema-doctor'
       fullPath: '/authenticated/schema-doctor'
       preLoaderRoute: typeof AuthenticatedSchemaDoctorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/authenticated/projetos': {
+      id: '/authenticated/projetos'
+      path: '/projetos'
+      fullPath: '/authenticated/projetos'
+      preLoaderRoute: typeof AuthenticatedProjetosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/authenticated/projetistas': {
@@ -497,6 +516,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedMeuPerfilRoute: typeof AuthenticatedMeuPerfilRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
   AuthenticatedProjetistasRoute: typeof AuthenticatedProjetistasRoute
+  AuthenticatedProjetosRoute: typeof AuthenticatedProjetosRoute
   AuthenticatedSchemaDoctorRoute: typeof AuthenticatedSchemaDoctorRoute
   AuthenticatedTrilhaDeAuditoriaRoute: typeof AuthenticatedTrilhaDeAuditoriaRoute
   AuthenticatedDocumentosCodificacaoRoute: typeof AuthenticatedDocumentosCodificacaoRoute
@@ -517,6 +537,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedMeuPerfilRoute: AuthenticatedMeuPerfilRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,
   AuthenticatedProjetistasRoute: AuthenticatedProjetistasRoute,
+  AuthenticatedProjetosRoute: AuthenticatedProjetosRoute,
   AuthenticatedSchemaDoctorRoute: AuthenticatedSchemaDoctorRoute,
   AuthenticatedTrilhaDeAuditoriaRoute: AuthenticatedTrilhaDeAuditoriaRoute,
   AuthenticatedDocumentosCodificacaoRoute:

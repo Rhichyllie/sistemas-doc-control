@@ -22,8 +22,9 @@ A sequência lógica oficial é:
 14. `13_TRAMITA_schema_doctor`
 15. `14_TRAMITA_document_templates_and_rules`
 16. `15_TRAMITA_intelligent_document_coding`
+17. `16_TRAMITA_projects_operational_contexts`
 
-No repositório, os sete últimos ciclos correspondem a:
+No repositório, os oito últimos ciclos correspondem a:
 
 - `supabase/migrations/20260629_09_tramita_enterprise_schema_alignment_bridge.sql`;
 - `supabase/migrations/20260629_p9c1_decision_and_correction_cycle.sql`;
@@ -32,6 +33,7 @@ No repositório, os sete últimos ciclos correspondem a:
 - `supabase/migrations/20260629_p10a3_schema_doctor.sql`.
 - `supabase/migrations/20260629_p10c_document_templates_and_rules.sql`.
 - `supabase/migrations/20260629_p11_intelligent_document_coding.sql`.
+- `supabase/migrations/20260630_p11a_projects_operational_contexts.sql`.
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
@@ -61,6 +63,13 @@ hardening foi incorporado diretamente em
 `20260629_p11_intelligent_document_coding.sql`. Ele adiciona detecção e salto
 de colisões, aviso no preview, compatibilidade dinâmica com catálogos legados
 de projetos e validação defensiva de tokens.
+
+## P-11A — Projetos e Contextos Operacionais
+
+O ciclo 16 transforma o catálogo legado de projetos em uma entidade
+operacional/documental multi-organização. Ele preserva colunas e dados antigos,
+adiciona contexto de obra/contrato/unidade, status operacionais, RLS e
+compatibilidade para projetos sem `org_id` ou código.
 
 ## P-10B — Criação Documental Inteligente
 

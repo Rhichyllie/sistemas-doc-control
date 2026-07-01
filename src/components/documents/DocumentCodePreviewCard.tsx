@@ -62,6 +62,14 @@ export function DocumentCodePreviewCard({
             concorrentes, o número final pode mudar.
           </p>
         )}
+        {preview.tokens.PROJECT && preview.tokens.PROJECT !== "GERAL" && (
+          <p className="text-xs text-muted-foreground">
+            Contexto de projeto disponível:{" "}
+            <span className="font-mono font-medium text-foreground">
+              {preview.tokens.PROJECT}
+            </span>
+          </p>
+        )}
         {preview.collisionWarning && (
           <div className="flex gap-2 rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />

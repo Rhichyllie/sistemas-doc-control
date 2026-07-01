@@ -147,6 +147,14 @@ export function DocumentCreationStudio() {
       patternId: intelligence.codePreview.patternId,
       previewMode: intelligence.codePreview.mode,
     },
+    projectContext: intelligence.selectedProject
+      ? {
+          code: intelligence.selectedProject.code,
+          name: intelligence.selectedProject.name,
+          client: intelligence.selectedProject.client_name,
+          contract: intelligence.selectedProject.contract_number,
+        }
+      : null,
   };
   const creationValidationErrors = creation.getValidationErrors(creationInput);
   const governanceDiagnostics = intelligence.governanceDiagnostics;
@@ -355,6 +363,33 @@ export function DocumentCreationStudio() {
                 ))}
               </SelectContent>
             </Select>
+            {intelligence.selectedProject && (
+              <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                <strong className="text-foreground">
+                  {intelligence.selectedProject.code} ·{" "}
+                  {intelligence.selectedProject.name}
+                </strong>
+                <p className="mt-1">
+                  Este documento poderá usar o projeto em códigos, regras e
+                  auditoria.
+                </p>
+                <p className="mt-1">
+                  {[
+                    intelligence.selectedProject.client_name
+                      ? `Cliente: ${intelligence.selectedProject.client_name}`
+                      : null,
+                    intelligence.selectedProject.contract_number
+                      ? `Contrato: ${intelligence.selectedProject.contract_number}`
+                      : null,
+                    intelligence.selectedProject.location
+                      ? `Local: ${intelligence.selectedProject.location}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+            )}
             {renderPolicyHint("project_id")}
           </div>
         )}
@@ -988,6 +1023,7 @@ export function DocumentCreationStudio() {
           codePreview={intelligence.codePreview}
           codePreviewLoading={intelligence.codePreviewLoading}
           codeCompatibilityMessage={intelligence.codeCompatibilityMessage}
+          selectedProject={intelligence.selectedProject ?? null}
           suggestionsApplied={suggestionsApplied}
           suggestionsDisabled={
             intelligence.isLoadingConfigurations || creation.loading

@@ -351,6 +351,12 @@ export function DocumentCodePatternForm({
                   </SelectContent>
                 </Select>
               </div>
+              {selectedProject && !selectedProject.has_explicit_code && (
+                <p className="text-xs text-amber-700 dark:text-amber-300 md:col-span-2">
+                  Este projeto não possui código explícito. O token{" "}
+                  {"{PROJECT}"} usará o fallback seguro {selectedProject.code}.
+                </p>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="code-pattern-prefix">Prefixo</Label>
@@ -485,7 +491,6 @@ export function DocumentCodePatternForm({
                 Usar como padrão preferencial
               </label>
             </div>
-
             <div className="space-y-3">
               <DocumentCodePreviewCard preview={preview} />
               {validateCodePattern(previewPattern).warnings.map((warning) => (

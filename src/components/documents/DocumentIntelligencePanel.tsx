@@ -4,6 +4,7 @@ import {
   BrainCircuit,
   CheckCircle2,
   CircleAlert,
+  FolderKanban,
   Lightbulb,
   ShieldAlert,
 } from "lucide-react";
@@ -23,6 +24,10 @@ import type { DocumentRiskLevel } from "@/lib/documentIntelligence";
 import type { DocumentPolicyGuidance } from "@/lib/documentPolicyGuidance";
 import type { GovernanceRiskProfile } from "@/lib/documentTemplateRules";
 import type { DocumentCodePreview } from "@/lib/documentCodePatterns";
+import {
+  getProjectStatusLabel,
+  type ProjectOperationalContext,
+} from "@/lib/projectOperationalContext";
 
 const RISK_META: Record<
   DocumentRiskLevel,
@@ -65,6 +70,7 @@ interface DocumentIntelligencePanelProps {
   codePreview: DocumentCodePreview;
   codePreviewLoading: boolean;
   codeCompatibilityMessage: string | null;
+  selectedProject: ProjectOperationalContext | null;
 }
 
 export function DocumentIntelligencePanel({
@@ -87,6 +93,7 @@ export function DocumentIntelligencePanel({
   codePreview,
   codePreviewLoading,
   codeCompatibilityMessage,
+  selectedProject,
 }: DocumentIntelligencePanelProps) {
   const risk = RISK_META[riskLevel];
 
@@ -204,6 +211,27 @@ export function DocumentIntelligencePanel({
           </div>
 
           <div className="space-y-2">
+            {selectedProject && (
+              <div className="rounded-lg border border-primary/15 bg-primary/[0.025] p-3">
+                <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary">
+                  <FolderKanban className="h-3.5 w-3.5" />
+                  Contexto operacional
+                </p>
+                <p className="mt-2 text-sm font-semibold">
+                  {selectedProject.code} · {selectedProject.name}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {[
+                    selectedProject.client_name,
+                    selectedProject.contract_number,
+                    selectedProject.location,
+                    getProjectStatusLabel(selectedProject.status),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+            )}
             <DocumentCodePreviewCard
               preview={codePreview}
               isLoading={codePreviewLoading}

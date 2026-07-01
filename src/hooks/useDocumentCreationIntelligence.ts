@@ -3,6 +3,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { DOC_TYPES } from "@/lib/constants";
 import { useDocumentTemplatesAndRules } from "@/hooks/useDocumentTemplatesAndRules";
 import { useDocumentCodePreview } from "@/hooks/useDocumentCodePreview";
+import { useProjectOptions } from "@/hooks/useProjectOptions";
 import {
   assessDocumentCompleteness,
   buildCreationRecommendations,
@@ -24,6 +25,7 @@ import {
   mergeTemplateAndHeuristics,
 } from "@/lib/documentTemplateRules";
 import { supabase } from "@/lib/supabase";
+import type { ProjectOperationalContext } from "@/lib/projectOperationalContext";
 
 export interface IntelligentDocumentFormState {
   title: string;
@@ -54,11 +56,7 @@ export interface DocumentAreaOption {
   label: string;
 }
 
-export interface DocumentProjectOption {
-  id: string;
-  code: string;
-  name: string;
-}
+export type DocumentProjectOption = ProjectOperationalContext;
 
 export type DocumentSuggestionType =
   | "type"
@@ -138,28 +136,6 @@ function normalizeAreas(rows: unknown[]): DocumentAreaOption[] {
     .filter((option): option is DocumentAreaOption => Boolean(option));
 }
 
-function normalizeProjects(rows: unknown[]): DocumentProjectOption[] {
-  return rows
-    .map((row) => {
-      const record = row as Record<string, unknown>;
-      const id = typeof record.id === "string" ? record.id : "";
-      const name = typeof record.name === "string" ? record.name : "";
-      if (
-        !id ||
-        !name ||
-        ["cancelled", "archived"].includes(String(record.status))
-      ) {
-        return null;
-      }
-      return {
-        id,
-        code: typeof record.code === "string" ? record.code : "",
-        name,
-      };
-    })
-    .filter((project): project is DocumentProjectOption => Boolean(project));
-}
-
 async function probeDocumentColumn(column: string) {
   const { error } = await supabase
     .from("documents")
@@ -177,7 +153,6 @@ export function useDocumentCreationIntelligence(
     fallbackDocumentTypes,
   );
   const [areas, setAreas] = useState<DocumentAreaOption[]>(FALLBACK_AREAS);
-  const [projects, setProjects] = useState<DocumentProjectOption[]>([]);
   const [capabilities, setCapabilities] =
     useState<DocumentCreationCapabilities>(
       getDocumentCreationModeCapabilities(null),
@@ -187,6 +162,7 @@ export function useDocumentCreationIntelligence(
     string | null
   >(null);
   const templateGovernance = useDocumentTemplatesAndRules();
+  const projectCatalog = useProjectOptions();
 
   useEffect(() => {
     let active = true;
@@ -207,16 +183,11 @@ export function useDocumentCreationIntelligence(
         "project_id",
       ] as const;
 
-      const [typesResult, areasResult, projectsResult, ...columnResults] =
-        await Promise.all([
-          supabase.from("document_types").select("*"),
-          supabase.from("document_areas").select("*"),
-          supabase
-            .from("projects")
-            .select("id, code, name, status")
-            .order("name", { ascending: true }),
-          ...optionalColumns.map((column) => probeDocumentColumn(column)),
-        ]);
+      const [typesResult, areasResult, ...columnResults] = await Promise.all([
+        supabase.from("document_types").select("*"),
+        supabase.from("document_areas").select("*"),
+        ...optionalColumns.map((column) => probeDocumentColumn(column)),
+      ]);
 
       if (!active) return;
 
@@ -226,24 +197,16 @@ export function useDocumentCreationIntelligence(
       const loadedAreas = !areasResult.error
         ? normalizeAreas(areasResult.data ?? [])
         : [];
-      const loadedProjects = !projectsResult.error
-        ? normalizeProjects(projectsResult.data ?? [])
-        : [];
-
       setDocumentTypes(
         loadedTypes.length ? loadedTypes : fallbackDocumentTypes(),
       );
       setAreas(loadedAreas.length ? loadedAreas : FALLBACK_AREAS);
-      setProjects(loadedProjects);
-
       const detectedCapabilities = Object.fromEntries(
         optionalColumns.map((column, index) => [
           column,
           columnResults[index] === true,
         ]),
       ) as Partial<DocumentCreationCapabilities>;
-      detectedCapabilities.project_id =
-        detectedCapabilities.project_id === true && !projectsResult.error;
       setCapabilities(
         getDocumentCreationModeCapabilities(detectedCapabilities),
       );
@@ -251,7 +214,6 @@ export function useDocumentCreationIntelligence(
       const fallbacks = [
         typesResult.error ? "tipos documentais locais" : null,
         areasResult.error ? "áreas locais" : null,
-        projectsResult.error ? "projeto oculto" : null,
       ].filter(Boolean);
       setConfigurationMessage(
         fallbacks.length
@@ -267,7 +229,7 @@ export function useDocumentCreationIntelligence(
     };
   }, [profile]);
 
-  const selectedProject = projects.find(
+  const selectedProject = projectCatalog.projects.find(
     (project) => project.id === form.project_id,
   );
   const inferredType = useMemo(
@@ -492,11 +454,15 @@ export function useDocumentCreationIntelligence(
     capabilities,
     documentTypes,
     areas,
-    projects,
+    projects: projectCatalog.projects,
+    selectedProject,
     isLoadingConfigurations:
-      isLoadingConfigurations || templateGovernance.isLoading,
+      isLoadingConfigurations ||
+      templateGovernance.isLoading ||
+      projectCatalog.isLoading,
     configurationMessage: [
       configurationMessage,
+      projectCatalog.compatibilityMessage,
       templateGovernance.compatibilityMessage,
       templateGovernance.diagnostics?.code === "empty"
         ? "Ciclo P-10C disponível, ainda sem templates ou regras. Heurísticas P-10B ativas."

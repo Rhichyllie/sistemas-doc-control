@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { House, FileStack, Users, LogOut, Settings, Palette, Download, DatabaseZap, GitBranch, Bell, ClipboardList, UserCircle, Inbox, ChartNoAxesCombined, UsersRound, Stethoscope, ScrollText, Code2 } from "lucide-react";
+import { House, FileStack, Users, LogOut, Settings, Palette, Download, DatabaseZap, GitBranch, Bell, ClipboardList, UserCircle, Inbox, ChartNoAxesCombined, UsersRound, Stethoscope, ScrollText, Code2, FolderKanban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import { toast } from "sonner";
 const nav = [
   { to: "/authenticated/dashboard", label: "Início", icon: House },
   { to: "/authenticated/documents", label: "Documentos", icon: FileStack },
+  { to: "/authenticated/projetos", label: "Projetos", icon: FolderKanban },
   { to: "/authenticated/atividades", label: "Minhas Atividades", icon: Inbox, badge: "activities" },
   { to: "/authenticated/fluxo-de-aprovacao", label: "Fila de Aprovação", icon: GitBranch, badge: "approval" },
   { to: "/authenticated/grupos-aprovacao", label: "Grupos de Aprovação", icon: UsersRound, managerOnly: true },

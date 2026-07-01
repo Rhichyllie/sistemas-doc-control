@@ -459,3 +459,14 @@ order by proname;
 - política formal de alteração manual de código;
 - reserva temporária de número, se houver requisito regulatório;
 - relatórios de consumo e colisão de padrões.
+
+## Integração P-11A
+
+A P-11A fornece o cadastro administrável usado por padrões com escopo de
+projeto e pelo token `{PROJECT}`.
+
+- código explícito do projeto tem prioridade;
+- projeto sem código usa `PROJ` + seis caracteres do UUID;
+- projetos encerrados, cancelados ou arquivados não são oferecidos para novos
+  padrões/documentos;
+- sem P-11A, a compatibilidade legada da P-11 continua ativa.

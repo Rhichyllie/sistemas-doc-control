@@ -39,6 +39,12 @@ export interface CreateIntelligentDocumentInput {
     patternId: string | null;
     previewMode: string;
   };
+  projectContext: {
+    code: string;
+    name: string;
+    client: string | null;
+    contract: string | null;
+  } | null;
 }
 
 export function getIntelligentDocumentValidationErrors(
@@ -130,6 +136,10 @@ export function useCreateIntelligentDocument() {
         codePatternId: input.coding.patternId,
         codePreviewMode: input.coding.previewMode,
         requestCodeAllocation: true,
+        projectCode: input.projectContext?.code ?? null,
+        projectName: input.projectContext?.name ?? null,
+        projectClient: input.projectContext?.client ?? null,
+        projectContract: input.projectContext?.contract ?? null,
       },
     });
   }

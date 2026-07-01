@@ -456,3 +456,13 @@ registra preview, código final, padrão e modo de geração.
 Sem a P-11, a criação permanece funcional: o banco usa o trigger legado e a
 interface informa que o código será confirmado automaticamente. O diálogo
 antigo não depende da P-11.
+
+## Integração P-11A
+
+A P-11A fornece o catálogo enterprise de projetos, obras e contratos. A
+criação inteligente usa somente contextos selecionáveis e mostra cliente,
+contrato, local e status.
+
+Sem a P-11A, o catálogo legado continua disponível por fallback. Projetos
+arquivados, cancelados ou encerrados não aparecem por padrão para novos
+documentos.

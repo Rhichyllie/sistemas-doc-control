@@ -64,6 +64,10 @@ export interface CreateDocumentInput {
     codePatternId?: string | null;
     codePreviewMode?: string | null;
     requestCodeAllocation?: boolean;
+    projectCode?: string | null;
+    projectName?: string | null;
+    projectClient?: string | null;
+    projectContract?: string | null;
   };
 }
 
@@ -326,6 +330,10 @@ export function useCreateDocument() {
           completeness_score: input.creationContext?.completenessScore ?? null,
           risk_level: input.creationContext?.riskLevel ?? null,
           project_id: input.project_id ?? null,
+          project_code: input.creationContext?.projectCode ?? null,
+          project_name: input.creationContext?.projectName ?? null,
+          project_client: input.creationContext?.projectClient ?? null,
+          project_contract: input.creationContext?.projectContract ?? null,
           review_period_months: input.review_period_months ?? 24,
           next_review_at: input.next_review_at ?? null,
           has_file: Boolean(file_path),

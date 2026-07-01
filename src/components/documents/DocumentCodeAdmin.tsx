@@ -27,9 +27,12 @@ import {
 } from "@/hooks/useDocumentCodePatterns";
 import type { DocumentCodePattern } from "@/lib/documentCodePatterns";
 
-function patternContext(pattern: DocumentCodePattern) {
+function patternContext(
+  pattern: DocumentCodePattern,
+  projectLabel?: string | null,
+) {
   return [
-    pattern.project_id ? "Projeto específico" : null,
+    pattern.project_id ? `Projeto ${projectLabel || "específico"}` : null,
     pattern.area ? `Área ${pattern.area}` : null,
     pattern.doc_type ? `Tipo ${pattern.doc_type}` : null,
   ]
@@ -141,6 +144,16 @@ export function DocumentCodeAdmin() {
         </Alert>
       )}
 
+      {coding.projectCompatibilityMessage && (
+        <Alert>
+          <ShieldCheck className="h-4 w-4" />
+          <AlertTitle>Compatibilidade de projetos</AlertTitle>
+          <AlertDescription>
+            {coding.projectCompatibilityMessage}
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardContent className="p-5">
@@ -211,7 +224,12 @@ export function DocumentCodeAdmin() {
                       )}
                     </CardTitle>
                     <CardDescription className="mt-1">
-                      {patternContext(pattern) || "Toda a organização"}
+                      {patternContext(
+                        pattern,
+                        coding.projects.find(
+                          (project) => project.id === pattern.project_id,
+                        )?.code,
+                      ) || "Toda a organização"}
                     </CardDescription>
                   </div>
                   <Switch

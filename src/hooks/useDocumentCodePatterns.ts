@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { useProjectOptions } from "@/hooks/useProjectOptions";
 import { getErrorMessage } from "@/lib/errorUtils";
 import { supabase } from "@/lib/supabase";
 import {
@@ -12,12 +13,9 @@ import {
   type DocumentCodePatternScope,
   type DocumentCodeSequenceReset,
 } from "@/lib/documentCodePatterns";
+import type { ProjectOperationalContext } from "@/lib/projectOperationalContext";
 
-export interface DocumentCodeProject {
-  id: string;
-  code: string;
-  name: string;
-}
+export type DocumentCodeProject = ProjectOperationalContext;
 
 export interface DocumentCodePatternMutationInput {
   name: string;
@@ -48,29 +46,6 @@ interface UseDocumentCodePatternsOptions {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function isProjectCatalogCompatibilityError(error: unknown) {
-  if (!error || typeof error !== "object") return false;
-  const record = error as Record<string, unknown>;
-  const code = String(record.code ?? "").toUpperCase();
-  const message = [record.message, record.details, record.hint]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return (
-    code === "42703" ||
-    (message.includes("column") &&
-      message.includes("does not exist") &&
-      (message.includes("projects.code") ||
-        message.includes("projects.org_id") ||
-        message.includes("code") ||
-        message.includes("org_id")))
-  );
-}
-
-function fallbackProjectCode(id: string) {
-  return `PROJ${id.replaceAll("-", "").slice(0, 6).toUpperCase()}`;
 }
 
 function normalizeScope(value: unknown): DocumentCodePatternScope {
@@ -172,8 +147,15 @@ export function useDocumentCodePatterns(
 ) {
   const { enabled = true, includeInactive = true } = options;
   const { profile } = useAuthContext();
+  const canManage = profile?.role === "admin" || profile?.role === "manager";
+  const {
+    projects: projectOptions,
+    compatibilityMessage: projectCompatibilityMessage,
+    refresh: refreshProjects,
+  } = useProjectOptions({
+    enabled: enabled && canManage,
+  });
   const [patterns, setPatterns] = useState<DocumentCodePattern[]>([]);
-  const [projects, setProjects] = useState<DocumentCodeProject[]>([]);
   const [isLoading, setIsLoading] = useState(enabled);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -184,8 +166,6 @@ export function useDocumentCodePatterns(
     null,
   );
 
-  const canManage = profile?.role === "admin" || profile?.role === "manager";
-
   const refresh = useCallback(async () => {
     if (!enabled) {
       setIsLoading(false);
@@ -193,14 +173,12 @@ export function useDocumentCodePatterns(
     }
     if (!profile?.id || !profile.org_id) {
       setPatterns([]);
-      setProjects([]);
       setError("Seu perfil ou organização ainda não está disponível.");
       setIsLoading(false);
       return;
     }
     if (!canManage) {
       setPatterns([]);
-      setProjects([]);
       setError(null);
       setCompatibilityMessage(
         "Você não tem permissão para administrar padrões de codificação.",
@@ -221,14 +199,7 @@ export function useDocumentCodePatterns(
       .order("name", { ascending: true });
     if (!includeInactive) query = query.eq("is_active", true);
 
-    const [patternsResult, projectsResult] = await Promise.all([
-      query,
-      supabase
-        .from("projects")
-        .select("id, code, name")
-        .eq("org_id", profile.org_id)
-        .order("code", { ascending: true }),
-    ]);
+    const [patternsResult] = await Promise.all([query, refreshProjects()]);
 
     if (patternsResult.error) {
       setPatterns([]);
@@ -249,55 +220,15 @@ export function useDocumentCodePatterns(
       );
     }
 
-    let projectRows: Array<Record<string, unknown>> = [];
-    if (
-      projectsResult.error &&
-      isProjectCatalogCompatibilityError(projectsResult.error)
-    ) {
-      const projectsWithoutCodeResult = await supabase
-        .from("projects")
-        .select("id, name")
-        .eq("org_id", profile.org_id)
-        .order("name", { ascending: true });
-      if (!projectsWithoutCodeResult.error) {
-        projectRows = (projectsWithoutCodeResult.data ?? []) as Array<
-          Record<string, unknown>
-        >;
-      } else if (
-        isProjectCatalogCompatibilityError(projectsWithoutCodeResult.error)
-      ) {
-        const legacyProjectsResult = await supabase
-          .from("projects")
-          .select("id, name")
-          .order("name", { ascending: true });
-        if (!legacyProjectsResult.error) {
-          projectRows = (legacyProjectsResult.data ?? []) as Array<
-            Record<string, unknown>
-          >;
-        }
-      }
-    } else if (!projectsResult.error) {
-      projectRows = (projectsResult.data ?? []) as Array<
-        Record<string, unknown>
-      >;
-    }
-
-    if (projectsResult.error && projectRows.length === 0) {
-      setProjects([]);
-    } else {
-      setProjects(
-        projectRows.map((project) => ({
-          id: String(project.id),
-          code:
-            typeof project.code === "string" && project.code.trim()
-              ? project.code
-              : fallbackProjectCode(String(project.id)),
-          name: String(project.name ?? "Projeto"),
-        })),
-      );
-    }
     setIsLoading(false);
-  }, [canManage, enabled, includeInactive, profile?.id, profile?.org_id]);
+  }, [
+    canManage,
+    enabled,
+    includeInactive,
+    profile?.id,
+    profile?.org_id,
+    refreshProjects,
+  ]);
 
   useEffect(() => {
     void refresh();
@@ -394,7 +325,8 @@ export function useDocumentCodePatterns(
 
   return {
     patterns,
-    projects,
+    projects: projectOptions,
+    projectCompatibilityMessage,
     isLoading,
     isSaving,
     error,

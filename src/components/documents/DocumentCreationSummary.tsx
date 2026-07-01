@@ -101,6 +101,17 @@ export function DocumentCreationSummary({
             <p className="truncate text-sm font-medium">
               {form.file?.name ?? "Cadastro preliminar"}
             </p>
+            {project && (
+              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                {[
+                  project.client_name,
+                  project.contract_number,
+                  project.location,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "Contexto operacional vinculado"}
+              </p>
+            )}
             {form.file && (
               <p className="text-xs text-muted-foreground">
                 {(form.file.size / 1024 / 1024).toFixed(2)} MB
