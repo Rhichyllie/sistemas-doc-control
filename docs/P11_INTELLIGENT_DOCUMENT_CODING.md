@@ -470,3 +470,165 @@ projeto e pelo token `{PROJECT}`.
 - projetos encerrados, cancelados ou arquivados não são oferecidos para novos
   padrões/documentos;
 - sem P-11A, a compatibilidade legada da P-11 continua ativa.
+
+## P-11.2 — Builder Visual de Codificação Documental
+
+### Objetivo e decisão de compatibilidade
+
+A P-11.2 substitui a expressão técnica como ponto de entrada principal da
+administração por um builder de blocos. A persistência continua sendo a string
+`document_code_patterns.pattern`, portanto:
+
+- não há migration nova;
+- as RPCs `preview_document_code` e `allocate_document_code` não mudam;
+- padrões anteriores continuam válidos;
+- o modo avançado permanece disponível;
+- o Novo Documento Inteligente continua consumindo o mesmo contrato P-11.
+
+Um padrão legado só é convertido para blocos quando a conversão é reversível.
+Se houver token desconhecido, chave malformada ou texto que seria alterado pela
+normalização, o formulário preserva a expressão e abre o modo avançado com um
+aviso. Nenhum valor é descartado silenciosamente.
+
+### Builder visual
+
+O builder oferece blocos para:
+
+- Prefixo (`{PREFIX}`);
+- Organização (`{ORG}`);
+- Projeto (`{PROJECT}`);
+- Área (`{AREA}`);
+- Tipo documental (`{TYPE}`);
+- Ano (`{YEAR}`);
+- Mês (`{MONTH}`);
+- Sequência (`{SEQ}`);
+- Valor personalizado (`{CUSTOM}`);
+- texto fixo;
+- separador.
+
+Os blocos podem ser adicionados, removidos e movidos para a esquerda ou para a
+direita. O separador pode ser trocado por hífen, sublinhado, ponto ou barra.
+Texto fixo é normalizado para maiúsculas, sem acentos e sem caracteres
+inválidos.
+
+Presets disponíveis:
+
+| Preset                     | Expressão                                |
+| -------------------------- | ---------------------------------------- |
+| Padrão simples             | `{PREFIX}-{AREA}-{TYPE}-{SEQ}`           |
+| Padrão por projeto         | `{PREFIX}-{PROJECT}-{AREA}-{TYPE}-{SEQ}` |
+| Padrão por ano             | `{PREFIX}-{AREA}-{TYPE}-{YEAR}-{SEQ}`    |
+| Padrão por organização     | `{ORG}-{TYPE}-{SEQ}`                     |
+| Padrão documental genérico | `{PREFIX}-{TYPE}-{YEAR}-{SEQ}`           |
+
+Presets são pontos de partida e podem ser reorganizados.
+
+### Validação e explicabilidade
+
+Antes de salvar, a interface verifica:
+
+- expressão não vazia;
+- presença obrigatória de `{SEQ}`;
+- tokens conhecidos;
+- chaves corretamente formadas;
+- texto fixo válido;
+- separadores consecutivos;
+- `{CUSTOM}` sem valor;
+- `{PROJECT}` sem projeto de exemplo.
+
+Um padrão contendo apenas `{SEQ}` é permitido, mas recebe aviso por ser pouco
+descritivo. A tela explica em linguagem operacional o papel de cada bloco e
+impede o salvamento quando a expressão é inválida.
+
+### Preview local e preview do banco
+
+O preview local serve para montar e revisar visualmente o formato. Ele usa
+valores de exemplo e não consulta nem reserva sequência.
+
+O preview do banco:
+
+- escolhe o padrão aplicável;
+- lê a sequência corrente;
+- detecta colisão;
+- também não reserva número.
+
+A reserva e a confirmação do código final continuam ocorrendo somente em
+`allocate_document_code` durante a criação. Por isso, o número do preview pode
+mudar em uma criação concorrente.
+
+### Token personalizado e projeto
+
+O valor de `{CUSTOM}` continua persistido no objeto JSONB `tokens`, junto com
+`builder_mode` para indicar a última forma de edição. Metadados desconhecidos
+já existentes nesse objeto são preservados pelo formulário.
+
+Quando `{PROJECT}` é usado:
+
+- projeto com código explícito usa esse código;
+- projeto legado sem código usa o fallback seguro `PROJxxxxxx`;
+- sem P-11A, a listagem compatível de projetos continua funcionando quando o
+  catálogo legado permite;
+- P-11A não se torna dependência obrigatória.
+
+### Testes manuais P-11.2
+
+#### 1. Builder visual simples
+
+1. abra `/authenticated/documentos/codificacao`;
+2. clique em **Criar padrão visual**;
+3. escolha **Padrão simples**;
+4. confirme `{PREFIX}-{AREA}-{TYPE}-{SEQ}`;
+5. salve;
+6. confirme o preview e o badge **Builder visual**.
+
+#### 2. Padrão por projeto
+
+1. escolha **Padrão por projeto**;
+2. selecione um projeto com código;
+3. confirme `{PROJECT}` no exemplo;
+4. salve;
+5. crie um documento usando esse projeto;
+6. confira o código final confirmado pelo banco.
+
+#### 3. Projeto sem código
+
+1. selecione um projeto legado sem código explícito;
+2. confirme o aviso de fallback;
+3. confira o exemplo com `PROJxxxxxx`.
+
+#### 4. Modo avançado
+
+1. abra o modo avançado;
+2. informe `{PREFIX}-{TYPE}-{YEAR}-{SEQ}`;
+3. clique em **Sincronizar com builder**;
+4. confirme os blocos Prefixo, Tipo, Ano e Sequência.
+
+#### 5. Token inválido
+
+1. no modo avançado, informe `{PREFIX}-{CLIENTE}-{SEQ}`;
+2. confirme o erro `Token desconhecido`;
+3. confirme que **Salvar padrão** permanece desabilitado.
+
+#### 6. Padrão sem sequência
+
+1. remova o bloco Sequência;
+2. confirme o erro próximo ao builder;
+3. confirme que o salvamento permanece bloqueado.
+
+#### 7. Regressão de padrão anterior
+
+1. edite um padrão criado antes da P-11.2;
+2. confirme sua conversão para blocos, quando reversível;
+3. se não for reversível, confirme a abertura do modo avançado sem alteração da
+   expressão;
+4. salve e confirme que escopo, sequência, tokens e exemplo foram preservados.
+
+### Limitações
+
+- não há drag-and-drop; os botões de mover evitam dependência e comportamento
+  instável;
+- o preview local não consulta a sequência corrente;
+- o builder não reserva número;
+- valores de organização, área e tipo usados no exemplo são ilustrativos;
+- expressões legadas não reversíveis permanecem no modo avançado;
+- não há alteração no motor SQL ou em códigos já emitidos.

@@ -71,6 +71,13 @@ hardening foi incorporado diretamente em
 de colisões, aviso no preview, compatibilidade dinâmica com catálogos legados
 de projetos e validação defensiva de tokens.
 
+### Builder visual P-11.2
+
+A P-11.2 não cria novo ciclo SQL. Ela adiciona o builder visual, presets,
+validação explicável e modo avançado reversível sobre a string `pattern`
+existente. A persistência, o preview e a alocação final continuam usando o
+ciclo `15_TRAMITA_intelligent_document_coding`.
+
 ## P-11A — Projetos e Contextos Operacionais
 
 O ciclo 16 transforma o catálogo legado de projetos em uma entidade

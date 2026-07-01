@@ -1,7 +1,9 @@
 import { useState } from "react";
 import {
+  AlertTriangle,
   Braces,
   Code2,
+  Layers3,
   Loader2,
   Pencil,
   Plus,
@@ -25,6 +27,10 @@ import {
   useDocumentCodePatterns,
   type DocumentCodePatternMutationInput,
 } from "@/hooks/useDocumentCodePatterns";
+import {
+  parsePatternToBlocks,
+  validatePatternExpression,
+} from "@/lib/documentCodePatternBuilder";
 import type { DocumentCodePattern } from "@/lib/documentCodePatterns";
 
 function patternContext(
@@ -38,6 +44,19 @@ function patternContext(
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+function patternAuthoringMode(pattern: DocumentCodePattern) {
+  const tokenMetadata =
+    pattern.tokens &&
+    typeof pattern.tokens === "object" &&
+    !Array.isArray(pattern.tokens)
+      ? (pattern.tokens as Record<string, unknown>)
+      : null;
+  if (tokenMetadata?.builder_mode === "advanced") return "advanced";
+  return parsePatternToBlocks(pattern.pattern).isLossless
+    ? "visual"
+    : "advanced";
 }
 
 export function DocumentCodeAdmin() {
@@ -111,10 +130,40 @@ export function DocumentCodeAdmin() {
             }
           >
             <Plus className="h-4 w-4" />
-            Novo padrão
+            Criar padrão visual
           </Button>
         </div>
       </div>
+
+      <Card className="border-primary/15 bg-primary/[0.025]">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Layers3 className="h-5 w-5 text-primary" />
+            Como a codificação funciona
+          </CardTitle>
+          <CardDescription>
+            Combine blocos de contexto e sequência. O preview orienta a
+            configuração; o banco confirma o número final ao criar o documento.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ["Contrato", "TR-CONTRATO-2026-0001"],
+            ["Projeto", "TR-OBRA-MARINA-ENG-0001"],
+            ["Certificado", "TR-CERT-2026-0001"],
+            ["Registro", "TR-REG-OPS-0001"],
+          ].map(([label, example]) => (
+            <div key={label} className="rounded-lg border bg-background p-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                {label}
+              </p>
+              <p className="mt-1 break-all font-mono text-sm font-semibold">
+                {example}
+              </p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
       {coding.diagnostic !== "ready" && coding.diagnostic !== "empty" && (
         <Alert
@@ -194,86 +243,107 @@ export function DocumentCodeAdmin() {
             <CardTitle>Nenhum padrão cadastrado</CardTitle>
             <CardDescription>
               Crie um padrão para habilitar preview e alocação configurável. Até
-              lá, o gatilho legado continua gerando códigos.
+              lá, o gatilho legado continua gerando códigos. O builder visual
+              oferece modelos prontos e valida a expressão antes de salvar.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button onClick={openNew}>
               <Plus className="h-4 w-4" />
-              Criar primeiro padrão
+              Criar primeiro padrão visual
             </Button>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
-          {coding.patterns.map((pattern) => (
-            <Card
-              key={pattern.id}
-              className={pattern.is_active ? undefined : "opacity-70"}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-                      {pattern.name}
-                      {pattern.is_default && (
-                        <Badge variant="secondary">Padrão</Badge>
-                      )}
-                      {!pattern.is_active && (
-                        <Badge variant="outline">Inativo</Badge>
-                      )}
-                    </CardTitle>
-                    <CardDescription className="mt-1">
-                      {patternContext(
-                        pattern,
-                        coding.projects.find(
-                          (project) => project.id === pattern.project_id,
-                        )?.code,
-                      ) || "Toda a organização"}
-                    </CardDescription>
+          {coding.patterns.map((pattern) => {
+            const authoringMode = patternAuthoringMode(pattern);
+            const expressionValidation = validatePatternExpression(
+              pattern.pattern,
+            );
+            return (
+              <Card
+                key={pattern.id}
+                className={pattern.is_active ? undefined : "opacity-70"}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
+                        {pattern.name}
+                        {pattern.is_default && (
+                          <Badge variant="secondary">Padrão</Badge>
+                        )}
+                        {!pattern.is_active && (
+                          <Badge variant="outline">Inativo</Badge>
+                        )}
+                        <Badge variant="outline">
+                          {authoringMode === "visual"
+                            ? "Builder visual"
+                            : "Modo avançado"}
+                        </Badge>
+                      </CardTitle>
+                      <CardDescription className="mt-1">
+                        {patternContext(
+                          pattern,
+                          coding.projects.find(
+                            (project) => project.id === pattern.project_id,
+                          )?.code,
+                        ) || "Toda a organização"}
+                      </CardDescription>
+                    </div>
+                    <Switch
+                      checked={pattern.is_active}
+                      disabled={coding.isSaving}
+                      onCheckedChange={(checked) =>
+                        void togglePattern(pattern, checked)
+                      }
+                      aria-label={`${pattern.is_active ? "Desativar" : "Ativar"} ${pattern.name}`}
+                    />
                   </div>
-                  <Switch
-                    checked={pattern.is_active}
-                    disabled={coding.isSaving}
-                    onCheckedChange={(checked) =>
-                      void togglePattern(pattern, checked)
-                    }
-                    aria-label={`${pattern.is_active ? "Desativar" : "Ativar"} ${pattern.name}`}
-                  />
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="rounded-lg border bg-muted/25 p-3">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Braces className="h-3.5 w-3.5" />
-                    Formato
-                  </div>
-                  <p className="mt-1 break-all font-mono font-semibold">
-                    {pattern.pattern}
-                  </p>
-                  {pattern.example_output && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Exemplo: {pattern.example_output}
-                    </p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {!expressionValidation.isValid && (
+                    <Alert variant="destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>Expressão precisa de revisão</AlertTitle>
+                      <AlertDescription>
+                        {expressionValidation.errors[0]}
+                      </AlertDescription>
+                    </Alert>
                   )}
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                  <span className="text-muted-foreground">
-                    Prioridade {pattern.priority} · {pattern.sequence_padding}{" "}
-                    dígitos · reset {pattern.sequence_reset}
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => openEdit(pattern)}
-                  >
-                    <Pencil className="h-4 w-4" />
-                    Editar
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  <div className="rounded-lg border bg-muted/25 p-3">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Braces className="h-3.5 w-3.5" />
+                      Formato
+                    </div>
+                    <p className="mt-1 break-all font-mono font-semibold">
+                      {pattern.pattern}
+                    </p>
+                    {pattern.example_output && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Exemplo: {pattern.example_output}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">
+                      Prioridade {pattern.priority} · {pattern.sequence_padding}{" "}
+                      dígitos · reset {pattern.sequence_reset}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openEdit(pattern)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Editar
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
