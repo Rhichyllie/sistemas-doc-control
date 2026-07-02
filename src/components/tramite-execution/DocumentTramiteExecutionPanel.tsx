@@ -4,7 +4,6 @@ import {
   Ban,
   GitBranch,
   History,
-  Loader2,
   Play,
   RefreshCw,
   ShieldAlert,
@@ -71,14 +70,22 @@ function isApplicableTemplate(
 
 export function DocumentTramiteExecutionPanel({
   document,
+  suggestedTemplateId,
+  suggestedTemplateReason,
 }: {
   document: Document;
+  suggestedTemplateId?: string | null;
+  suggestedTemplateReason?: string | null;
 }) {
   const { profile } = useAuthContext();
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(
     null,
   );
   const [startOpen, setStartOpen] = useState(false);
+  const [showAllTemplates, setShowAllTemplates] = useState(false);
+  const [initialTemplateId, setInitialTemplateId] = useState<string | null>(
+    null,
+  );
   const [cancelOpen, setCancelOpen] = useState(false);
   const [evidenceStep, setEvidenceStep] =
     useState<DocumentTramiteInstanceStep | null>(null);
@@ -117,6 +124,44 @@ export function DocumentTramiteExecutionPanel({
       ),
     [applicableTemplates, instancesState.instances],
   );
+  const allStartableTemplates = useMemo(
+    () =>
+      templateState.publishedTemplates.filter(
+        (template) =>
+          !instancesState.instances.some(
+            (instance) =>
+              instance.status === "active" &&
+              instance.template_id === template.id &&
+              instance.template_version_id === template.published_version?.id,
+          ),
+      ),
+    [instancesState.instances, templateState.publishedTemplates],
+  );
+  const publishedSuggestedTemplate =
+    templateState.publishedTemplates.find(
+      (template) => template.id === suggestedTemplateId,
+    ) ??
+    applicableTemplates[0] ??
+    null;
+  const suggestedTemplate =
+    allStartableTemplates.find(
+      (template) => template.id === publishedSuggestedTemplate?.id,
+    ) ??
+    startableTemplates[0] ??
+    null;
+  const contextualStartableTemplates = suggestedTemplate
+    ? [
+        ...allStartableTemplates.filter(
+          (template) => template.id === suggestedTemplate.id,
+        ),
+        ...startableTemplates.filter(
+          (template) => template.id !== suggestedTemplate.id,
+        ),
+      ]
+    : startableTemplates;
+  const dialogTemplates = showAllTemplates
+    ? allStartableTemplates
+    : contextualStartableTemplates;
   const selected = instancesState.selectedInstance;
   const summary = selected
     ? summarizeInstance(selected, instancesState.steps)
@@ -151,6 +196,12 @@ export function DocumentTramiteExecutionPanel({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao iniciar.");
     }
+  }
+
+  function openStartDialog(templateId?: string | null, showAll = false) {
+    setInitialTemplateId(templateId ?? null);
+    setShowAllTemplates(showAll);
+    setStartOpen(true);
   }
 
   async function handleComplete(
@@ -245,7 +296,11 @@ export function DocumentTramiteExecutionPanel({
             <AlertTitle>Execução ainda não instalada</AlertTitle>
             <AlertDescription>
               Aplique manualmente o ciclo 18 para iniciar e acompanhar
-              instâncias. Nenhum approval_flow foi alterado.
+              instâncias.{" "}
+              {publishedSuggestedTemplate
+                ? `O modelo “${publishedSuggestedTemplate.name}” foi apenas sugerido.`
+                : "Modelos publicados continuam apenas como sugestões."}{" "}
+              Nenhum approval_flow foi alterado.
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -283,14 +338,21 @@ export function DocumentTramiteExecutionPanel({
                 />
                 Atualizar
               </Button>
-              {canStartOrCancel && startableTemplates.length > 0 && (
+              {canStartOrCancel && allStartableTemplates.length > 0 && (
                 <Button
                   type="button"
                   size="sm"
-                  onClick={() => setStartOpen(true)}
+                  onClick={() =>
+                    openStartDialog(
+                      suggestedTemplate?.id ?? null,
+                      contextualStartableTemplates.length === 0,
+                    )
+                  }
                 >
                   <Play className="h-4 w-4" />
-                  Iniciar trâmite
+                  {suggestedTemplate
+                    ? "Iniciar trâmite sugerido"
+                    : "Escolher trâmite"}
                 </Button>
               )}
             </div>
@@ -302,6 +364,13 @@ export function DocumentTramiteExecutionPanel({
               <ShieldAlert className="h-4 w-4" />
               <AlertTitle>Não foi possível carregar a execução</AlertTitle>
               <AlertDescription>{instancesState.error}</AlertDescription>
+            </Alert>
+          )}
+          {execution.error && (
+            <Alert variant="destructive">
+              <ShieldAlert className="h-4 w-4" />
+              <AlertTitle>Operação de trâmite indisponível</AlertTitle>
+              <AlertDescription>{execution.error}</AlertDescription>
             </Alert>
           )}
 
@@ -316,16 +385,78 @@ export function DocumentTramiteExecutionPanel({
                     ? "Verificando modelos publicados..."
                     : "Nenhum modelo publicado se aplica a este documento."}
               </p>
-              {canStartOrCancel && startableTemplates.length > 0 && (
-                <Button
-                  type="button"
-                  className="mt-4"
-                  onClick={() => setStartOpen(true)}
-                >
-                  <Play className="h-4 w-4" />
-                  Iniciar trâmite
-                </Button>
+              {canStartOrCancel && allStartableTemplates.length > 0 && (
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  {suggestedTemplate &&
+                    contextualStartableTemplates.some(
+                      (template) => template.id === suggestedTemplate.id,
+                    ) && (
+                      <Button
+                        type="button"
+                        onClick={() => openStartDialog(suggestedTemplate.id)}
+                      >
+                        <Play className="h-4 w-4" />
+                        Iniciar trâmite sugerido
+                      </Button>
+                    )}
+                  <Button
+                    type="button"
+                    variant={suggestedTemplate ? "outline" : "default"}
+                    onClick={() =>
+                      openStartDialog(
+                        null,
+                        contextualStartableTemplates.length === 0,
+                      )
+                    }
+                  >
+                    Escolher outro trâmite
+                  </Button>
+                  {allStartableTemplates.length >
+                    contextualStartableTemplates.length && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => openStartDialog(null, true)}
+                    >
+                      Ver todos os modelos publicados
+                    </Button>
+                  )}
+                </div>
               )}
+            </div>
+          )}
+
+          {!selected && contextualStartableTemplates.length > 0 && (
+            <div className="grid gap-2 md:grid-cols-2">
+              {contextualStartableTemplates.slice(0, 4).map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  className={`rounded-lg border p-3 text-left hover:border-primary ${
+                    template.id === suggestedTemplate?.id
+                      ? "border-violet-300 bg-violet-50"
+                      : ""
+                  }`}
+                  onClick={() => openStartDialog(template.id)}
+                >
+                  <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                    {template.name}
+                    {template.id === suggestedTemplate?.id && (
+                      <Badge variant="secondary">Sugerido</Badge>
+                    )}
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Versão {template.published_version?.version_number ?? 1} ·{" "}
+                    {template.published_version?.graph.nodes.length ?? 0} etapas
+                  </span>
+                  {template.id === suggestedTemplate?.id &&
+                    suggestedTemplateReason && (
+                      <span className="mt-1 block text-xs text-violet-700">
+                        {suggestedTemplateReason}
+                      </span>
+                    )}
+                </button>
+              ))}
             </div>
           )}
 
@@ -465,8 +596,10 @@ export function DocumentTramiteExecutionPanel({
       <StartTramiteExecutionDialog
         open={startOpen}
         onOpenChange={setStartOpen}
-        templates={startableTemplates}
+        templates={dialogTemplates}
         isStarting={execution.isStarting}
+        initialTemplateId={initialTemplateId}
+        suggestedTemplateId={suggestedTemplate?.id ?? null}
         onStart={handleStart}
       />
       <TramiteEvidenceDialog

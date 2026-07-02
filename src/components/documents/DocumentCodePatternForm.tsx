@@ -89,7 +89,10 @@ function initialState(pattern: DocumentCodePattern | null) {
     sequence_reset: pattern?.sequence_reset ?? ("never" as const),
     sequence_start: String(pattern?.sequence_start ?? 1),
     include_year:
-      pattern?.include_year ?? pattern?.pattern.includes("{YEAR}") ?? false,
+      pattern?.include_year ??
+      (pattern?.pattern.includes("{YEAR}") ||
+        pattern?.pattern.includes("{YEAR2}")) ??
+      false,
     include_month:
       pattern?.include_month ?? pattern?.pattern.includes("{MONTH}") ?? false,
     custom_token: customToken,
@@ -172,7 +175,8 @@ export function DocumentCodePatternForm({
       sequence_padding: Number(form.sequence_padding) || 4,
       sequence_reset: form.sequence_reset,
       sequence_start: Number(form.sequence_start) || 0,
-      include_year: form.pattern.includes("{YEAR}"),
+      include_year:
+        form.pattern.includes("{YEAR}") || form.pattern.includes("{YEAR2}"),
       include_month: form.pattern.includes("{MONTH}"),
       tokens: persistedTokens,
       example_output: null,
@@ -199,7 +203,9 @@ export function DocumentCodePatternForm({
     setForm((current) => ({
       ...current,
       pattern: nextPattern.toUpperCase(),
-      include_year: nextPattern.toUpperCase().includes("{YEAR}"),
+      include_year:
+        nextPattern.toUpperCase().includes("{YEAR}") ||
+        nextPattern.toUpperCase().includes("{YEAR2}"),
       include_month: nextPattern.toUpperCase().includes("{MONTH}"),
     }));
     setFormError(null);
@@ -250,7 +256,8 @@ export function DocumentCodePatternForm({
       sequence_padding: padding,
       sequence_reset: form.sequence_reset,
       sequence_start: sequenceStart,
-      include_year: form.pattern.includes("{YEAR}"),
+      include_year:
+        form.pattern.includes("{YEAR}") || form.pattern.includes("{YEAR2}"),
       include_month: form.pattern.includes("{MONTH}"),
       tokens: persistedTokens,
       example_output: preview.code,

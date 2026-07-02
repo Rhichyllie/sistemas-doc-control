@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { DOC_TYPES } from "@/lib/constants";
 import { useDocumentTemplatesAndRules } from "@/hooks/useDocumentTemplatesAndRules";
-import { useDocumentCodePreview } from "@/hooks/useDocumentCodePreview";
+import { useDocumentCreationControls } from "@/hooks/useDocumentCreationControls";
 import { useProjectOptions } from "@/hooks/useProjectOptions";
 import { useDocumentTramiteSuggestion } from "@/hooks/useDocumentTramiteSuggestion";
 import {
@@ -148,6 +148,7 @@ async function probeDocumentColumn(column: string) {
 export function useDocumentCreationIntelligence(
   form: IntelligentDocumentFormState,
   mode: DocumentCreationMode,
+  options: { selectedCodePatternId?: string | null } = {},
 ) {
   const { profile } = useAuthContext();
   const [documentTypes, setDocumentTypes] = useState<DocumentTypeOption[]>(
@@ -252,11 +253,12 @@ export function useDocumentCreationIntelligence(
       }),
     [form.area, form.description, form.title, selectedProject?.name],
   );
-  const coding = useDocumentCodePreview({
+  const coding = useDocumentCreationControls({
     docType: form.doc_type || inferredType,
     area: form.area || inferredArea,
     projectId: form.project_id || null,
     projectCode: selectedProject?.code || null,
+    selectedPatternId: options.selectedCodePatternId,
   });
   const tramiteSuggestion = useDocumentTramiteSuggestion({
     docType: form.doc_type || inferredType,
@@ -503,9 +505,22 @@ export function useDocumentCreationIntelligence(
     canUseRules: templateGovernance.canUseRules,
     codePreview: coding.codePreview,
     codePreviewLoading: coding.isLoading,
-    codePreviewError: coding.error,
-    codeCompatibilityMessage: coding.compatibilityMessage,
+    codePreviewError: coding.codePreviewError,
+    codeCompatibilityMessage: [
+      coding.codeCompatibilityMessage,
+      coding.integrationMessage,
+      coding.patternsCompatibilityMessage,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    codePatternCatalog: coding.patterns,
+    codePatterns: coding.applicablePatterns,
+    selectedCodePattern: coding.selectedPattern,
+    supportsPatternSelection: coding.supportsPatternSelection,
+    supportsManualCode: coding.supportsManualCode,
+    codeIntegrationMessage: coding.integrationMessage,
     suggestedTramite: tramiteSuggestion.suggestedTramite,
+    suggestedTramiteReason: tramiteSuggestion.suggestionReason,
     tramiteCompatibilityMessage: tramiteSuggestion.compatibilityMessage,
     applySuggestion,
   };

@@ -496,3 +496,14 @@ Uma política pode:
 - manter a heurística local como fallback.
 
 A criação antiga permanece fora dos bloqueios P-10C.
+
+## Integração P-18A
+
+A P-18A conecta projeto, codificação e trâmite nos dois fluxos de criação. O
+Novo Documento Inteligente registra a sugestão de trâmite na auditoria e
+redireciona para o detalhe real, onde o usuário decide se irá iniciá-lo.
+
+Com o ciclo 19, o usuário pode manter a escolha automática, selecionar um
+padrão de código aplicável ou informar um código oficial legado com motivo.
+Sem esse ciclo, a criação continua em modo automático e usa o fallback P-11 ou
+o trigger legado.

@@ -25,19 +25,29 @@ export function StartTramiteExecutionDialog({
   onOpenChange,
   templates,
   isStarting,
+  initialTemplateId,
+  suggestedTemplateId,
   onStart,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   templates: DocumentTramiteTemplate[];
   isStarting: boolean;
+  initialTemplateId?: string | null;
+  suggestedTemplateId?: string | null;
   onStart: (template: DocumentTramiteTemplate) => Promise<void>;
 }) {
   const [templateId, setTemplateId] = useState("");
   useEffect(() => {
-    if (open && !templateId && templates[0]) setTemplateId(templates[0].id);
+    if (open && !templateId && templates[0]) {
+      const preferred =
+        templates.find((template) => template.id === initialTemplateId) ??
+        templates.find((template) => template.id === suggestedTemplateId) ??
+        templates[0];
+      setTemplateId(preferred.id);
+    }
     if (!open) setTemplateId("");
-  }, [open, templateId, templates]);
+  }, [initialTemplateId, open, suggestedTemplateId, templateId, templates]);
   const selected = templates.find((template) => template.id === templateId);
   const version = selected?.published_version;
 
@@ -66,6 +76,7 @@ export function StartTramiteExecutionDialog({
                   <SelectItem key={template.id} value={template.id}>
                     {template.name} · v
                     {template.published_version?.version_number ?? 1}
+                    {template.id === suggestedTemplateId ? " · sugerido" : ""}
                   </SelectItem>
                 ))}
               </SelectContent>

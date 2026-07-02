@@ -4,6 +4,7 @@ export const DOCUMENT_CODE_TOKENS = [
   "TYPE",
   "PROJECT",
   "YEAR",
+  "YEAR2",
   "MONTH",
   "SEQ",
   "ORG",
@@ -173,6 +174,7 @@ export function renderDocumentCodePattern(
       context.projectCode || fallbackProjectCode(context.projectId),
     ),
     YEAR: String(date.getFullYear()),
+    YEAR2: String(date.getFullYear()).slice(-2),
     MONTH: String(date.getMonth() + 1).padStart(2, "0"),
     SEQ: String(Math.max(0, Math.trunc(sequenceNumber))).padStart(
       pattern.sequence_padding,

@@ -16,6 +16,7 @@ interface UseDocumentCodePreviewInput {
   area?: string | null;
   projectId?: string | null;
   projectCode?: string | null;
+  patternId?: string | null;
   enabled?: boolean;
 }
 
@@ -145,6 +146,7 @@ export function useDocumentCodePreview({
   area,
   projectId,
   projectCode,
+  patternId,
   enabled = true,
 }: UseDocumentCodePreviewInput) {
   const { profile, org } = useAuthContext();
@@ -179,12 +181,20 @@ export function useDocumentCodePreview({
     setError(null);
     setCompatibilityMessage(null);
 
-    const rpcResult = await supabase.rpc("preview_document_code", {
-      p_doc_type: normalizedType,
-      p_area: normalizedArea,
-      p_project_id: projectId || null,
-      p_reference_date: new Date().toISOString().slice(0, 10),
-    });
+    const rpcResult = patternId
+      ? await supabase.rpc("preview_document_code_for_pattern", {
+          p_pattern_id: patternId,
+          p_doc_type: normalizedType,
+          p_area: normalizedArea,
+          p_project_id: projectId || null,
+          p_reference_date: new Date().toISOString().slice(0, 10),
+        })
+      : await supabase.rpc("preview_document_code", {
+          p_doc_type: normalizedType,
+          p_area: normalizedArea,
+          p_project_id: projectId || null,
+          p_reference_date: new Date().toISOString().slice(0, 10),
+        });
     if (currentRequest !== requestId.current) return;
 
     if (!rpcResult.error) {
@@ -220,23 +230,20 @@ export function useDocumentCodePreview({
       const patterns = (patternsResult.data ?? [])
         .map(normalizePattern)
         .filter((item): item is DocumentCodePattern => Boolean(item));
-      const match = rankCodePatterns(patterns, {
+      const context = {
         orgId: profile.org_id,
         orgCode: org?.code_prefix,
         docType: normalizedType,
         area: normalizedArea,
         projectId,
         projectCode,
-      })[0];
+      };
+      const applicablePatterns = rankCodePatterns(patterns, context);
+      const match = patternId
+        ? applicablePatterns.find((pattern) => pattern.id === patternId)
+        : applicablePatterns[0];
       if (match) {
-        const localPreview = previewLocalDocumentCode(match, {
-          orgId: profile.org_id,
-          orgCode: org?.code_prefix,
-          docType: normalizedType,
-          area: normalizedArea,
-          projectId,
-          projectCode,
-        });
+        const localPreview = previewLocalDocumentCode(match, context);
         if (localPreview.code) {
           const existingResult = await supabase
             .from("documents")
@@ -255,7 +262,9 @@ export function useDocumentCodePreview({
         }
         setCodePreview(localPreview);
         setCompatibilityMessage(
-          "A função de preview ainda não está disponível. Esta é uma estimativa local; o banco confirmará o código final.",
+          patternId
+            ? "O ciclo 19 ainda não confirmou a escolha do padrão. Este preview é local; aplique P-18A antes de criar com um padrão específico."
+            : "A função de preview ainda não está disponível. Esta é uma estimativa local; o banco confirmará o código final.",
         );
       } else {
         setCodePreview({
@@ -301,6 +310,7 @@ export function useDocumentCodePreview({
     docType,
     enabled,
     org?.code_prefix,
+    patternId,
     profile?.id,
     profile?.org_id,
     projectCode,

@@ -7,6 +7,7 @@ import { isDocumentCodingCompatibilityError } from "@/lib/documentCodePatterns";
 import { normalizeDocumentCreationPayload } from "@/lib/documentIntelligence";
 import { isDocumentTemplateSchemaUnavailable } from "@/lib/documentTemplateRules";
 import { isWorkflowFoundationUnavailable } from "@/lib/workflowCompatibility";
+import type { DocumentCreationCodeMode } from "@/hooks/useDocumentCreationControls";
 
 /*
  * STORAGE SETUP REQUIRED (manual step — cannot be done via migrations):
@@ -51,6 +52,12 @@ export interface CreateDocumentInput {
     metadata?: Record<string, unknown>;
     tags?: string[];
   };
+  coding?: {
+    mode: DocumentCreationCodeMode;
+    patternId?: string | null;
+    manualCode?: string | null;
+    manualReason?: string | null;
+  };
   creationContext?: {
     mode?: string;
     completenessScore?: number;
@@ -68,6 +75,10 @@ export interface CreateDocumentInput {
     projectName?: string | null;
     projectClient?: string | null;
     projectContract?: string | null;
+    suggestedTramiteId?: string | null;
+    suggestedTramiteName?: string | null;
+    suggestedTramiteVersionId?: string | null;
+    suggestedTramiteReason?: string | null;
   };
 }
 
@@ -109,6 +120,17 @@ export function useCreateDocument() {
     }
 
     const validationErrors = validateDocumentCreation(input);
+    if (input.coding?.mode === "selected_pattern" && !input.coding.patternId) {
+      validationErrors.push("Escolha o padrão de codificação.");
+    }
+    if (
+      input.coding?.mode === "manual" &&
+      (!input.coding.manualCode?.trim() || !input.coding.manualReason?.trim())
+    ) {
+      validationErrors.push(
+        "Informe o código oficial e o motivo da codificação manual.",
+      );
+    }
     if (validationErrors.length) {
       setError(validationErrors[0]);
       return null;
@@ -203,16 +225,71 @@ export function useCreateDocument() {
       let codeCollisionWarning = false;
       let codeCollisionSkips = 0;
 
-      if (input.creationContext?.requestCodeAllocation) {
-        const allocationResult = await supabase.rpc("allocate_document_code", {
+      const requestedCodeMode = input.coding?.mode ?? "automatic";
+      if (requestedCodeMode === "manual") {
+        const manualResult = await supabase.rpc("assign_manual_document_code", {
+          p_document_id: data.id,
+          p_code: input.coding?.manualCode?.trim() ?? "",
+          p_reason: input.coding?.manualReason?.trim() ?? "",
+        });
+        if (manualResult.error) {
+          throw new Error(
+            isDocumentCodingCompatibilityError(manualResult.error)
+              ? "Código manual exige o ciclo 19. O documento não foi mantido para evitar codificação divergente."
+              : `Não foi possível aplicar o código manual: ${getErrorMessage(manualResult.error, "erro não identificado")}`,
+          );
+        }
+        const manual = manualResult.data as Record<string, unknown> | null;
+        if (typeof manual?.code === "string" && manual.code) {
+          finalCode = manual.code;
+        }
+        codePatternId = null;
+        codeGenerationMode = "manual";
+      } else if (
+        input.creationContext?.requestCodeAllocation ||
+        input.coding?.mode === "automatic" ||
+        input.coding?.mode === "selected_pattern"
+      ) {
+        const allocationParams = {
           p_document_id: data.id,
           p_doc_type: input.doc_type,
           p_area: input.area,
           p_project_id: input.project_id || null,
           p_reference_date: new Date().toISOString().slice(0, 10),
-        });
+        };
+        let allocationResult;
+        if (requestedCodeMode === "selected_pattern") {
+          allocationResult = await supabase.rpc(
+            "allocate_document_code_for_pattern",
+            {
+              ...allocationParams,
+              p_pattern_id: input.coding?.patternId,
+            },
+          );
+        } else {
+          allocationResult = await supabase.rpc(
+            "allocate_document_code_automatic",
+            allocationParams,
+          );
+          if (
+            allocationResult.error &&
+            isDocumentCodingCompatibilityError(allocationResult.error)
+          ) {
+            allocationResult = await supabase.rpc(
+              "allocate_document_code",
+              allocationParams,
+            );
+          }
+        }
 
         if (allocationResult.error) {
+          if (requestedCodeMode === "selected_pattern") {
+            throw new Error(
+              isDocumentCodingCompatibilityError(allocationResult.error)
+                ? "A escolha explícita de padrão exige o ciclo 19. O documento não foi mantido para evitar aplicar outro padrão silenciosamente."
+                : `O padrão escolhido não pôde ser alocado: ${getErrorMessage(allocationResult.error, "erro não identificado")}`,
+            );
+          }
           codeGenerationMode = "legacy";
           codePatternId = null;
           const reconciliation = await supabase
@@ -348,8 +425,22 @@ export function useCreateDocument() {
           code_final: finalCode,
           code_pattern_id: codePatternId,
           code_generation_mode: codeGenerationMode,
+          requested_code_mode: requestedCodeMode,
+          requested_code_pattern_id: input.coding?.patternId ?? null,
+          manual_code_reason:
+            requestedCodeMode === "manual"
+              ? input.coding?.manualReason?.trim() || null
+              : null,
           code_collision_warning: codeCollisionWarning,
           code_collision_skips: codeCollisionSkips,
+          suggested_tramite_template_id:
+            input.creationContext?.suggestedTramiteId ?? null,
+          suggested_tramite_name:
+            input.creationContext?.suggestedTramiteName ?? null,
+          suggested_tramite_version_id:
+            input.creationContext?.suggestedTramiteVersionId ?? null,
+          suggested_tramite_reason:
+            input.creationContext?.suggestedTramiteReason ?? null,
         },
       });
       if (auditError) {

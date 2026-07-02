@@ -405,3 +405,12 @@ limit 50;
   operadores com acesso direto privilegiado ao banco continuam responsáveis
   por não desabilitar triggers;
 - auditoria da sugestão fica para P-12.1.
+
+## Integração P-18A
+
+A sugestão feita na criação passa a ser registrada no evento `created` da
+trilha de auditoria. Ela continua informativa: o detalhe do documento destaca
+o modelo, mas somente inicia uma instância após confirmação explícita.
+
+Se o modelo sugerido deixar de estar publicado, ele não pode ser iniciado e o
+usuário pode escolher outro modelo publicado.

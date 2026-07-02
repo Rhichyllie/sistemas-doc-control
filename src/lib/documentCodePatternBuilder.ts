@@ -7,6 +7,7 @@ export type DocumentCodeTokenType =
   | "AREA"
   | "TYPE"
   | "YEAR"
+  | "YEAR2"
   | "MONTH"
   | "SEQ"
   | "CUSTOM"
@@ -71,6 +72,7 @@ const TOKEN_TYPES = [
   "AREA",
   "TYPE",
   "YEAR",
+  "YEAR2",
   "MONTH",
   "SEQ",
   "CUSTOM",
@@ -114,8 +116,14 @@ const TOKEN_DESCRIPTORS: Record<DocumentCodeTokenType, TokenDescriptor> = {
   YEAR: {
     type: "YEAR",
     label: "Ano",
-    description: "Inclui o ano da data de referência.",
+    description: "Inclui o ano com quatro dígitos (YYYY).",
     example: "2026",
+  },
+  YEAR2: {
+    type: "YEAR2",
+    label: "Ano curto",
+    description: "Inclui os dois últimos dígitos do ano (YY).",
+    example: "26",
   },
   MONTH: {
     type: "MONTH",
@@ -409,6 +417,7 @@ export function buildPatternExample(
     AREA: normalizeCodeToken(context.area || "ENG"),
     TYPE: normalizeCodeToken(context.docType || "ET"),
     YEAR: String(date.getFullYear()),
+    YEAR2: String(date.getFullYear()).slice(-2),
     MONTH: String(date.getMonth() + 1).padStart(2, "0"),
     SEQ: String(sequence).padStart(padding, "0"),
     CUSTOM: normalizeCodeToken(context.custom || ""),

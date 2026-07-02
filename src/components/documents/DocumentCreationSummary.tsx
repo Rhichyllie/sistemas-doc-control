@@ -33,6 +33,7 @@ interface DocumentCreationSummaryProps {
   codeCompatibilityMessage: string | null;
   reviewPeriodLabel?: string;
   suggestedTramite: DocumentTramiteTemplate | null;
+  suggestedTramiteReason?: string | null;
 }
 
 export function DocumentCreationSummary({
@@ -50,6 +51,7 @@ export function DocumentCreationSummary({
   codeCompatibilityMessage,
   reviewPeriodLabel,
   suggestedTramite,
+  suggestedTramiteReason,
 }: DocumentCreationSummaryProps) {
   const type = documentTypes.find((option) => option.value === form.doc_type);
   const project = projects.find((option) => option.id === form.project_id);
@@ -165,8 +167,17 @@ export function DocumentCreationSummary({
               Trâmite sugerido: {suggestedTramite.name}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              {suggestedTramite.current_version?.graph.nodes.length ?? 0}{" "}
-              etapas. A criação não inicia o modelo automaticamente nesta fase.
+              Versão{" "}
+              {suggestedTramite.published_version?.version_number ??
+                suggestedTramite.current_version?.version_number ??
+                1}{" "}
+              · {suggestedTramite.current_version?.graph.nodes.length ?? 0}{" "}
+              etapas
+              {suggestedTramiteReason ? ` · ${suggestedTramiteReason}` : ""}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              O trâmite não será iniciado automaticamente. Você poderá iniciá-lo
+              no detalhe do documento.
             </p>
           </div>
         )}

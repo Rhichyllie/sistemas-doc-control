@@ -25,6 +25,7 @@ A sequência lógica oficial é:
 17. `16_TRAMITA_projects_operational_contexts`
 18. `17_TRAMITA_document_tramite_modeler`
 19. `18_TRAMITA_document_tramite_execution`
+20. `19_TRAMITA_document_creation_integration_controls`
 
 No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 
@@ -38,6 +39,7 @@ No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 - `supabase/migrations/20260630_p11a_projects_operational_contexts.sql`.
 - `supabase/migrations/20260630_p12_document_tramite_modeler.sql`.
 - `supabase/migrations/20260630_p12_1_document_tramite_execution.sql`.
+- `supabase/migrations/20260630_p18a_document_creation_integration_controls.sql`.
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
@@ -121,6 +123,16 @@ aplicado, o hardening foi incorporado diretamente em
 `20260630_p12_1_document_tramite_execution.sql`. Ele remove dependência rígida
 de `profiles.active`, normaliza nós e conexões por `node_key/id` e torna
 `audit_trail` complementar e defensivo.
+
+## P-18A — Integração da Criação
+
+O ciclo 19 conecta a escolha explícita de padrão e o código manual/legado ao
+motor seguro da P-11. Ele registra o modo de geração no documento, preserva a
+alocação concorrente do banco e adiciona `{YEAR2}`.
+
+Projeto e sugestão de trâmite são integrados no frontend. O modelo sugerido é
+registrado na auditoria e continua dependendo de confirmação explícita no
+detalhe; o ciclo 19 não inicia trâmites nem altera `approval_flows`.
 
 ## Hardening P-9A.1 — Grupos de Aprovação
 
@@ -332,3 +344,20 @@ ORDER BY documents.code, versions.revision DESC, versions.created_at DESC;
 ```
 
 Após o ciclo 11, um documento publicado deve apontar para sua versão vigente em `published_version_id`. Durante uma revisão formal, `working_version_id` pode apontar para a versão em preparação ou aprovação sem substituir a publicada.
+
+## 19_TRAMITA_document_creation_integration_controls
+
+Arquivo:
+`supabase/migrations/20260630_p18a_document_creation_integration_controls.sql`
+
+Aplicar depois de `18_TRAMITA_document_tramite_execution`. O ciclo 19 conecta
+os controles de criação ao motor de codificação:
+
+- escolha explícita de `document_code_patterns`;
+- código manual/legado auditável;
+- registro do modo e padrão em `documents`;
+- wrappers de preview e alocação por padrão;
+- token `{YEAR2}` para ano curto.
+
+P-18A não altera `approval_flows` nem inicia trâmites. A sugestão de trâmite é
+registrada na auditoria e confirmada pelo usuário no detalhe do documento.

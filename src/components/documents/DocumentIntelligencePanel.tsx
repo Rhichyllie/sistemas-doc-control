@@ -74,6 +74,7 @@ interface DocumentIntelligencePanelProps {
   codeCompatibilityMessage: string | null;
   selectedProject: ProjectOperationalContext | null;
   suggestedTramite: DocumentTramiteTemplate | null;
+  suggestedTramiteReason?: string | null;
   tramiteCompatibilityMessage: string | null;
 }
 
@@ -99,6 +100,7 @@ export function DocumentIntelligencePanel({
   codeCompatibilityMessage,
   selectedProject,
   suggestedTramite,
+  suggestedTramiteReason,
   tramiteCompatibilityMessage,
 }: DocumentIntelligencePanelProps) {
   const risk = RISK_META[riskLevel];
@@ -254,9 +256,16 @@ export function DocumentIntelligencePanel({
                     (node) => node.node_type !== "start",
                   )?.label ?? "a definir"}
                 </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Versão{" "}
+                  {suggestedTramite.published_version?.version_number ??
+                    suggestedTramite.current_version?.version_number ??
+                    1}
+                  {suggestedTramiteReason ? ` · ${suggestedTramiteReason}` : ""}
+                </p>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Sugestão informativa. A execução automática ainda não está
-                  habilitada.
+                  O trâmite não será iniciado automaticamente. Você poderá
+                  iniciá-lo no detalhe do documento.
                 </p>
               </div>
             )}

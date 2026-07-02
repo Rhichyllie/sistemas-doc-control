@@ -13,6 +13,10 @@ import { Plus, Search, Eye, Download, Sparkles } from "lucide-react";
 import { DOC_STATUS, DOC_TYPES } from "@/lib/constants";
 import { useDocuments, type DocumentFilters } from "@/hooks/useDocuments";
 import { useCreateDocument } from "@/hooks/useCreateDocument";
+import { useDocumentCreationControls, type DocumentCreationCodeMode } from "@/hooks/useDocumentCreationControls";
+import { useDocumentTramiteSuggestion } from "@/hooks/useDocumentTramiteSuggestion";
+import { useProjectOptions } from "@/hooks/useProjectOptions";
+import { DocumentCodingControls } from "@/components/documents/DocumentCodingControls";
 import { useTheme } from "@/contexts/theme-context";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { exportDocumentsToExcel } from "@/lib/exportUtils";
@@ -72,13 +76,35 @@ function DocumentsListPage() {
     doc_type: "",
     area: "",
     description: "",
+    project_id: "",
     review_period_months: "24",
     next_review_at: "",
     file: null as File | null,
   });
+  const [codeMode, setCodeMode] = useState<DocumentCreationCodeMode>("automatic");
+  const [selectedCodePatternId, setSelectedCodePatternId] = useState("");
+  const [manualCode, setManualCode] = useState("");
+  const [manualCodeReason, setManualCodeReason] = useState("");
 
   const { documents, loading, error, refetch } = useDocuments(filters);
   const { createDocument, loading: creating, error: createError } = useCreateDocument();
+  const projectOptions = useProjectOptions();
+  const selectedProject = projectOptions.projects.find(
+    (project) => project.id === form.project_id,
+  );
+  const coding = useDocumentCreationControls({
+    docType: form.doc_type,
+    area: form.area,
+    projectId: form.project_id || null,
+    projectCode: selectedProject?.code || null,
+    selectedPatternId:
+      codeMode === "selected_pattern" ? selectedCodePatternId : null,
+  });
+  const tramiteSuggestion = useDocumentTramiteSuggestion({
+    docType: form.doc_type,
+    area: form.area,
+    projectId: form.project_id || null,
+  });
 
   const statusOptions = useMemo(() => DOC_STATUS, []);
   const typeOptions = useMemo(() => DOC_TYPES, []);
@@ -97,9 +123,40 @@ function DocumentsListPage() {
       doc_type: form.doc_type,
       area: form.area,
       description: form.description.trim() || undefined,
+      project_id: form.project_id || null,
       review_period_months: reviewPeriod,
       next_review_at: form.next_review_at || addMonths(reviewPeriod),
       file: form.file,
+      coding: {
+        mode: codeMode,
+        patternId:
+          codeMode === "selected_pattern" ? selectedCodePatternId : null,
+        manualCode: codeMode === "manual" ? manualCode : null,
+        manualReason: codeMode === "manual" ? manualCodeReason : null,
+      },
+      creationContext: {
+        mode: "standard",
+        requestCodeAllocation: codeMode !== "manual",
+        codePreview: coding.codePreview.code,
+        codePatternId:
+          codeMode === "selected_pattern"
+            ? selectedCodePatternId
+            : coding.codePreview.patternId,
+        codePreviewMode: coding.codePreview.mode,
+        projectCode: selectedProject?.code ?? null,
+        projectName: selectedProject?.name ?? null,
+        projectClient: selectedProject?.client_name ?? null,
+        projectContract: selectedProject?.contract_number ?? null,
+        suggestedTramiteId:
+          tramiteSuggestion.suggestedTramite?.id ?? null,
+        suggestedTramiteName:
+          tramiteSuggestion.suggestedTramite?.name ?? null,
+        suggestedTramiteVersionId:
+          tramiteSuggestion.suggestedTramite?.published_version?.id ??
+          tramiteSuggestion.suggestedTramite?.current_version?.id ??
+          null,
+        suggestedTramiteReason: tramiteSuggestion.suggestionReason,
+      },
     });
 
     if (!result) return;
@@ -111,10 +168,15 @@ function DocumentsListPage() {
       doc_type: "",
       area: "",
       description: "",
+      project_id: "",
       review_period_months: "24",
       next_review_at: "",
       file: null,
     });
+    setCodeMode("automatic");
+    setSelectedCodePatternId("");
+    setManualCode("");
+    setManualCodeReason("");
     await refetch();
     navigate({ to: "/authenticated/documents/$documentId", params: { documentId: result.id } });
   }
@@ -141,7 +203,7 @@ function DocumentsListPage() {
               <Plus className="h-4 w-4 mr-2" /> Novo Documento
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Novo Documento</DialogTitle>
             </DialogHeader>
@@ -174,6 +236,50 @@ function DocumentsListPage() {
                   <Label>Descrição</Label>
                   <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
                 </div>
+                {projectOptions.canUseProjects && (
+                  <div className="col-span-2 space-y-2">
+                    <Label>Projeto, obra ou contrato</Label>
+                    <Select
+                      value={form.project_id || "none"}
+                      onValueChange={(value) =>
+                        setForm({
+                          ...form,
+                          project_id: value === "none" ? "" : value,
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sem projeto" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sem projeto</SelectItem>
+                        {projectOptions.projects.map((project) => (
+                          <SelectItem key={project.id} value={project.id}>
+                            {project.code ? `${project.code} · ` : ""}
+                            {project.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedProject && (
+                      <p className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                        {[
+                          selectedProject.client_name
+                            ? `Cliente: ${selectedProject.client_name}`
+                            : null,
+                          selectedProject.contract_number
+                            ? `Contrato: ${selectedProject.contract_number}`
+                            : null,
+                          selectedProject.location
+                            ? `Local: ${selectedProject.location}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "Contexto operacional vinculado."}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div>
                   <Label>Período de revisão</Label>
                   <Select value={form.review_period_months} onValueChange={(value) => setForm({ ...form, review_period_months: value })}>
@@ -206,6 +312,42 @@ function DocumentsListPage() {
                   />
                 </div>
               </div>
+              <DocumentCodingControls
+                mode={codeMode}
+                onModeChange={(nextMode) => {
+                  setCodeMode(nextMode);
+                  if (nextMode !== "selected_pattern") {
+                    setSelectedCodePatternId("");
+                  }
+                }}
+                selectedPatternId={selectedCodePatternId}
+                onSelectedPatternChange={setSelectedCodePatternId}
+                manualCode={manualCode}
+                onManualCodeChange={setManualCode}
+                manualReason={manualCodeReason}
+                onManualReasonChange={setManualCodeReason}
+                patterns={coding.patterns}
+                applicablePatternIds={coding.applicablePatterns.map(
+                  (pattern) => pattern.id,
+                )}
+                preview={coding.codePreview}
+                isLoading={coding.isLoading}
+                supportsPatternSelection={coding.supportsPatternSelection}
+                supportsManualCode={coding.supportsManualCode}
+                compatibilityMessage={coding.integrationMessage}
+              />
+              {tramiteSuggestion.suggestedTramite && (
+                <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm">
+                  <strong>
+                    Trâmite disponível após criação:{" "}
+                    {tramiteSuggestion.suggestedTramite.name}
+                  </strong>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {tramiteSuggestion.suggestionReason} Ele não será iniciado
+                    automaticamente; a confirmação será feita no detalhe.
+                  </p>
+                </div>
+              )}
               {createError && <p className="text-sm text-destructive">{createError}</p>}
               <DialogFooter>
                 <Button type="button" variant="secondary" onClick={() => setOpenNewDoc(false)}>Cancelar</Button>

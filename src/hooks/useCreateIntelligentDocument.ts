@@ -18,6 +18,7 @@ import {
   DOCUMENT_RULE_FIELD_LABELS,
   type DocumentRuleField,
 } from "@/lib/documentTemplateRules";
+import type { DocumentCreationCodeMode } from "@/hooks/useDocumentCreationControls";
 
 export interface CreateIntelligentDocumentInput {
   form: IntelligentDocumentFormState;
@@ -35,9 +36,18 @@ export interface CreateIntelligentDocumentInput {
     enforcedReviewPeriodMonths: number | null;
   };
   coding: {
+    mode: DocumentCreationCodeMode;
     previewCode: string | null;
     patternId: string | null;
     previewMode: string;
+    manualCode: string | null;
+    manualReason: string | null;
+  };
+  tramite: {
+    templateId: string | null;
+    templateName: string | null;
+    templateVersionId: string | null;
+    reason: string | null;
   };
   projectContext: {
     code: string;
@@ -74,6 +84,15 @@ export function getIntelligentDocumentValidationErrors(
     errors.push(
       `A política documental exige revisão em ${input.governance.enforcedReviewPeriodMonths} meses. Aplique a sugestão antes de criar.`,
     );
+  }
+  if (input.coding.mode === "selected_pattern" && !input.coding.patternId) {
+    errors.push("Escolha um padrão de codificação aplicável.");
+  }
+  if (
+    input.coding.mode === "manual" &&
+    (!input.coding.manualCode?.trim() || !input.coding.manualReason?.trim())
+  ) {
+    errors.push("Informe o código oficial e o motivo da codificação manual.");
   }
   return errors;
 }
@@ -123,6 +142,12 @@ export function useCreateIntelligentDocument() {
       next_review_at: form.next_review_at || undefined,
       file: form.file,
       advancedFields,
+      coding: {
+        mode: input.coding.mode,
+        patternId: input.coding.patternId,
+        manualCode: input.coding.manualCode,
+        manualReason: input.coding.manualReason,
+      },
       creationContext: {
         mode: input.mode,
         completenessScore: input.completenessScore,
@@ -140,6 +165,10 @@ export function useCreateIntelligentDocument() {
         projectName: input.projectContext?.name ?? null,
         projectClient: input.projectContext?.client ?? null,
         projectContract: input.projectContext?.contract ?? null,
+        suggestedTramiteId: input.tramite.templateId,
+        suggestedTramiteName: input.tramite.templateName,
+        suggestedTramiteVersionId: input.tramite.templateVersionId,
+        suggestedTramiteReason: input.tramite.reason,
       },
     });
   }

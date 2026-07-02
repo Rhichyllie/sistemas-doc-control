@@ -50,6 +50,35 @@ function specificity(template: DocumentTramiteTemplate) {
   );
 }
 
+function suggestionReason(
+  template: DocumentTramiteTemplate | null,
+  input: DocumentTramiteSuggestionInput,
+) {
+  if (!template) return null;
+  const matches: string[] = [];
+  if (template.project_id === input.projectId && template.project_id) {
+    matches.push("projeto");
+  }
+  if (
+    template.doc_type &&
+    template.doc_type.toUpperCase() === input.docType?.toUpperCase()
+  ) {
+    matches.push("tipo documental");
+  }
+  if (
+    template.area &&
+    template.area.toUpperCase() === input.area?.toUpperCase()
+  ) {
+    matches.push("área");
+  }
+  if (!matches.length && template.is_default) {
+    return "Modelo padrão publicado da organização.";
+  }
+  return matches.length
+    ? `Correspondência por ${matches.join(", ")}.`
+    : "Modelo publicado aplicável ao contexto informado.";
+}
+
 export function useDocumentTramiteSuggestion(
   input: DocumentTramiteSuggestionInput,
 ) {
@@ -69,6 +98,11 @@ export function useDocumentTramiteSuggestion(
 
   return {
     suggestedTramite,
+    suggestionReason: suggestionReason(suggestedTramite, {
+      docType,
+      area,
+      projectId,
+    }),
     isLoading: catalog.isLoading,
     schemaStatus: catalog.schemaStatus,
     compatibilityMessage:

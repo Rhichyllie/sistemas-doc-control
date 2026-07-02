@@ -632,3 +632,14 @@ Quando `{PROJECT}` é usado:
 - valores de organização, área e tipo usados no exemplo são ilustrativos;
 - expressões legadas não reversíveis permanecem no modo avançado;
 - não há alteração no motor SQL ou em códigos já emitidos.
+
+## Integração P-18A
+
+A P-18A adiciona escolha explícita do padrão durante a criação e código
+manual/legado controlado. O preview e a alocação usam o mesmo `pattern_id`;
+padrões ativos não aplicáveis ficam visíveis, porém indisponíveis para seleção.
+
+O ciclo 19 também adiciona o token `{YEAR2}` para ano curto (`YY`). `{YEAR}`
+continua gerando quatro dígitos. O código manual exige motivo, unicidade por
+organização e evento de auditoria. Sem o ciclo 19, a P-11 mantém a resolução
+automática existente.

@@ -382,3 +382,12 @@ limit 100;
 - `audit_trail` pode ser ignorado quando o schema local não oferece o contrato
   mínimo; os eventos próprios permanecem obrigatórios;
 - o painel faz checagem local para UX, mas a RPC é a autoridade final.
+
+## Integração P-18A
+
+O painel de execução está na rota real
+`/authenticated/documents/$documentId`. Ele prioriza o modelo sugerido na
+criação, lista execuções existentes e permite escolher outro modelo publicado.
+
+Sem o ciclo 18, o painel informa que a execução ainda não está instalada e que
+o modelo foi apenas sugerido. Nenhuma criação inicia trâmite automaticamente.

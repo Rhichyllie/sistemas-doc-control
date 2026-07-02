@@ -42,6 +42,8 @@ export interface DocumentCodePatternMutationInput {
 interface UseDocumentCodePatternsOptions {
   enabled?: boolean;
   includeInactive?: boolean;
+  requireManagement?: boolean;
+  loadProjects?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -145,7 +147,12 @@ function mutationPayload(
 export function useDocumentCodePatterns(
   options: UseDocumentCodePatternsOptions = {},
 ) {
-  const { enabled = true, includeInactive = true } = options;
+  const {
+    enabled = true,
+    includeInactive = true,
+    requireManagement = true,
+    loadProjects = true,
+  } = options;
   const { profile } = useAuthContext();
   const canManage = profile?.role === "admin" || profile?.role === "manager";
   const {
@@ -153,7 +160,7 @@ export function useDocumentCodePatterns(
     compatibilityMessage: projectCompatibilityMessage,
     refresh: refreshProjects,
   } = useProjectOptions({
-    enabled: enabled && canManage,
+    enabled: enabled && loadProjects && (canManage || !requireManagement),
   });
   const [patterns, setPatterns] = useState<DocumentCodePattern[]>([]);
   const [isLoading, setIsLoading] = useState(enabled);
@@ -177,7 +184,7 @@ export function useDocumentCodePatterns(
       setIsLoading(false);
       return;
     }
-    if (!canManage) {
+    if (requireManagement && !canManage) {
       setPatterns([]);
       setError(null);
       setCompatibilityMessage(
@@ -225,6 +232,7 @@ export function useDocumentCodePatterns(
     canManage,
     enabled,
     includeInactive,
+    requireManagement,
     profile?.id,
     profile?.org_id,
     refreshProjects,
@@ -316,12 +324,19 @@ export function useDocumentCodePatterns(
   );
 
   const diagnostic = useMemo(() => {
-    if (!canManage) return "restricted" as const;
+    if (requireManagement && !canManage) return "restricted" as const;
     if (compatibilityMessage) return "not_installed" as const;
     if (error) return "error" as const;
     if (!isLoading && patterns.length === 0) return "empty" as const;
     return "ready" as const;
-  }, [canManage, compatibilityMessage, error, isLoading, patterns.length]);
+  }, [
+    canManage,
+    compatibilityMessage,
+    error,
+    isLoading,
+    patterns.length,
+    requireManagement,
+  ]);
 
   return {
     patterns,

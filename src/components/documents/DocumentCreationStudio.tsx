@@ -15,6 +15,7 @@ import { DocumentCreationModeSelector } from "@/components/documents/DocumentCre
 import { DocumentCreationSummary } from "@/components/documents/DocumentCreationSummary";
 import { DocumentIntelligencePanel } from "@/components/documents/DocumentIntelligencePanel";
 import { DocumentReviewPeriodInput } from "@/components/documents/DocumentReviewPeriodInput";
+import { DocumentCodingControls } from "@/components/documents/DocumentCodingControls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +36,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCreateIntelligentDocument } from "@/hooks/useCreateIntelligentDocument";
+import type { DocumentCreationCodeMode } from "@/hooks/useDocumentCreationControls";
 import {
   useDocumentCreationIntelligence,
   type IntelligentDocumentFormState,
@@ -101,7 +103,15 @@ export function DocumentCreationStudio() {
     value: 24,
     unit: "months",
   });
-  const intelligence = useDocumentCreationIntelligence(form, mode);
+  const [codeMode, setCodeMode] =
+    useState<DocumentCreationCodeMode>("automatic");
+  const [selectedCodePatternId, setSelectedCodePatternId] = useState("");
+  const [manualCode, setManualCode] = useState("");
+  const [manualCodeReason, setManualCodeReason] = useState("");
+  const intelligence = useDocumentCreationIntelligence(form, mode, {
+    selectedCodePatternId:
+      codeMode === "selected_pattern" ? selectedCodePatternId : null,
+  });
   const creation = useCreateIntelligentDocument();
 
   function updateField<K extends keyof IntelligentDocumentFormState>(
@@ -166,8 +176,7 @@ export function DocumentCreationStudio() {
     setForm((current) => ({
       ...current,
       next_review_at: date,
-      review_period_months:
-        estimatedMonths ?? current.review_period_months,
+      review_period_months: estimatedMonths ?? current.review_period_months,
     }));
   }
 
@@ -187,9 +196,24 @@ export function DocumentCreationStudio() {
       enforcedReviewPeriodMonths: intelligence.enforcedReviewPeriodMonths,
     },
     coding: {
+      mode: codeMode,
       previewCode: intelligence.codePreview.code,
-      patternId: intelligence.codePreview.patternId,
+      patternId:
+        codeMode === "selected_pattern"
+          ? selectedCodePatternId || null
+          : intelligence.codePreview.patternId,
       previewMode: intelligence.codePreview.mode,
+      manualCode: codeMode === "manual" ? manualCode : null,
+      manualReason: codeMode === "manual" ? manualCodeReason : null,
+    },
+    tramite: {
+      templateId: intelligence.suggestedTramite?.id ?? null,
+      templateName: intelligence.suggestedTramite?.name ?? null,
+      templateVersionId:
+        intelligence.suggestedTramite?.published_version?.id ??
+        intelligence.suggestedTramite?.current_version?.id ??
+        null,
+      reason: intelligence.suggestedTramiteReason,
     },
     projectContext: intelligence.selectedProject
       ? {
@@ -631,7 +655,8 @@ export function DocumentCreationStudio() {
                     : "text-amber-800",
                 )}
               >
-                A política exige {intelligence.enforcedReviewPeriodMonths} meses.
+                A política exige {intelligence.enforcedReviewPeriodMonths}{" "}
+                meses.
                 {form.review_period_months ===
                 intelligence.enforcedReviewPeriodMonths
                   ? " Requisito atendido."
@@ -641,10 +666,7 @@ export function DocumentCreationStudio() {
           </div>
         ) : (
           <div
-            className={cn(
-              policyFieldClass("next_review_at"),
-              "md:col-span-2",
-            )}
+            className={cn(policyFieldClass("next_review_at"), "md:col-span-2")}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Label htmlFor="next-review">Data específica da revisão</Label>
@@ -665,22 +687,25 @@ export function DocumentCreationStudio() {
         )}
 
         {reviewScheduleMode === "period" && (
-          <div className={cn(policyFieldClass("next_review_at"), "md:col-span-2")}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Label htmlFor="next-review">Próxima revisão</Label>
-            {renderPolicyBadge("next_review_at")}
+          <div
+            className={cn(policyFieldClass("next_review_at"), "md:col-span-2")}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label htmlFor="next-review">Próxima revisão</Label>
+              {renderPolicyBadge("next_review_at")}
+            </div>
+            <Input
+              id="next-review"
+              type="date"
+              value={form.next_review_at}
+              readOnly
+            />
+            <p className="text-xs text-muted-foreground">
+              Calculada automaticamente a partir de{" "}
+              {formatReviewPeriod(reviewPeriod)}.
+            </p>
+            {renderPolicyHint("next_review_at")}
           </div>
-          <Input
-            id="next-review"
-            type="date"
-            value={form.next_review_at}
-            readOnly
-          />
-          <p className="text-xs text-muted-foreground">
-            Calculada automaticamente a partir de {formatReviewPeriod(reviewPeriod)}.
-          </p>
-          {renderPolicyHint("next_review_at")}
-        </div>
         )}
       </div>
     );
@@ -737,6 +762,35 @@ export function DocumentCreationStudio() {
           )}
         </div>
       </div>
+    );
+  }
+
+  function renderCoding() {
+    return (
+      <DocumentCodingControls
+        mode={codeMode}
+        onModeChange={(nextMode) => {
+          setCodeMode(nextMode);
+          if (nextMode !== "selected_pattern") {
+            setSelectedCodePatternId("");
+          }
+        }}
+        selectedPatternId={selectedCodePatternId}
+        onSelectedPatternChange={setSelectedCodePatternId}
+        manualCode={manualCode}
+        onManualCodeChange={setManualCode}
+        manualReason={manualCodeReason}
+        onManualReasonChange={setManualCodeReason}
+        patterns={intelligence.codePatternCatalog}
+        applicablePatternIds={intelligence.codePatterns.map(
+          (pattern) => pattern.id,
+        )}
+        preview={intelligence.codePreview}
+        isLoading={intelligence.codePreviewLoading}
+        supportsPatternSelection={intelligence.supportsPatternSelection}
+        supportsManualCode={intelligence.supportsManualCode}
+        compatibilityMessage={intelligence.codeIntegrationMessage}
+      />
     );
   }
 
@@ -836,6 +890,7 @@ export function DocumentCreationStudio() {
         <CardContent className="space-y-6">
           {renderIdentity()}
           {renderClassification()}
+          {renderCoding()}
           {renderFile()}
         </CardContent>
       </Card>
@@ -880,7 +935,12 @@ export function DocumentCreationStudio() {
         <CardContent className="space-y-6">
           {guidedStep === 0 && renderIdentity()}
           {guidedStep === 1 && renderClassification()}
-          {guidedStep === 2 && renderGovernance()}
+          {guidedStep === 2 && (
+            <div className="space-y-6">
+              {renderGovernance()}
+              {renderCoding()}
+            </div>
+          )}
           {guidedStep === 3 && renderFile()}
           {guidedStep === 4 && (
             <DocumentCreationSummary
@@ -897,6 +957,7 @@ export function DocumentCreationStudio() {
               codePreviewLoading={intelligence.codePreviewLoading}
               codeCompatibilityMessage={intelligence.codeCompatibilityMessage}
               suggestedTramite={intelligence.suggestedTramite}
+              suggestedTramiteReason={intelligence.suggestedTramiteReason}
               reviewPeriodLabel={
                 reviewScheduleMode === "date"
                   ? "Data específica"
@@ -966,6 +1027,7 @@ export function DocumentCreationStudio() {
             {renderClassification()}
           </CardContent>
         </Card>
+        {renderCoding()}
         <Card>
           <CardHeader>
             <CardTitle>Governança</CardTitle>
@@ -998,6 +1060,7 @@ export function DocumentCreationStudio() {
           codePreviewLoading={intelligence.codePreviewLoading}
           codeCompatibilityMessage={intelligence.codeCompatibilityMessage}
           suggestedTramite={intelligence.suggestedTramite}
+          suggestedTramiteReason={intelligence.suggestedTramiteReason}
           reviewPeriodLabel={
             reviewScheduleMode === "date"
               ? "Data específica"
@@ -1117,9 +1180,8 @@ export function DocumentCreationStudio() {
           codeCompatibilityMessage={intelligence.codeCompatibilityMessage}
           selectedProject={intelligence.selectedProject ?? null}
           suggestedTramite={intelligence.suggestedTramite}
-          tramiteCompatibilityMessage={
-            intelligence.tramiteCompatibilityMessage
-          }
+          suggestedTramiteReason={intelligence.suggestedTramiteReason}
+          tramiteCompatibilityMessage={intelligence.tramiteCompatibilityMessage}
           suggestionsApplied={suggestionsApplied}
           suggestionsDisabled={
             intelligence.isLoadingConfigurations || creation.loading
