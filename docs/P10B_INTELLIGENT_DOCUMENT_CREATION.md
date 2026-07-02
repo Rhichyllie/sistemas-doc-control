@@ -507,3 +507,13 @@ Com o ciclo 19, o usuário pode manter a escolha automática, selecionar um
 padrão de código aplicável ou informar um código oficial legado com motivo.
 Sem esse ciclo, a criação continua em modo automático e usa o fallback P-11 ou
 o trigger legado.
+
+## Integração P-22
+
+Com o ciclo 20, a criação inteligente envia ao Storage primeiro e delega à RPC
+`create_document_transactional` o documento, a versão inicial, a codificação e
+a auditoria. Políticas, scores e sugestão de trâmite seguem no metadata sem
+iniciar execução automaticamente.
+
+Sem o ciclo 20, o fluxo P-10B.1/P-18A continua funcional com a compensação
+existente no frontend.

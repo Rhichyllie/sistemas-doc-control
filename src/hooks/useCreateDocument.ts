@@ -2,6 +2,10 @@ import { useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { getErrorMessage } from "@/lib/errorUtils";
+import {
+  isTransactionalDocumentCreationUnavailable,
+  normalizeTransactionalDocumentCreationResult,
+} from "@/lib/documentCreationTransaction";
 import { validateDocumentCreation } from "@/lib/documentCreationValidation";
 import { isDocumentCodingCompatibilityError } from "@/lib/documentCodePatterns";
 import { normalizeDocumentCreationPayload } from "@/lib/documentIntelligence";
@@ -114,6 +118,7 @@ export function useCreateDocument() {
       setError("Usuário não autenticado");
       return null;
     }
+    const currentProfile = profile;
     if (creatingRef.current) {
       setError("Já existe uma criação em andamento. Aguarde a conclusão.");
       return null;
@@ -142,6 +147,51 @@ export function useCreateDocument() {
 
     let uploadedPath: string | null = null;
     let createdDocumentId: string | null = null;
+    let preserveUploadForReconciliation = false;
+    const creationMode = input.creationContext?.mode ?? "standard";
+    const creationSource =
+      input.creationContext?.mode &&
+      ["quick", "guided", "expert"].includes(input.creationContext.mode)
+        ? "intelligent_creation"
+        : "standard_creation";
+
+    async function registerTemplateUsage(documentId: string) {
+      const shouldLogTemplateUsage =
+        creationSource === "intelligent_creation" &&
+        (Boolean(input.creationContext?.templateId) ||
+          Boolean(input.creationContext?.appliedRuleIds?.length));
+      if (!shouldLogTemplateUsage) return undefined;
+
+      try {
+        const { error: usageLogError } = await supabase
+          .from("document_template_usage_logs")
+          .insert({
+            org_id: currentProfile.org_id,
+            template_id: input.creationContext?.templateId ?? null,
+            document_id: documentId,
+            user_id: currentProfile.id,
+            creation_mode: creationMode,
+            applied_rules: input.creationContext?.appliedRuleIds ?? [],
+            metadata: {
+              template_name: input.creationContext?.templateName ?? null,
+              governance_score: input.creationContext?.governanceScore ?? null,
+              required_fields_missing:
+                input.creationContext?.requiredFieldsMissing ?? [],
+              source: creationSource,
+            },
+          });
+
+        if (
+          usageLogError &&
+          !isDocumentTemplateSchemaUnavailable(usageLogError)
+        ) {
+          return "Documento criado, mas o registro de uso do template não foi salvo. Revise as policies de document_template_usage_logs.";
+        }
+        return undefined;
+      } catch {
+        return "Documento criado, mas o registro de uso do template não foi salvo. Revise as policies de document_template_usage_logs.";
+      }
+    }
 
     try {
       let file_path: string | null = null;
@@ -186,6 +236,116 @@ export function useCreateDocument() {
         metadata: input.advancedFields?.metadata,
         tags: input.advancedFields?.tags,
       });
+      const requestedCodeMode = input.coding?.mode ?? "automatic";
+      const creationMetadata = {
+        document_metadata: input.advancedFields?.metadata ?? {},
+        creation_mode: creationMode,
+        source: creationSource,
+        completeness_score: input.creationContext?.completenessScore ?? null,
+        risk_level: input.creationContext?.riskLevel ?? null,
+        project_id: input.project_id ?? null,
+        project_code: input.creationContext?.projectCode ?? null,
+        project_name: input.creationContext?.projectName ?? null,
+        project_client: input.creationContext?.projectClient ?? null,
+        project_contract: input.creationContext?.projectContract ?? null,
+        review_period_months: input.review_period_months ?? 24,
+        next_review_at: input.next_review_at ?? null,
+        has_file: Boolean(file_path),
+        file_hash,
+        template_id: input.creationContext?.templateId ?? null,
+        template_name: input.creationContext?.templateName ?? null,
+        applied_rule_ids: input.creationContext?.appliedRuleIds ?? [],
+        governance_score: input.creationContext?.governanceScore ?? null,
+        required_fields_missing:
+          input.creationContext?.requiredFieldsMissing ?? [],
+        code_preview: input.creationContext?.codePreview ?? null,
+        requested_code_mode: requestedCodeMode,
+        requested_code_pattern_id: input.coding?.patternId ?? null,
+        suggested_tramite_template_id:
+          input.creationContext?.suggestedTramiteId ?? null,
+        suggested_tramite_template_name:
+          input.creationContext?.suggestedTramiteName ?? null,
+        suggested_tramite_template_version_id:
+          input.creationContext?.suggestedTramiteVersionId ?? null,
+        suggested_tramite_reason:
+          input.creationContext?.suggestedTramiteReason ?? null,
+      };
+      const transactionalResult = await supabase.rpc(
+        "create_document_transactional",
+        {
+          p_title: input.title.trim(),
+          p_description: input.description?.trim() || null,
+          p_doc_type: input.doc_type,
+          p_area: input.area,
+          p_project_id: input.project_id || null,
+          p_revision: revision,
+          p_review_period_months: input.review_period_months ?? 24,
+          p_next_review_at: input.next_review_at || null,
+          p_confidentiality:
+            input.advancedFields?.confidentiality?.trim() || null,
+          p_external_reference:
+            input.advancedFields?.external_reference?.trim() || null,
+          p_source_system: input.advancedFields?.source_system?.trim() || null,
+          p_tags: input.advancedFields?.tags ?? [],
+          p_file_metadata:
+            file_path && file_name
+              ? {
+                  file_path,
+                  file_name,
+                  file_size,
+                  file_hash,
+                  content_type: input.file?.type || null,
+                }
+              : null,
+          p_code_mode: requestedCodeMode,
+          p_code_pattern_id: input.coding?.patternId ?? null,
+          p_manual_code: input.coding?.manualCode?.trim() || null,
+          p_manual_code_reason: input.coding?.manualReason?.trim() || null,
+          p_creation_metadata: creationMetadata,
+        },
+      );
+
+      if (!transactionalResult.error) {
+        const created = normalizeTransactionalDocumentCreationResult(
+          transactionalResult.data,
+        );
+        if (!created) {
+          const rawResult =
+            transactionalResult.data &&
+            typeof transactionalResult.data === "object"
+              ? (transactionalResult.data as Record<string, unknown>)
+              : null;
+          createdDocumentId =
+            typeof rawResult?.document_id === "string"
+              ? rawResult.document_id
+              : null;
+          preserveUploadForReconciliation = !createdDocumentId;
+          throw new Error(
+            "A criação transacional retornou uma resposta inválida. Nenhum resultado seguro pôde ser confirmado.",
+          );
+        }
+
+        const usageLogWarning = await registerTemplateUsage(created.documentId);
+        return {
+          id: created.documentId,
+          code: created.code,
+          warning:
+            [...created.warnings, usageLogWarning].filter(Boolean).join(" ") ||
+            undefined,
+        };
+      }
+
+      if (
+        !isTransactionalDocumentCreationUnavailable(transactionalResult.error)
+      ) {
+        throw new Error(
+          `Não foi possível concluir a criação transacional: ${getErrorMessage(transactionalResult.error, "erro não identificado")}`,
+        );
+      }
+
+      const transactionalFallbackWarning =
+        "Ciclo 20 não instalado. O documento foi criado pelo fluxo compatível do cliente.";
+
       const { data, error: insertError } = await supabase
         .from("documents")
         .insert(
@@ -225,7 +385,6 @@ export function useCreateDocument() {
       let codeCollisionWarning = false;
       let codeCollisionSkips = 0;
 
-      const requestedCodeMode = input.coding?.mode ?? "automatic";
       if (requestedCodeMode === "manual") {
         const manualResult = await supabase.rpc("assign_manual_document_code", {
           p_document_id: data.id,
@@ -337,13 +496,6 @@ export function useCreateDocument() {
           }
         }
       }
-      const creationMode = input.creationContext?.mode ?? "standard";
-      const creationSource =
-        input.creationContext?.mode &&
-        ["quick", "guided", "expert"].includes(input.creationContext.mode)
-          ? "intelligent_creation"
-          : "standard_creation";
-
       if (file_path && file_name) {
         const enterpriseVersion = await supabase
           .from("document_versions")
@@ -449,45 +601,15 @@ export function useCreateDocument() {
         );
       }
 
-      let usageLogWarning: string | undefined;
-      const shouldLogTemplateUsage =
-        creationSource === "intelligent_creation" &&
-        (Boolean(input.creationContext?.templateId) ||
-          Boolean(input.creationContext?.appliedRuleIds?.length));
-      if (shouldLogTemplateUsage) {
-        const { error: usageLogError } = await supabase
-          .from("document_template_usage_logs")
-          .insert({
-            org_id: profile.org_id,
-            template_id: input.creationContext?.templateId ?? null,
-            document_id: data.id,
-            user_id: profile.id,
-            creation_mode: creationMode,
-            applied_rules: input.creationContext?.appliedRuleIds ?? [],
-            metadata: {
-              template_name: input.creationContext?.templateName ?? null,
-              governance_score: input.creationContext?.governanceScore ?? null,
-              required_fields_missing:
-                input.creationContext?.requiredFieldsMissing ?? [],
-              source: creationSource,
-            },
-          });
-
-        if (
-          usageLogError &&
-          !isDocumentTemplateSchemaUnavailable(usageLogError)
-        ) {
-          usageLogWarning =
-            "Documento criado, mas o registro de uso do template não foi salvo. Revise as policies de document_template_usage_logs.";
-        }
-      }
+      const usageLogWarning = await registerTemplateUsage(data.id);
 
       return {
         id: data.id,
         code: finalCode,
         warning:
-          [codeGenerationWarning, usageLogWarning].filter(Boolean).join(" ") ||
-          undefined,
+          [transactionalFallbackWarning, codeGenerationWarning, usageLogWarning]
+            .filter(Boolean)
+            .join(" ") || undefined,
       };
     } catch (err: unknown) {
       const cleanupMessages: string[] = [];
@@ -518,7 +640,7 @@ export function useCreateDocument() {
             }
           }
         }
-      } else if (uploadedPath) {
+      } else if (uploadedPath && !preserveUploadForReconciliation) {
         const { error: storageCleanupError } = await supabase.storage
           .from("documents")
           .remove([uploadedPath]);
@@ -531,6 +653,10 @@ export function useCreateDocument() {
             "O upload parcial foi removido; nenhum arquivo órfão foi mantido.",
           );
         }
+      } else if (uploadedPath) {
+        cleanupMessages.push(
+          `Não foi possível confirmar se a transação criou o documento. O arquivo ${uploadedPath} foi preservado para reconciliação manual.`,
+        );
       }
 
       setError(

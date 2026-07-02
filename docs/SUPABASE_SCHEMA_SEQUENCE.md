@@ -26,6 +26,7 @@ A sequência lógica oficial é:
 18. `17_TRAMITA_document_tramite_modeler`
 19. `18_TRAMITA_document_tramite_execution`
 20. `19_TRAMITA_document_creation_integration_controls`
+21. `20_TRAMITA_transactional_document_creation`
 
 No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 
@@ -40,6 +41,7 @@ No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 - `supabase/migrations/20260630_p12_document_tramite_modeler.sql`.
 - `supabase/migrations/20260630_p12_1_document_tramite_execution.sql`.
 - `supabase/migrations/20260630_p18a_document_creation_integration_controls.sql`.
+- `supabase/migrations/20260630_p22_transactional_document_creation.sql`.
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
@@ -159,6 +161,16 @@ recomendado usando as fontes existentes.
 
 A Home não replica a caixa de trabalho da Central e não altera dados. Não
 existe migration da P-21.
+
+## P-22 — Criação Documental Transacional
+
+O ciclo 20 cria `create_document_transactional`, que coordena documento,
+versão inicial, codificação e auditoria em uma transação PostgreSQL. Ele deve
+ser aplicado depois do ciclo 19.
+
+O upload no Storage continua no frontend e é compensado quando a transação
+falha. O ciclo 20 não inicia trâmites, não altera `approval_flows` e não cria
+notificações.
 
 ## Hardening P-9A.1 — Grupos de Aprovação
 

@@ -203,11 +203,17 @@ limit 50;
   arbitrários de metadata ainda não fazem parte do renderer SQL;
 - a sugestão é registrada em `audit_trail`, não como vínculo obrigatório;
 - um modelo removido ou despublicado deixa de ser iniciável;
-- não há transação única envolvendo Storage, documento, versão, código e
-  auditoria; a compensação existente continua sendo usada.
+- o Storage permanece fora da transação PostgreSQL e continua exigindo
+  compensação.
+
+## Integração P-22
+
+O ciclo 20 adiciona `create_document_transactional` para coordenar documento,
+versão inicial, código e auditoria. O upload ocorre antes da RPC e é removido
+pelo cliente quando a transação falha. Em ambientes sem ciclo 20, o fluxo
+P-18A anterior permanece como fallback.
 
 ## Próximo passo recomendado
 
-Criar uma RPC transacional de criação documental que coordene documento,
-versão inicial, código, auditoria e vínculo de contexto, preservando o upload
-como etapa compensável.
+Validar a criação transacional com código automático, padrão escolhido e
+código manual em um ambiente de teste antes da aplicação em produção.

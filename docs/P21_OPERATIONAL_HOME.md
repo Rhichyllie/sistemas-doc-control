@@ -133,6 +133,12 @@ Não há IA externa nem automação.
 A P-21 não cria migration nem novo ciclo SQL. Ela é uma integração de
 frontend/produto sobre hooks e políticas existentes.
 
+## Integração P-22
+
+A criação transacional do ciclo 20 não altera as fontes da Home. Documentos
+criados pela RPC aparecem nos mesmos indicadores, e ambientes sem o ciclo 20
+continuam usando o fluxo compatível sem afetar a visão operacional.
+
 ## Testes manuais
 
 1. Abra `/authenticated/dashboard` sem o ciclo 18 e confirme o fallback.
