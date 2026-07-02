@@ -180,6 +180,9 @@ BEGIN
       v_requested_pattern_id IS NULL
       OR pattern.id = v_requested_pattern_id
     )
+    AND pattern.pattern_scope IN (
+      'organization', 'project', 'area', 'type', 'area_type'
+    )
     AND (pattern.project_id IS NULL OR pattern.project_id = p_project_id)
     AND (
       pattern.doc_type IS NULL
@@ -234,12 +237,31 @@ AS $$
     WHERE pattern.id = p_pattern_id
       AND pattern.org_id = p_org_id
       AND pattern.is_active = true
+      AND pattern.pattern_scope IN (
+        'organization', 'project', 'area', 'type', 'area_type'
+      )
       AND (pattern.project_id IS NULL OR pattern.project_id = p_project_id)
       AND (
         pattern.doc_type IS NULL
         OR UPPER(pattern.doc_type) = UPPER(p_doc_type)
       )
       AND (pattern.area IS NULL OR UPPER(pattern.area) = UPPER(p_area))
+      AND (
+        pattern.pattern_scope <> 'project'
+        OR pattern.project_id IS NOT NULL
+      )
+      AND (
+        pattern.pattern_scope <> 'type'
+        OR pattern.doc_type IS NOT NULL
+      )
+      AND (
+        pattern.pattern_scope <> 'area'
+        OR pattern.area IS NOT NULL
+      )
+      AND (
+        pattern.pattern_scope <> 'area_type'
+        OR (pattern.doc_type IS NOT NULL AND pattern.area IS NOT NULL)
+      )
   )
 $$;
 
@@ -315,7 +337,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION USING
       ERRCODE = '22023',
-      MESSAGE = 'O padrão escolhido está inativo, pertence a outra organização ou não se aplica ao documento.';
+      MESSAGE = 'O padrão escolhido está inativo, pertence a outra organização ou não se aplica ao contexto.';
   END IF;
 
   PERFORM set_config(
@@ -421,7 +443,6 @@ AS $$
 DECLARE
   v_actor_id UUID := auth.uid();
   v_org_id UUID := public.current_user_org_id();
-  v_actor_role TEXT := public.current_user_role();
   v_document public.documents%ROWTYPE;
   v_code TEXT := NULLIF(BTRIM(p_code), '');
 BEGIN
@@ -454,7 +475,7 @@ BEGIN
       MESSAGE = 'Documento não encontrado na organização atual.';
   END IF;
   IF v_document.author_id <> v_actor_id
-     AND COALESCE(v_actor_role, '') NOT IN ('admin', 'manager') THEN
+     AND NOT public.is_org_role(ARRAY['admin', 'manager']) THEN
     RAISE EXCEPTION USING
       ERRCODE = '42501',
       MESSAGE = 'Somente o autor, administrador ou gestor pode definir código manual.';

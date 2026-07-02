@@ -90,6 +90,21 @@ Também atualiza o resolvedor P-11 para respeitar uma seleção explícita dentr
 da transação e amplia o renderer para `{YEAR2}`. Não altera `approval_flows` e
 não inicia trâmites.
 
+## P-19.1 — Hardening antes da aplicação
+
+A P-19.1 não cria outro ciclo SQL. O hardening foi incorporado diretamente em
+`20260630_p18a_document_creation_integration_controls.sql` antes da primeira
+aplicação:
+
+- `assign_manual_document_code` não depende mais de `current_user_role`;
+- autor, administrador e gestor continuam autorizados enquanto o documento
+  estiver em `draft`, usando `is_org_role` para a verificação administrativa;
+- a seleção explícita valida os mesmos escopos do resolvedor P-11;
+- escopos `project`, `type`, `area` e `area_type` exigem seus respectivos
+  campos de contexto;
+- escopos desconhecidos ou malformados não podem ser escolhidos
+  explicitamente.
+
 ## Conferência
 
 ```sql

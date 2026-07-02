@@ -134,6 +134,14 @@ Projeto e sugestão de trâmite são integrados no frontend. O modelo sugerido �
 registrado na auditoria e continua dependendo de confirmação explícita no
 detalhe; o ciclo 19 não inicia trâmites nem altera `approval_flows`.
 
+### Hardening P-19.1
+
+A P-19.1 não cria novo ciclo. Antes da primeira aplicação, o hardening foi
+incorporado em
+`20260630_p18a_document_creation_integration_controls.sql`: autorização de
+código manual via `is_org_role` e validação de escopo explícito alinhada ao
+resolvedor P-11.
+
 ## Hardening P-9A.1 — Grupos de Aprovação
 
 A P-9A.1 é um repair complementar, não um novo ciclo principal. O arquivo
