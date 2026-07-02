@@ -301,6 +301,43 @@ CREATE POLICY "document_tramite_instance_events_select_org"
   FOR SELECT TO authenticated
   USING (org_id = public.current_user_org_id());
 
+CREATE OR REPLACE FUNCTION public.tramita_audit_trail_supports_basic_contract()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_supported BOOLEAN := false;
+BEGIN
+  IF to_regclass('public.audit_trail') IS NULL THEN
+    RETURN false;
+  END IF;
+
+  SELECT
+    COUNT(DISTINCT column_name) = 5
+    AND BOOL_AND(
+      CASE
+        WHEN column_name = 'metadata' THEN data_type IN ('json', 'jsonb')
+        ELSE true
+      END
+    )
+  INTO v_supported
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'audit_trail'
+    AND column_name IN (
+      'document_id', 'org_id', 'user_id', 'action', 'metadata'
+    );
+
+  RETURN COALESCE(v_supported, false);
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN false;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.document_tramite_actor_can_act(
   p_step_id UUID,
   p_actor_id UUID DEFAULT auth.uid()
@@ -318,6 +355,8 @@ DECLARE
   v_active_expression TEXT;
   v_has_user_id BOOLEAN := false;
   v_has_profile_id BOOLEAN := false;
+  v_profile_active_expression TEXT;
+  v_has_required_role BOOLEAN := false;
 BEGIN
   IF p_actor_id IS NULL THEN
     RETURN false;
@@ -353,17 +392,52 @@ BEGIN
   END IF;
 
   IF v_step.assignment_type = 'role' THEN
-    IF p_actor_id = auth.uid() THEN
-      RETURN public.is_org_role(ARRAY[v_step.required_role]);
-    END IF;
-    RETURN EXISTS (
-      SELECT 1
-      FROM public.profiles AS profile
-      WHERE profile.id = p_actor_id
-        AND profile.org_id = v_step.org_id
-        AND profile.active IS NOT FALSE
-        AND profile.role = v_step.required_role
-    );
+    v_profile_active_expression := CASE
+      WHEN EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'profiles'
+          AND column_name = 'active'
+          AND data_type = 'boolean'
+      ) AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'profiles'
+          AND column_name = 'is_active'
+          AND data_type = 'boolean'
+      ) THEN 'COALESCE(profile.active, profile.is_active, true)'
+      WHEN EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'profiles'
+          AND column_name = 'active'
+          AND data_type = 'boolean'
+      ) THEN 'COALESCE(profile.active, true)'
+      WHEN EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'profiles'
+          AND column_name = 'is_active'
+          AND data_type = 'boolean'
+      ) THEN 'COALESCE(profile.is_active, true)'
+      ELSE 'true'
+    END;
+
+    EXECUTE format(
+      'SELECT EXISTS (
+        SELECT 1
+        FROM public.profiles AS profile
+        WHERE profile.id = $1
+          AND profile.org_id = $2
+          AND profile.role = $3
+          AND %s
+      )',
+      v_profile_active_expression
+    )
+    INTO v_has_required_role
+    USING p_actor_id, v_step.org_id, v_step.required_role;
+
+    RETURN v_has_required_role;
   END IF;
 
   IF v_step.assignment_type = 'approval_group'
@@ -464,7 +538,12 @@ DECLARE
   v_start_key TEXT;
   v_active_keys TEXT[] := '{}'::TEXT[];
   v_node JSONB;
+  v_node_key TEXT;
+  v_node_label TEXT;
   v_edge JSONB;
+  v_edge_key TEXT;
+  v_source_key TEXT;
+  v_target_key TEXT;
   v_target RECORD;
   v_document_version_id UUID := NULL;
 BEGIN
@@ -596,13 +675,18 @@ BEGIN
     RAISE EXCEPTION 'Já existe uma execução ativa deste modelo para o documento.';
   END IF;
 
-  SELECT node->>'id', COALESCE(node->>'node_key', node->>'id')
+  SELECT
+    NULLIF(BTRIM(node->>'id'), ''),
+    COALESCE(
+      NULLIF(BTRIM(node->>'node_key'), ''),
+      NULLIF(BTRIM(node->>'id'), '')
+    )
   INTO v_start_id, v_start_key
   FROM jsonb_array_elements(v_version.graph->'nodes') AS node
   WHERE node->>'node_type' = 'start'
   LIMIT 1;
 
-  IF v_start_id IS NULL OR v_start_key IS NULL THEN
+  IF v_start_key IS NULL THEN
     RAISE EXCEPTION 'O modelo não possui etapa Início válida.';
   END IF;
   IF NOT EXISTS (
@@ -651,6 +735,21 @@ BEGIN
   FOR v_node IN
     SELECT value FROM jsonb_array_elements(v_version.graph->'nodes')
   LOOP
+    v_node_key := COALESCE(
+      NULLIF(BTRIM(v_node->>'node_key'), ''),
+      NULLIF(BTRIM(v_node->>'id'), '')
+    );
+    IF v_node_key IS NULL THEN
+      RAISE EXCEPTION
+        'O grafo contém uma etapa sem node_key e sem id. Corrija o modelo antes de iniciar.';
+    END IF;
+
+    v_node_label := COALESCE(
+      NULLIF(BTRIM(v_node->>'label'), ''),
+      NULLIF(INITCAP(REPLACE(v_node->>'node_type', '_', ' ')), ''),
+      'Etapa ' || LEFT(v_node_key, 12)
+    );
+
     INSERT INTO public.document_tramite_instance_steps (
       org_id, instance_id, document_id, template_id, template_version_id,
       node_key, node_type, label, description, status,
@@ -660,9 +759,9 @@ BEGIN
       metadata
     ) VALUES (
       v_org_id, v_instance_id, p_document_id, v_template.id, v_version.id,
-      v_node->>'node_key',
+      v_node_key,
       v_node->>'node_type',
-      v_node->>'label',
+      v_node_label,
       NULLIF(v_node->>'description', ''),
       CASE WHEN v_node->>'node_type' = 'start' THEN 'completed' ELSE 'pending' END,
       COALESCE(NULLIF(v_node->>'assignment_type', ''), 'none'),
@@ -692,29 +791,60 @@ BEGIN
   FOR v_edge IN
     SELECT value FROM jsonb_array_elements(v_version.graph->'edges')
   LOOP
+    v_edge_key := COALESCE(
+      NULLIF(BTRIM(v_edge->>'edge_key'), ''),
+      NULLIF(BTRIM(v_edge->>'id'), '')
+    );
+    IF v_edge_key IS NULL THEN
+      RAISE EXCEPTION
+        'O grafo contém uma conexão sem edge_key e sem id. Corrija o modelo antes de iniciar.';
+    END IF;
+
+    SELECT COALESCE(
+      NULLIF(BTRIM(node->>'node_key'), ''),
+      NULLIF(BTRIM(node->>'id'), '')
+    )
+    INTO v_source_key
+    FROM jsonb_array_elements(v_version.graph->'nodes') AS node
+    WHERE node->>'id' = v_edge->>'source'
+       OR node->>'node_key' = v_edge->>'source'
+    ORDER BY CASE WHEN node->>'id' = v_edge->>'source' THEN 0 ELSE 1 END
+    LIMIT 1;
+    v_source_key := COALESCE(
+      v_source_key,
+      NULLIF(BTRIM(v_edge->>'source'), '')
+    );
+
+    SELECT COALESCE(
+      NULLIF(BTRIM(node->>'node_key'), ''),
+      NULLIF(BTRIM(node->>'id'), '')
+    )
+    INTO v_target_key
+    FROM jsonb_array_elements(v_version.graph->'nodes') AS node
+    WHERE node->>'id' = v_edge->>'target'
+       OR node->>'node_key' = v_edge->>'target'
+    ORDER BY CASE WHEN node->>'id' = v_edge->>'target' THEN 0 ELSE 1 END
+    LIMIT 1;
+    v_target_key := COALESCE(
+      v_target_key,
+      NULLIF(BTRIM(v_edge->>'target'), '')
+    );
+
+    IF v_source_key IS NULL OR v_target_key IS NULL THEN
+      RAISE EXCEPTION
+        'A conexão % não possui origem e destino válidos.',
+        v_edge_key;
+    END IF;
+
     INSERT INTO public.document_tramite_instance_edges (
       org_id, instance_id, document_id, edge_key,
       source_node_key, target_node_key, label,
       condition_type, condition_value, priority, metadata
     ) VALUES (
       v_org_id, v_instance_id, p_document_id,
-      COALESCE(NULLIF(v_edge->>'edge_key', ''), v_edge->>'id'),
-      COALESCE(
-        (
-          SELECT node->>'node_key'
-          FROM jsonb_array_elements(v_version.graph->'nodes') AS node
-          WHERE node->>'id' = v_edge->>'source'
-        ),
-        v_edge->>'source'
-      ),
-      COALESCE(
-        (
-          SELECT node->>'node_key'
-          FROM jsonb_array_elements(v_version.graph->'nodes') AS node
-          WHERE node->>'id' = v_edge->>'target'
-        ),
-        v_edge->>'target'
-      ),
+      v_edge_key,
+      v_source_key,
+      v_target_key,
       NULLIF(v_edge->>'label', ''),
       COALESCE(NULLIF(v_edge->>'condition_type', ''), 'always'),
       NULLIF(v_edge->>'condition_value', ''),
@@ -798,18 +928,23 @@ BEGIN
     );
   END IF;
 
-  IF to_regclass('public.audit_trail') IS NOT NULL THEN
-    INSERT INTO public.audit_trail (
-      document_id, org_id, user_id, action, metadata
-    ) VALUES (
-      p_document_id, v_org_id, v_actor_id,
-      'document_tramite_started',
-      jsonb_build_object(
-        'instance_id', v_instance_id,
-        'template_id', v_template.id,
-        'template_version_id', v_version.id
-      )
-    );
+  IF public.tramita_audit_trail_supports_basic_contract() THEN
+    BEGIN
+      INSERT INTO public.audit_trail (
+        document_id, org_id, user_id, action, metadata
+      ) VALUES (
+        p_document_id, v_org_id, v_actor_id,
+        'document_tramite_started',
+        jsonb_build_object(
+          'instance_id', v_instance_id,
+          'template_id', v_template.id,
+          'template_version_id', v_version.id
+        )
+      );
+    EXCEPTION
+      WHEN OTHERS THEN
+        NULL;
+    END;
   END IF;
 
   RETURN jsonb_build_object(
@@ -949,20 +1084,25 @@ BEGIN
     ) || p_metadata
   );
 
-  IF to_regclass('public.audit_trail') IS NOT NULL THEN
-    INSERT INTO public.audit_trail (
-      document_id, org_id, user_id, action, metadata
-    ) VALUES (
-      v_step.document_id, v_org_id, v_actor_id,
-      'document_tramite_step_completed',
-      jsonb_build_object(
-        'instance_id', v_instance.id,
-        'step_id', p_step_id,
-        'node_key', v_step.node_key,
-        'node_type', v_step.node_type,
-        'decision', p_decision
-      ) || p_metadata
-    );
+  IF public.tramita_audit_trail_supports_basic_contract() THEN
+    BEGIN
+      INSERT INTO public.audit_trail (
+        document_id, org_id, user_id, action, metadata
+      ) VALUES (
+        v_step.document_id, v_org_id, v_actor_id,
+        'document_tramite_step_completed',
+        jsonb_build_object(
+          'instance_id', v_instance.id,
+          'step_id', p_step_id,
+          'node_key', v_step.node_key,
+          'node_type', v_step.node_type,
+          'decision', p_decision
+        ) || p_metadata
+      );
+    EXCEPTION
+      WHEN OTHERS THEN
+        NULL;
+    END;
   END IF;
 
   IF p_decision IN ('approved', 'rejected', 'needs_correction', 'acknowledged', 'attached') THEN
@@ -1118,14 +1258,19 @@ BEGIN
       jsonb_build_object('last_step_id', p_step_id)
     );
 
-    IF to_regclass('public.audit_trail') IS NOT NULL THEN
-      INSERT INTO public.audit_trail (
-        document_id, org_id, user_id, action, metadata
-      ) VALUES (
-        v_step.document_id, v_org_id, v_actor_id,
-        'document_tramite_completed',
-        jsonb_build_object('instance_id', v_instance.id)
-      );
+    IF public.tramita_audit_trail_supports_basic_contract() THEN
+      BEGIN
+        INSERT INTO public.audit_trail (
+          document_id, org_id, user_id, action, metadata
+        ) VALUES (
+          v_step.document_id, v_org_id, v_actor_id,
+          'document_tramite_completed',
+          jsonb_build_object('instance_id', v_instance.id)
+        );
+      EXCEPTION
+        WHEN OTHERS THEN
+          NULL;
+      END;
     END IF;
   ELSE
     UPDATE public.document_tramite_instances
@@ -1321,17 +1466,22 @@ BEGIN
     jsonb_build_object('reason', BTRIM(p_reason))
   );
 
-  IF to_regclass('public.audit_trail') IS NOT NULL THEN
-    INSERT INTO public.audit_trail (
-      document_id, org_id, user_id, action, metadata
-    ) VALUES (
-      v_instance.document_id, v_org_id, v_actor_id,
-      'document_tramite_cancelled',
-      jsonb_build_object(
-        'instance_id', p_instance_id,
-        'reason', BTRIM(p_reason)
-      )
-    );
+  IF public.tramita_audit_trail_supports_basic_contract() THEN
+    BEGIN
+      INSERT INTO public.audit_trail (
+        document_id, org_id, user_id, action, metadata
+      ) VALUES (
+        v_instance.document_id, v_org_id, v_actor_id,
+        'document_tramite_cancelled',
+        jsonb_build_object(
+          'instance_id', p_instance_id,
+          'reason', BTRIM(p_reason)
+        )
+      );
+    EXCEPTION
+      WHEN OTHERS THEN
+        NULL;
+    END;
   END IF;
 
   RETURN jsonb_build_object(
@@ -1342,6 +1492,8 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.tramita_audit_trail_supports_basic_contract()
+  FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.document_tramite_actor_can_act(UUID, UUID)
   FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.start_document_tramite_instance(

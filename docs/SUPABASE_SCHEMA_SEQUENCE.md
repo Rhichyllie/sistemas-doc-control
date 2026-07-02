@@ -114,6 +114,14 @@ não substitui `approval_flows`, não altera o documento automaticamente e não
 envia notificações ou e-mails. Integrações entre os dois mecanismos ficam para
 fase posterior.
 
+### Hardening P-12.1.1
+
+A P-12.1.1 não cria novo ciclo SQL. Como o ciclo 18 ainda não havia sido
+aplicado, o hardening foi incorporado diretamente em
+`20260630_p12_1_document_tramite_execution.sql`. Ele remove dependência rígida
+de `profiles.active`, normaliza nós e conexões por `node_key/id` e torna
+`audit_trail` complementar e defensivo.
+
 ## Hardening P-9A.1 — Grupos de Aprovação
 
 A P-9A.1 é um repair complementar, não um novo ciclo principal. O arquivo

@@ -45,6 +45,33 @@ Aplicação:
 
 O repositório e o frontend não aplicam SQL remoto.
 
+## P-12.1.1 — Hardening antes da aplicação
+
+Como o ciclo 18 ainda não havia sido aplicado, o hardening foi incorporado
+diretamente em
+`supabase/migrations/20260630_p12_1_document_tramite_execution.sql`, sem criar
+uma nova migration ou um novo ciclo SQL.
+
+Os ajustes são:
+
+- atribuição por papel detecta dinamicamente `profiles.active` ou
+  `profiles.is_active`; quando nenhuma das colunas existe, valida somente
+  usuário, organização e papel;
+- cada etapa usa `node_key` e recorre a `id` quando o identificador operacional
+  está ausente ou vazio;
+- labels vazias recebem fallback seguro pelo tipo da etapa ou identificador;
+- conexões aceitam origem/destino serializados por `id` ou `node_key` e são
+  normalizadas para a chave efetivamente persistida;
+- nós sem `node_key` e sem `id`, ou conexões sem identificadores válidos,
+  geram erro legível antes dos inserts;
+- `audit_trail` é complementar: a função
+  `tramita_audit_trail_supports_basic_contract()` verifica a tabela e as
+  colunas mínimas antes do insert;
+- mesmo com contrato básico detectado, falhas específicas do log ficam
+  isoladas e não desfazem a execução do trâmite;
+- eventos em `document_tramite_instance_events` continuam obrigatórios e são a
+  trilha canônica da execução.
+
 ## Schema
 
 | Tabela                               | Finalidade                                       |
@@ -107,10 +134,13 @@ obrigatório. Etapas abertas são canceladas e o histórico permanece.
   instância;
 - `service_role` mantém acesso integral;
 - grupo aceita `user_id/profile_id` e `is_active/active`;
+- atribuição por papel aceita `profiles.active`, `profiles.is_active` ou
+  ausência de ambos;
 - conclusão de etapa inativa, instância encerrada ou ator incorreto é
   bloqueada;
-- eventos próprios são obrigatórios; `audit_trail` complementa início,
-  conclusão de etapa, conclusão e cancelamento.
+- eventos próprios são obrigatórios; `audit_trail`, quando compatível,
+  complementa início, conclusão de etapa, conclusão e cancelamento sem poder
+  interromper a RPC.
 
 ## Lifecycle
 
@@ -211,7 +241,8 @@ where pronamespace = 'public'::regnamespace
     'start_document_tramite_instance',
     'complete_document_tramite_step',
     'add_document_tramite_evidence',
-    'cancel_document_tramite_instance'
+    'cancel_document_tramite_instance',
+    'tramita_audit_trail_supports_basic_contract'
   )
 order by proname;
 ```
@@ -348,4 +379,6 @@ limit 100;
   integração futura;
 - não há caixa global de execuções nem reparo administrativo;
 - não há calendário útil, escalonamento, tarefas ou RDO/RDL;
+- `audit_trail` pode ser ignorado quando o schema local não oferece o contrato
+  mínimo; os eventos próprios permanecem obrigatórios;
 - o painel faz checagem local para UX, mas a RPC é a autoridade final.
