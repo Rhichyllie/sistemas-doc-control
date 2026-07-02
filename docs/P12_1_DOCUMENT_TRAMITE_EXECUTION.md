@@ -391,3 +391,13 @@ criação, lista execuções existentes e permite escolher outro modelo publicad
 
 Sem o ciclo 18, o painel informa que a execução ainda não está instalada e que
 o modelo foi apenas sugerido. Nenhuma criação inicia trâmite automaticamente.
+
+## Integração P-20
+
+A Central Documental consolida instâncias e etapas ativas P-12.1 em
+`/authenticated/documentos/central`. O hook de instâncias pode carregar as
+etapas de todas as execuções ativas para calcular responsável, prazo e
+progresso.
+
+A Central é somente leitura. Conclusão, evidência e cancelamento permanecem no
+detalhe do documento e continuam protegidos pelas RPCs do ciclo 18.

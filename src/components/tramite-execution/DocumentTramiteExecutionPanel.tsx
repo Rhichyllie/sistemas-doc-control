@@ -265,7 +265,7 @@ export function DocumentTramiteExecutionPanel({
 
   if (instancesState.isLoading && instancesState.schemaStatus === "loading") {
     return (
-      <Card>
+      <Card id="document-tramite-execution" className="scroll-mt-6">
         <CardHeader>
           <Skeleton className="h-6 w-56" />
           <Skeleton className="h-4 w-80 max-w-full" />
@@ -280,7 +280,7 @@ export function DocumentTramiteExecutionPanel({
 
   if (instancesState.schemaStatus === "not_installed") {
     return (
-      <Card>
+      <Card id="document-tramite-execution" className="scroll-mt-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <GitBranch className="h-5 w-5 text-muted-foreground" />
@@ -310,7 +310,7 @@ export function DocumentTramiteExecutionPanel({
 
   return (
     <>
-      <Card>
+      <Card id="document-tramite-execution" className="scroll-mt-6">
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>

@@ -23,6 +23,8 @@ interface UseDocumentTramiteInstancesOptions {
   instanceId?: string | null;
   recentLimit?: number;
   enabled?: boolean;
+  activeOnly?: boolean;
+  loadAllSteps?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -51,6 +53,8 @@ export function useDocumentTramiteInstances({
   instanceId,
   recentLimit = 25,
   enabled = true,
+  activeOnly = false,
+  loadAllSteps = false,
 }: UseDocumentTramiteInstancesOptions = {}) {
   const { profile } = useAuthContext();
   const [instances, setInstances] = useState<DocumentTramiteInstance[]>([]);
@@ -100,6 +104,8 @@ export function useDocumentTramiteInstances({
       .limit(recentLimit);
     if (documentId) instanceQuery = instanceQuery.eq("document_id", documentId);
 
+    if (activeOnly) instanceQuery = instanceQuery.eq("status", "active");
+
     const instanceResult = await instanceQuery;
     if (instanceResult.error) {
       setInstances([]);
@@ -126,6 +132,57 @@ export function useDocumentTramiteInstances({
       []) as unknown as DocumentTramiteInstance[];
     setInstances(loadedInstances);
     setSchemaStatus(loadedInstances.length ? "ready" : "empty");
+
+    if (loadAllSteps) {
+      const instanceIds = loadedInstances
+        .filter((item) => item.status === "active")
+        .map((item) => item.id);
+      if (!instanceIds.length) {
+        clearDetails();
+        setIsLoading(false);
+        return;
+      }
+      const chunks: string[][] = [];
+      for (let index = 0; index < instanceIds.length; index += 100) {
+        chunks.push(instanceIds.slice(index, index + 100));
+      }
+      const stepResults = await Promise.all(
+        chunks.map((ids) =>
+          supabase
+            .from("document_tramite_instance_steps")
+            .select("*")
+            .eq("org_id", profile.org_id)
+            .in("instance_id", ids)
+            .order("created_at", { ascending: true }),
+        ),
+      );
+      const stepsError = stepResults.find((result) => result.error)?.error;
+      if (stepsError) {
+        clearDetails();
+        setSchemaStatus(
+          isSchemaUnavailable(stepsError) ? "not_installed" : "restricted",
+        );
+        setError(
+          getErrorMessage(
+            stepsError,
+            "As execuções existem, mas suas etapas não puderam ser carregadas.",
+          ),
+        );
+        setIsLoading(false);
+        return;
+      }
+      setSteps(
+        stepResults.flatMap(
+          (result) =>
+            (result.data ?? []) as unknown as DocumentTramiteInstanceStep[],
+        ),
+      );
+      setEdges([]);
+      setEvidence([]);
+      setEvents([]);
+      setIsLoading(false);
+      return;
+    }
 
     const target =
       loadedInstances.find((item) => item.id === instanceId) ??
@@ -201,9 +258,11 @@ export function useDocumentTramiteInstances({
     setIsLoading(false);
   }, [
     clearDetails,
+    activeOnly,
     documentId,
     enabled,
     instanceId,
+    loadAllSteps,
     profile?.org_id,
     recentLimit,
   ]);

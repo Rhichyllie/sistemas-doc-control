@@ -33,6 +33,7 @@ import { Route as AuthenticatedDocumentosTramitesRouteImport } from './routes/au
 import { Route as AuthenticatedDocumentosRegrasRouteImport } from './routes/authenticated/documentos/regras'
 import { Route as AuthenticatedDocumentosNovoInteligenteRouteImport } from './routes/authenticated/documentos/novo-inteligente'
 import { Route as AuthenticatedDocumentosCodificacaoRouteImport } from './routes/authenticated/documentos/codificacao'
+import { Route as AuthenticatedDocumentosCentralRouteImport } from './routes/authenticated/documentos/central'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -167,6 +168,12 @@ const AuthenticatedDocumentosCodificacaoRoute =
     path: '/documentos/codificacao',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedDocumentosCentralRoute =
+  AuthenticatedDocumentosCentralRouteImport.update({
+    id: '/documentos/central',
+    path: '/documentos/central',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -188,6 +195,7 @@ export interface FileRoutesByFullPath {
   '/authenticated/projetos': typeof AuthenticatedProjetosRoute
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
+  '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
@@ -214,6 +222,7 @@ export interface FileRoutesByTo {
   '/authenticated/projetos': typeof AuthenticatedProjetosRoute
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
+  '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
@@ -241,6 +250,7 @@ export interface FileRoutesById {
   '/authenticated/projetos': typeof AuthenticatedProjetosRoute
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
+  '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
@@ -269,6 +279,7 @@ export interface FileRouteTypes {
     | '/authenticated/projetos'
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
+    | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
@@ -295,6 +306,7 @@ export interface FileRouteTypes {
     | '/authenticated/projetos'
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
+    | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
@@ -321,6 +333,7 @@ export interface FileRouteTypes {
     | '/authenticated/projetos'
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
+    | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
@@ -505,6 +518,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDocumentosCodificacaoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/authenticated/documentos/central': {
+      id: '/authenticated/documentos/central'
+      path: '/documentos/central'
+      fullPath: '/authenticated/documentos/central'
+      preLoaderRoute: typeof AuthenticatedDocumentosCentralRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -539,6 +559,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProjetosRoute: typeof AuthenticatedProjetosRoute
   AuthenticatedSchemaDoctorRoute: typeof AuthenticatedSchemaDoctorRoute
   AuthenticatedTrilhaDeAuditoriaRoute: typeof AuthenticatedTrilhaDeAuditoriaRoute
+  AuthenticatedDocumentosCentralRoute: typeof AuthenticatedDocumentosCentralRoute
   AuthenticatedDocumentosCodificacaoRoute: typeof AuthenticatedDocumentosCodificacaoRoute
   AuthenticatedDocumentosNovoInteligenteRoute: typeof AuthenticatedDocumentosNovoInteligenteRoute
   AuthenticatedDocumentosRegrasRoute: typeof AuthenticatedDocumentosRegrasRoute
@@ -561,6 +582,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedProjetosRoute: AuthenticatedProjetosRoute,
   AuthenticatedSchemaDoctorRoute: AuthenticatedSchemaDoctorRoute,
   AuthenticatedTrilhaDeAuditoriaRoute: AuthenticatedTrilhaDeAuditoriaRoute,
+  AuthenticatedDocumentosCentralRoute: AuthenticatedDocumentosCentralRoute,
   AuthenticatedDocumentosCodificacaoRoute:
     AuthenticatedDocumentosCodificacaoRoute,
   AuthenticatedDocumentosNovoInteligenteRoute:

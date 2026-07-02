@@ -105,6 +105,15 @@ aplicação:
 - escopos desconhecidos ou malformados não podem ser escolhidos
   explicitamente.
 
+## Integração P-20
+
+A Central Documental usa projeto, código e sugestão de trâmite registrados
+durante a criação para apresentar o próximo passo operacional. Documentos com
+modelo aplicável sem execução aparecem como **Aguardando próximo passo**.
+
+Sem o ciclo 19, a Central continua funcionando com o código legado e apenas
+informa que os controles avançados de codificação ainda não estão instalados.
+
 ## Conferência
 
 ```sql

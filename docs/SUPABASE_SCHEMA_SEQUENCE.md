@@ -142,6 +142,15 @@ incorporado em
 código manual via `is_org_role` e validação de escopo explícito alinhada ao
 resolvedor P-11.
 
+## P-20 — Central Operacional Documental
+
+A P-20 é uma integração de frontend/produto e não adiciona ciclo SQL. A
+Central usa as leituras e policies já existentes de documentos,
+`approval_flows`, projetos, auditoria e execução P-12.1.
+
+Não existe migration `20_TRAMITA_document_work_center` nesta fase. A Central é
+somente leitura, não inicia trâmites e não altera `approval_flows`.
+
 ## Hardening P-9A.1 — Grupos de Aprovação
 
 A P-9A.1 é um repair complementar, não um novo ciclo principal. O arquivo
