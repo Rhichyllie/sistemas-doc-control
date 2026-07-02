@@ -532,90 +532,18 @@ export function useDocumentTramiteTemplates() {
         await refresh();
         return true;
       }
-      if (!isMissingRpc(rpc.error)) {
-        setError(
-          getErrorMessage(
-            rpc.error,
-            "O banco recusou a publicação do trâmite.",
-          ),
-        );
-        setIsSaving(false);
-        return false;
-      }
-
-      const version = await ensureDraftVersion(templateId);
-      if (!version) {
-        setIsSaving(false);
-        return false;
-      }
-      const validation = validateTramiteGraph(version.graph);
-      if (!validation.isPublishable) {
-        setError(validation.summary);
-        setIsSaving(false);
-        return false;
-      }
-      const now = new Date().toISOString();
-      await supabase
-        .from("document_tramite_template_versions")
-        .update({ status: "archived" })
-        .eq("template_id", templateId)
-        .eq("org_id", profile.org_id)
-        .eq("status", "published");
-      const versionUpdate = await supabase
-        .from("document_tramite_template_versions")
-        .update({
-          status: "published",
-          validation,
-          published_by: profile.id,
-          published_at: now,
-        })
-        .eq("id", version.id);
-      if (versionUpdate.error) {
-        setError(
-          getErrorMessage(
-            versionUpdate.error,
-            "Não foi possível publicar a versão.",
-          ),
-        );
-        setIsSaving(false);
-        return false;
-      }
-      const templateUpdate = await supabase
-        .from("document_tramite_templates")
-        .update({
-          status: "published",
-          current_version_id: version.id,
-          published_by: profile.id,
-          published_at: now,
-          updated_by: profile.id,
-        })
-        .eq("id", templateId);
-      if (templateUpdate.error) {
-        setError(
-          `A versão foi publicada, mas o modelo não foi atualizado. ${getErrorMessage(
-            templateUpdate.error,
-            "Revise o modelo manualmente.",
-          )}`,
-        );
-        setIsSaving(false);
-        return false;
-      }
-      await supabase.from("document_tramite_events").insert({
-        org_id: profile.org_id,
-        template_id: templateId,
-        version_id: version.id,
-        event_type: "published",
-        actor_id: profile.id,
-        metadata: {
-          version_number: version.version_number,
-          fallback: "client",
-        },
-      });
+      setError(
+        isMissingRpc(rpc.error)
+          ? "A RPC publish_document_tramite_template não está disponível. Aplique integralmente a migration P-12 antes de publicar."
+          : getErrorMessage(
+              rpc.error,
+              "O banco recusou a publicação do trâmite.",
+            ),
+      );
       setIsSaving(false);
-      await refresh();
-      return true;
+      return false;
     },
-    [canManage, ensureDraftVersion, profile?.id, profile?.org_id, refresh],
+    [canManage, profile?.id, profile?.org_id, refresh],
   );
 
   const archiveTemplate = useCallback(

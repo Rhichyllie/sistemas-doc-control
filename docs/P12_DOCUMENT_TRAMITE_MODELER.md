@@ -68,9 +68,33 @@ para consultas e evoluções futuras.
 
 - leitura por membros da organização;
 - gestão e publicação por `admin`/`manager`;
+- versões exigem template mestre da mesma organização;
+- nós e conexões exigem template e versão coerentes no mesmo tenant;
+- eventos validam suas referências opcionais contra a organização;
 - eventos limitados à organização;
 - `service_role` com acesso integral;
 - a RPC de publicação valida autenticação, organização e papel.
+
+## P-12.0.1 — Hardening antes da aplicação
+
+O hardening foi incorporado diretamente na migration P-12 porque ela ainda não
+havia sido aplicada:
+
+- substituição das policies genéricas por policies explícitas por tabela;
+- bloqueio de referências cruzadas entre organizações;
+- validação SQL de responsáveis, evidência, início/fim, órfãos, ramos sem saída
+  e caminho completo;
+- warning no banco para Publicação sem Revisão ou Aprovação anterior;
+- trigger que bloqueia publicação por `UPDATE` direto;
+- publicação permitida somente por
+  `publish_document_tramite_template(p_template_id)`;
+- remoção do fallback de publicação por múltiplos updates no frontend.
+
+A guarda usa o contexto transacional local
+`tramita.tramite_publish_context=on`, definido exclusivamente pela área de
+publicação da RPC. Alterações normais em nome, descrição, escopo, grafo,
+metadados e contadores continuam permitidas. Arquivamento também permanece
+permitido quando não altera os campos protegidos de publicação.
 
 ## Tipos de etapa
 
@@ -116,8 +140,8 @@ O frontend verifica:
 - correção com retorno;
 - ciclos sem condição de saída.
 
-`validate_document_tramite_graph()` repete as verificações estruturais críticas
-no banco durante a publicação.
+`validate_document_tramite_graph()` repete no banco as verificações críticas de
+estrutura, responsáveis, evidência e alcançabilidade antes da publicação.
 
 ## Simulação
 
@@ -192,7 +216,7 @@ order by table_name, ordinal_position;
 ### 3. Ver policies
 
 ```sql
-select schemaname, tablename, policyname, cmd
+select schemaname, tablename, policyname, cmd, qual, with_check
 from pg_policies
 where schemaname = 'public'
   and tablename in (
@@ -205,7 +229,42 @@ where schemaname = 'public'
 order by tablename, policyname;
 ```
 
-### 4. Ver templates
+### 4. Ver triggers
+
+```sql
+select
+  tgrelid::regclass as table_name,
+  tgname,
+  pg_get_triggerdef(oid)
+from pg_trigger
+where tgrelid in (
+  'public.document_tramite_templates'::regclass,
+  'public.document_tramite_template_versions'::regclass,
+  'public.document_tramite_nodes'::regclass,
+  'public.document_tramite_edges'::regclass
+)
+  and not tgisinternal
+order by table_name::text, tgname;
+```
+
+### 5. Ver funções
+
+```sql
+select
+  proname,
+  pg_get_function_arguments(oid) as arguments,
+  pg_get_function_result(oid) as result
+from pg_proc
+where pronamespace = 'public'::regnamespace
+  and proname in (
+    'validate_document_tramite_graph',
+    'publish_document_tramite_template',
+    'guard_document_tramite_publication_update'
+  )
+order by proname;
+```
+
+### 6. Ver templates
 
 ```sql
 select id, org_id, code, name, status, template_scope, doc_type, area, project_id,
@@ -215,7 +274,7 @@ order by updated_at desc
 limit 50;
 ```
 
-### 5. Ver versões
+### 7. Ver versões
 
 ```sql
 select id, template_id, version_number, status, nodes_count, edges_count,
@@ -225,7 +284,7 @@ order by created_at desc
 limit 50;
 ```
 
-### 6. Ver grafo publicado
+### 8. Ver grafo publicado
 
 ```sql
 select
@@ -242,29 +301,13 @@ order by t.updated_at desc
 limit 10;
 ```
 
-### 7. Eventos
+### 9. Eventos
 
 ```sql
 select event_type, template_id, version_id, actor_id, metadata, created_at
 from public.document_tramite_events
 order by created_at desc
 limit 50;
-```
-
-### 8. Funções
-
-```sql
-select
-  proname,
-  pg_get_function_arguments(oid) as arguments,
-  pg_get_function_result(oid) as result
-from pg_proc
-where pronamespace = 'public'::regnamespace
-  and proname in (
-    'validate_document_tramite_graph',
-    'publish_document_tramite_template'
-  )
-order by proname;
 ```
 
 ## Testes manuais
@@ -315,6 +358,29 @@ order by proname;
 2. confira a sugestão quando aplicável;
 3. confirme que nenhum workflow ou tarefa foi criado.
 
+### Cenário 8 — RLS parental
+
+1. tente inserir versão com `template_id` de outra organização;
+2. tente inserir nó com `version_id` pertencente a outro template;
+3. tente inserir evento com versão de outro tenant;
+4. confirme bloqueio pelas policies.
+
+### Cenário 9 — Publicação somente por RPC
+
+1. tente atualizar diretamente `document_tramite_templates.status` para
+   `published`;
+2. confirme a mensagem para usar `publish_document_tramite_template`;
+3. publique pela interface/RPC;
+4. confirme template, versão e evento atualizados na mesma transação.
+
+### Cenário 10 — Validação SQL endurecida
+
+1. teste grafo sem responsável em Aprovação;
+2. teste Evidência sem `required_evidence` e sem `required_file`;
+3. teste ramo/ciclo que não alcança Fim;
+4. teste Fim com saída e Início com entrada;
+5. confirme `publishable=false` e erros legíveis.
+
 ## Limitações
 
 - não executa modelos, tarefas, notificações ou e-mails;
@@ -322,4 +388,9 @@ order by proname;
 - não há colaboração simultânea;
 - não há calendário útil;
 - correção simulada pode terminar em aviso de ciclo;
+- a verificação de governança anterior à Publicação gera warning, pois não
+  bloqueia modelos de ciência/publicação deliberadamente simples;
+- a guarda usa contexto transacional e protege o caminho normal via API/RLS;
+  operadores com acesso direto privilegiado ao banco continuam responsáveis
+  por não desabilitar triggers;
 - auditoria da sugestão fica para P-12.1.

@@ -94,6 +94,13 @@ eventos e publicação transacional. Ele não substitui `approval_flows` e não
 executa modelos em documentos. A geração segura de instâncias fica reservada
 para uma fase posterior.
 
+### Hardening P-12.0.1
+
+A P-12.0.1 não cria novo ciclo. Como o ciclo 17 ainda não havia sido aplicado,
+o hardening foi incorporado diretamente em
+`20260630_p12_document_tramite_modeler.sql`: RLS parental explícita, validação
+SQL ampliada e publicação protegida por trigger/RPC.
+
 ## Hardening P-9A.1 — Grupos de Aprovação
 
 A P-9A.1 é um repair complementar, não um novo ciclo principal. O arquivo

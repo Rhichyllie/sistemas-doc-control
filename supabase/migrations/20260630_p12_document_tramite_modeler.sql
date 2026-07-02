@@ -273,62 +273,365 @@ ALTER TABLE public.document_tramite_nodes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.document_tramite_edges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.document_tramite_events ENABLE ROW LEVEL SECURITY;
 
-DO $$
-DECLARE
-  v_table TEXT;
-BEGIN
-  FOREACH v_table IN ARRAY ARRAY[
-    'document_tramite_templates',
-    'document_tramite_template_versions',
-    'document_tramite_nodes',
-    'document_tramite_edges',
-    'document_tramite_events'
-  ]
-  LOOP
-    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', v_table || '_select_org', v_table);
-    EXECUTE format(
-      'CREATE POLICY %I ON public.%I FOR SELECT TO authenticated USING (org_id = public.current_user_org_id())',
-      v_table || '_select_org',
-      v_table
-    );
+-- Templates: tenant e papel são validados diretamente na linha mestre.
+DROP POLICY IF EXISTS "document_tramite_templates_select_org"
+  ON public.document_tramite_templates;
+CREATE POLICY "document_tramite_templates_select_org"
+  ON public.document_tramite_templates
+  FOR SELECT TO authenticated
+  USING (org_id = public.current_user_org_id());
 
-    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', v_table || '_insert_manager', v_table);
-    EXECUTE format(
-      'CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK (
-        org_id = public.current_user_org_id()
-        AND public.is_org_role(ARRAY[''admin'', ''manager''])
-      )',
-      v_table || '_insert_manager',
-      v_table
-    );
+DROP POLICY IF EXISTS "document_tramite_templates_insert_manager"
+  ON public.document_tramite_templates;
+CREATE POLICY "document_tramite_templates_insert_manager"
+  ON public.document_tramite_templates
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+  );
 
-    IF v_table <> 'document_tramite_events' THEN
-      EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', v_table || '_update_manager', v_table);
-      EXECUTE format(
-        'CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated USING (
-          org_id = public.current_user_org_id()
-          AND public.is_org_role(ARRAY[''admin'', ''manager''])
-        ) WITH CHECK (
-          org_id = public.current_user_org_id()
-          AND public.is_org_role(ARRAY[''admin'', ''manager''])
-        )',
-        v_table || '_update_manager',
-        v_table
-      );
+DROP POLICY IF EXISTS "document_tramite_templates_update_manager"
+  ON public.document_tramite_templates;
+CREATE POLICY "document_tramite_templates_update_manager"
+  ON public.document_tramite_templates
+  FOR UPDATE TO authenticated
+  USING (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+  )
+  WITH CHECK (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+  );
 
-      EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', v_table || '_delete_manager', v_table);
-      EXECUTE format(
-        'CREATE POLICY %I ON public.%I FOR DELETE TO authenticated USING (
-          org_id = public.current_user_org_id()
-          AND public.is_org_role(ARRAY[''admin'', ''manager''])
-        )',
-        v_table || '_delete_manager',
-        v_table
-      );
-    END IF;
-  END LOOP;
-END;
-$$;
+DROP POLICY IF EXISTS "document_tramite_templates_delete_manager"
+  ON public.document_tramite_templates;
+CREATE POLICY "document_tramite_templates_delete_manager"
+  ON public.document_tramite_templates
+  FOR DELETE TO authenticated
+  USING (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+  );
+
+-- Versões: a linha e seu template mestre precisam pertencer ao mesmo tenant.
+DROP POLICY IF EXISTS "document_tramite_template_versions_select_org"
+  ON public.document_tramite_template_versions;
+CREATE POLICY "document_tramite_template_versions_select_org"
+  ON public.document_tramite_template_versions
+  FOR SELECT TO authenticated
+  USING (org_id = public.current_user_org_id());
+
+DROP POLICY IF EXISTS "document_tramite_template_versions_insert_manager"
+  ON public.document_tramite_template_versions;
+CREATE POLICY "document_tramite_template_versions_insert_manager"
+  ON public.document_tramite_template_versions
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+    AND EXISTS (
+      SELECT 1
+      FROM public.document_tramite_templates AS template
+      WHERE template.id = document_tramite_template_versions.template_id
+        AND template.org_id = public.current_user_org_id()
+    )
+  );
+
+DROP POLICY IF EXISTS "document_tramite_template_versions_update_manager"
+  ON public.document_tramite_template_versions;
+CREATE POLICY "document_tramite_template_versions_update_manager"
+  ON public.document_tramite_template_versions
+  FOR UPDATE TO authenticated
+  USING (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+    AND EXISTS (
+      SELECT 1
+      FROM public.document_tramite_templates AS template
+      WHERE template.id = document_tramite_template_versions.template_id
+        AND template.org_id = public.current_user_org_id()
+    )
+  )
+  WITH CHECK (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+    AND EXISTS (
+      SELECT 1
+      FROM public.document_tramite_templates AS template
+      WHERE template.id = document_tramite_template_versions.template_id
+        AND template.org_id = public.current_user_org_id()
+    )
+  );
+
+DROP POLICY IF EXISTS "document_tramite_template_versions_delete_manager"
+  ON public.document_tramite_template_versions;
+CREATE POLICY "document_tramite_template_versions_delete_manager"
+  ON public.document_tramite_template_versions
+  FOR DELETE TO authenticated
+  USING (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+    AND EXISTS (
+      SELECT 1
+      FROM public.document_tramite_templates AS template
+      WHERE template.id = document_tramite_template_versions.template_id
+        AND template.org_id = public.current_user_org_id()
+    )
+  );
+
+-- Nós: template e versão opcional precisam formar uma cadeia íntegra no tenant.
+DROP POLICY IF EXISTS "document_tramite_nodes_select_org"
+  ON public.document_tramite_nodes;
+CREATE POLICY "document_tramite_nodes_select_org"
+  ON public.document_tramite_nodes
+  FOR SELECT TO authenticated
+  USING (org_id = public.current_user_org_id());
+
+DROP POLICY IF EXISTS "document_tramite_nodes_insert_manager"
+  ON public.document_tramite_nodes;
+CREATE POLICY "document_tramite_nodes_insert_manager"
+  ON public.document_tramite_nodes
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+    AND EXISTS (
+      SELECT 1
+      FROM public.document_tramite_templates AS template
+      WHERE template.id = document_tramite_nodes.template_id
+        AND template.org_id = public.current_user_org_id()
+    )
+    AND (
+      version_id IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM public.document_tramite_template_versions AS version
+        WHERE version.id = document_tramite_nodes.version_id
+          AND version.template_id = document_tramite_nodes.template_id
+          AND version.org_id = public.current_user_org_id()
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS "document_tramite_nodes_update_manager"
+  ON public.document_tramite_nodes;
+CREATE POLICY "document_tramite_nodes_update_manager"
+  ON public.document_tramite_nodes
+  FOR UPDATE TO authenticated
+  USING (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+    AND EXISTS (
+      SELECT 1
+      FROM public.document_tramite_templates AS template
+      WHERE template.id = document_tramite_nodes.template_id
+        AND template.org_id = public.current_user_org_id()
+    )
+    AND (
+      version_id IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM public.document_tramite_template_versions AS version
+        WHERE version.id = document_tramite_nodes.version_id
+          AND version.template_id = document_tramite_nodes.template_id
+          AND version.org_id = public.current_user_org_id()
+      )
+    )
+  )
+  WITH CHECK (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+    AND EXISTS (
+      SELECT 1
+      FROM public.document_tramite_templates AS template
+      WHERE template.id = document_tramite_nodes.template_id
+        AND template.org_id = public.current_user_org_id()
+    )
+    AND (
+      version_id IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM public.document_tramite_template_versions AS version
+        WHERE version.id = document_tramite_nodes.version_id
+          AND version.template_id = document_tramite_nodes.template_id
+          AND version.org_id = public.current_user_org_id()
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS "document_tramite_nodes_delete_manager"
+  ON public.document_tramite_nodes;
+CREATE POLICY "document_tramite_nodes_delete_manager"
+  ON public.document_tramite_nodes
+  FOR DELETE TO authenticated
+  USING (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+    AND EXISTS (
+      SELECT 1
+      FROM public.document_tramite_templates AS template
+      WHERE template.id = document_tramite_nodes.template_id
+        AND template.org_id = public.current_user_org_id()
+    )
+    AND (
+      version_id IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM public.document_tramite_template_versions AS version
+        WHERE version.id = document_tramite_nodes.version_id
+          AND version.template_id = document_tramite_nodes.template_id
+          AND version.org_id = public.current_user_org_id()
+      )
+    )
+  );
+
+-- Conexões: mesmas garantias parentais aplicadas aos nós.
+DROP POLICY IF EXISTS "document_tramite_edges_select_org"
+  ON public.document_tramite_edges;
+CREATE POLICY "document_tramite_edges_select_org"
+  ON public.document_tramite_edges
+  FOR SELECT TO authenticated
+  USING (org_id = public.current_user_org_id());
+
+DROP POLICY IF EXISTS "document_tramite_edges_insert_manager"
+  ON public.document_tramite_edges;
+CREATE POLICY "document_tramite_edges_insert_manager"
+  ON public.document_tramite_edges
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+    AND EXISTS (
+      SELECT 1
+      FROM public.document_tramite_templates AS template
+      WHERE template.id = document_tramite_edges.template_id
+        AND template.org_id = public.current_user_org_id()
+    )
+    AND (
+      version_id IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM public.document_tramite_template_versions AS version
+        WHERE version.id = document_tramite_edges.version_id
+          AND version.template_id = document_tramite_edges.template_id
+          AND version.org_id = public.current_user_org_id()
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS "document_tramite_edges_update_manager"
+  ON public.document_tramite_edges;
+CREATE POLICY "document_tramite_edges_update_manager"
+  ON public.document_tramite_edges
+  FOR UPDATE TO authenticated
+  USING (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+    AND EXISTS (
+      SELECT 1
+      FROM public.document_tramite_templates AS template
+      WHERE template.id = document_tramite_edges.template_id
+        AND template.org_id = public.current_user_org_id()
+    )
+    AND (
+      version_id IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM public.document_tramite_template_versions AS version
+        WHERE version.id = document_tramite_edges.version_id
+          AND version.template_id = document_tramite_edges.template_id
+          AND version.org_id = public.current_user_org_id()
+      )
+    )
+  )
+  WITH CHECK (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+    AND EXISTS (
+      SELECT 1
+      FROM public.document_tramite_templates AS template
+      WHERE template.id = document_tramite_edges.template_id
+        AND template.org_id = public.current_user_org_id()
+    )
+    AND (
+      version_id IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM public.document_tramite_template_versions AS version
+        WHERE version.id = document_tramite_edges.version_id
+          AND version.template_id = document_tramite_edges.template_id
+          AND version.org_id = public.current_user_org_id()
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS "document_tramite_edges_delete_manager"
+  ON public.document_tramite_edges;
+CREATE POLICY "document_tramite_edges_delete_manager"
+  ON public.document_tramite_edges
+  FOR DELETE TO authenticated
+  USING (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+    AND EXISTS (
+      SELECT 1
+      FROM public.document_tramite_templates AS template
+      WHERE template.id = document_tramite_edges.template_id
+        AND template.org_id = public.current_user_org_id()
+    )
+    AND (
+      version_id IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM public.document_tramite_template_versions AS version
+        WHERE version.id = document_tramite_edges.version_id
+          AND version.template_id = document_tramite_edges.template_id
+          AND version.org_id = public.current_user_org_id()
+      )
+    )
+  );
+
+-- Eventos: referências opcionais também precisam pertencer ao tenant.
+DROP POLICY IF EXISTS "document_tramite_events_select_org"
+  ON public.document_tramite_events;
+CREATE POLICY "document_tramite_events_select_org"
+  ON public.document_tramite_events
+  FOR SELECT TO authenticated
+  USING (org_id = public.current_user_org_id());
+
+DROP POLICY IF EXISTS "document_tramite_events_insert_manager"
+  ON public.document_tramite_events;
+CREATE POLICY "document_tramite_events_insert_manager"
+  ON public.document_tramite_events
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    org_id = public.current_user_org_id()
+    AND public.is_org_role(ARRAY['admin', 'manager'])
+    AND (
+      template_id IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM public.document_tramite_templates AS template
+        WHERE template.id = document_tramite_events.template_id
+          AND template.org_id = public.current_user_org_id()
+      )
+    )
+    AND (
+      version_id IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM public.document_tramite_template_versions AS version
+        WHERE version.id = document_tramite_events.version_id
+          AND version.org_id = public.current_user_org_id()
+          AND (
+            document_tramite_events.template_id IS NULL
+            OR version.template_id = document_tramite_events.template_id
+          )
+      )
+    )
+  );
 
 CREATE OR REPLACE FUNCTION public.validate_document_tramite_graph(p_graph JSONB)
 RETURNS JSONB
@@ -344,6 +647,8 @@ DECLARE
   v_nodes_count INTEGER := 0;
   v_edges_count INTEGER := 0;
   v_has_path BOOLEAN := false;
+  v_has_orphans BOOLEAN := false;
+  v_publication_without_governance BOOLEAN := false;
 BEGIN
   IF p_graph IS NULL OR jsonb_typeof(p_graph) <> 'object' THEN
     RETURN jsonb_build_object(
@@ -407,27 +712,206 @@ BEGIN
     v_errors := v_errors || jsonb_build_array('Há conexões apontando para etapas inexistentes.');
   END IF;
 
-  WITH RECURSIVE walk(node_id, visited) AS (
-    SELECT node->>'id', ARRAY[node->>'id']
-    FROM jsonb_array_elements(p_graph->'nodes') AS node
-    WHERE node->>'node_type' = 'start'
-    UNION ALL
-    SELECT edge->>'target', walk.visited || (edge->>'target')
-    FROM walk
-    JOIN LATERAL jsonb_array_elements(p_graph->'edges') AS edge
-      ON edge->>'source' = walk.node_id
-    WHERE NOT (edge->>'target' = ANY(walk.visited))
-  )
-  SELECT EXISTS (
+  IF EXISTS (
     SELECT 1
-    FROM walk
-    JOIN LATERAL jsonb_array_elements(p_graph->'nodes') AS node
-      ON node->>'id' = walk.node_id
-    WHERE node->>'node_type' = 'end'
-  ) INTO v_has_path;
+    FROM jsonb_array_elements(p_graph->'nodes') AS start_node
+    JOIN LATERAL jsonb_array_elements(p_graph->'edges') AS edge
+      ON edge->>'target' = start_node->>'id'
+    WHERE start_node->>'node_type' = 'start'
+  ) THEN
+    v_errors := v_errors || jsonb_build_array('A etapa Início não pode receber conexões.');
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(p_graph->'nodes') AS end_node
+    JOIN LATERAL jsonb_array_elements(p_graph->'edges') AS edge
+      ON edge->>'source' = end_node->>'id'
+    WHERE end_node->>'node_type' = 'end'
+  ) THEN
+    v_errors := v_errors || jsonb_build_array('A etapa Fim não pode iniciar conexões.');
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(p_graph->'nodes') AS node
+    WHERE node->>'node_type' IN ('review', 'approval', 'evidence', 'mandatory_reading')
+      AND NOT (
+        COALESCE(
+          NULLIF(node->>'assignment_type', ''),
+          NULLIF(node->'metadata'->>'assignment_type', '')
+        ) IN ('author', 'document_owner')
+        OR (
+          COALESCE(
+            NULLIF(node->>'assignment_type', ''),
+            NULLIF(node->'metadata'->>'assignment_type', '')
+          ) = 'specific_user'
+          AND COALESCE(
+            NULLIF(node->>'assignee_user_id', ''),
+            NULLIF(node->'metadata'->>'assignee_user_id', '')
+          ) IS NOT NULL
+        )
+        OR (
+          COALESCE(
+            NULLIF(node->>'assignment_type', ''),
+            NULLIF(node->'metadata'->>'assignment_type', '')
+          ) = 'approval_group'
+          AND COALESCE(
+            NULLIF(node->>'assignee_group_id', ''),
+            NULLIF(node->'metadata'->>'assignee_group_id', '')
+          ) IS NOT NULL
+        )
+        OR (
+          COALESCE(
+            NULLIF(node->>'assignment_type', ''),
+            NULLIF(node->'metadata'->>'assignment_type', '')
+          ) = 'role'
+          AND COALESCE(
+            NULLIF(node->>'required_role', ''),
+            NULLIF(node->'metadata'->>'required_role', '')
+          ) IS NOT NULL
+        )
+      )
+  ) THEN
+    v_errors := v_errors || jsonb_build_array(
+      'Etapas de revisão, aprovação, evidência e ciência precisam de responsável.'
+    );
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(p_graph->'nodes') AS node
+    WHERE node->>'node_type' = 'evidence'
+      AND NOT (
+        LOWER(COALESCE(node->>'required_evidence', 'false')) IN ('true', 't', '1')
+        OR LOWER(COALESCE(node->>'required_file', 'false')) IN ('true', 't', '1')
+        OR LOWER(COALESCE(node->'metadata'->>'required_evidence', 'false')) IN ('true', 't', '1')
+        OR LOWER(COALESCE(node->'metadata'->>'required_file', 'false')) IN ('true', 't', '1')
+      )
+  ) THEN
+    v_errors := v_errors || jsonb_build_array(
+      'Toda etapa de Evidência precisa exigir evidência ou arquivo.'
+    );
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(p_graph->'nodes') AS correction
+    WHERE correction->>'node_type' = 'correction'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(p_graph->'edges') AS edge
+        WHERE edge->>'source' = correction->>'id'
+          AND edge->>'target' <> correction->>'id'
+          AND EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(p_graph->'nodes') AS target_node
+            WHERE target_node->>'id' = edge->>'target'
+          )
+      )
+  ) THEN
+    v_errors := v_errors || jsonb_build_array(
+      'Toda etapa de Correção precisa ter um caminho de saída válido.'
+    );
+  END IF;
+
+  WITH RECURSIVE
+  node_data AS (
+    SELECT node->>'id' AS id, node->>'node_type' AS node_type
+    FROM jsonb_array_elements(p_graph->'nodes') AS node
+  ),
+  edge_data AS (
+    SELECT edge->>'source' AS source_id, edge->>'target' AS target_id
+    FROM jsonb_array_elements(p_graph->'edges') AS edge
+  ),
+  reachable(node_id, visited) AS (
+    SELECT id, ARRAY[id]
+    FROM node_data
+    WHERE node_type = 'start'
+    UNION ALL
+    SELECT edge.target_id, reachable.visited || edge.target_id
+    FROM reachable
+    JOIN edge_data AS edge ON edge.source_id = reachable.node_id
+    WHERE NOT (edge.target_id = ANY(reachable.visited))
+  ),
+  can_reach_end(node_id, visited) AS (
+    SELECT id, ARRAY[id]
+    FROM node_data
+    WHERE node_type = 'end'
+    UNION ALL
+    SELECT edge.source_id, can_reach_end.visited || edge.source_id
+    FROM can_reach_end
+    JOIN edge_data AS edge ON edge.target_id = can_reach_end.node_id
+    WHERE NOT (edge.source_id = ANY(can_reach_end.visited))
+  )
+  SELECT
+    EXISTS (
+      SELECT 1
+      FROM reachable
+      JOIN node_data ON node_data.id = reachable.node_id
+      WHERE node_data.node_type = 'end'
+    ),
+    EXISTS (
+      SELECT 1
+      FROM node_data
+      WHERE NOT EXISTS (
+        SELECT 1 FROM reachable WHERE reachable.node_id = node_data.id
+      )
+      OR NOT EXISTS (
+        SELECT 1 FROM can_reach_end WHERE can_reach_end.node_id = node_data.id
+      )
+    )
+  INTO v_has_path, v_has_orphans;
 
   IF NOT v_has_path THEN
     v_errors := v_errors || jsonb_build_array('Não existe caminho completo entre Início e Fim.');
+  END IF;
+
+  IF v_has_orphans THEN
+    v_errors := v_errors || jsonb_build_array(
+      'Existem etapas órfãs, ramos sem origem no Início ou ciclos sem saída para o Fim.'
+    );
+  END IF;
+
+  WITH RECURSIVE
+  node_data AS (
+    SELECT node->>'id' AS id, node->>'node_type' AS node_type
+    FROM jsonb_array_elements(p_graph->'nodes') AS node
+  ),
+  edge_data AS (
+    SELECT edge->>'source' AS source_id, edge->>'target' AS target_id
+    FROM jsonb_array_elements(p_graph->'edges') AS edge
+  ),
+  ancestry(publication_id, node_id, visited) AS (
+    SELECT id, id, ARRAY[id]
+    FROM node_data
+    WHERE node_type = 'publication'
+    UNION ALL
+    SELECT ancestry.publication_id,
+           edge.source_id,
+           ancestry.visited || edge.source_id
+    FROM ancestry
+    JOIN edge_data AS edge ON edge.target_id = ancestry.node_id
+    WHERE NOT (edge.source_id = ANY(ancestry.visited))
+  )
+  SELECT EXISTS (
+    SELECT 1
+    FROM node_data AS publication
+    WHERE publication.node_type = 'publication'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM ancestry
+        JOIN node_data AS predecessor ON predecessor.id = ancestry.node_id
+        WHERE ancestry.publication_id = publication.id
+          AND predecessor.node_type IN ('review', 'approval')
+      )
+  )
+  INTO v_publication_without_governance;
+
+  IF v_publication_without_governance THEN
+    v_warnings := v_warnings || jsonb_build_array(
+      'Existe Publicação sem etapa anterior de Revisão ou Aprovação.'
+    );
   END IF;
 
   RETURN jsonb_build_object(
@@ -440,6 +924,57 @@ BEGIN
   );
 END;
 $$;
+
+CREATE OR REPLACE FUNCTION public.guard_document_tramite_publication_update()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  v_publish_context TEXT :=
+    COALESCE(current_setting('tramita.tramite_publish_context', true), '');
+  v_sensitive_change BOOLEAN := false;
+BEGIN
+  IF v_publish_context = 'on' THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_TABLE_NAME = 'document_tramite_templates' THEN
+    v_sensitive_change :=
+      (OLD.status IS DISTINCT FROM NEW.status AND NEW.status = 'published')
+      OR OLD.current_version_id IS DISTINCT FROM NEW.current_version_id
+      OR OLD.published_by IS DISTINCT FROM NEW.published_by
+      OR OLD.published_at IS DISTINCT FROM NEW.published_at;
+  ELSIF TG_TABLE_NAME = 'document_tramite_template_versions' THEN
+    v_sensitive_change :=
+      (OLD.status IS DISTINCT FROM NEW.status AND NEW.status = 'published')
+      OR OLD.published_by IS DISTINCT FROM NEW.published_by
+      OR OLD.published_at IS DISTINCT FROM NEW.published_at;
+  END IF;
+
+  IF v_sensitive_change THEN
+    RAISE EXCEPTION
+      'A publicação de trâmites deve usar publish_document_tramite_template.'
+      USING ERRCODE = '42501';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS document_tramite_templates_guard_publication
+  ON public.document_tramite_templates;
+CREATE TRIGGER document_tramite_templates_guard_publication
+  BEFORE UPDATE ON public.document_tramite_templates
+  FOR EACH ROW
+  EXECUTE FUNCTION public.guard_document_tramite_publication_update();
+
+DROP TRIGGER IF EXISTS document_tramite_versions_guard_publication
+  ON public.document_tramite_template_versions;
+CREATE TRIGGER document_tramite_versions_guard_publication
+  BEFORE UPDATE ON public.document_tramite_template_versions
+  FOR EACH ROW
+  EXECUTE FUNCTION public.guard_document_tramite_publication_update();
 
 CREATE OR REPLACE FUNCTION public.publish_document_tramite_template(
   p_template_id UUID
@@ -494,6 +1029,8 @@ BEGIN
       COALESCE(v_validation->'errors', '[]'::JSONB)::TEXT;
   END IF;
 
+  PERFORM set_config('tramita.tramite_publish_context', 'on', true);
+
   UPDATE public.document_tramite_template_versions
   SET status = 'archived'
   WHERE template_id = p_template_id
@@ -545,6 +1082,8 @@ $$;
 REVOKE ALL ON FUNCTION public.validate_document_tramite_graph(JSONB) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.validate_document_tramite_graph(JSONB)
   TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.guard_document_tramite_publication_update()
+  FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.publish_document_tramite_template(UUID) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.publish_document_tramite_template(UUID)
   TO authenticated, service_role;

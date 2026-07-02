@@ -19,16 +19,34 @@ export function findEndNodes(graph: DocumentTramiteGraph) {
 
 export function findOrphanNodes(graph: DocumentTramiteGraph) {
   const start = findStartNode(graph);
-  return graph.nodes.filter((node) => {
-    if (node.id === start?.id) {
-      return !graph.edges.some((edge) => edge.source === node.id);
-    }
-    const incoming = graph.edges.some((edge) => edge.target === node.id);
-    const outgoing =
-      node.node_type === "end" ||
-      graph.edges.some((edge) => edge.source === node.id);
-    return !incoming || !outgoing;
-  });
+  const endIds = new Set(findEndNodes(graph).map((node) => node.id));
+  if (!start || endIds.size === 0) return [...graph.nodes];
+
+  const reachableFromStart = new Set<string>();
+  const forwardQueue = [start.id];
+  while (forwardQueue.length) {
+    const current = forwardQueue.shift()!;
+    if (reachableFromStart.has(current)) continue;
+    reachableFromStart.add(current);
+    graph.edges
+      .filter((edge) => edge.source === current)
+      .forEach((edge) => forwardQueue.push(edge.target));
+  }
+
+  const canReachEnd = new Set<string>();
+  const reverseQueue = [...endIds];
+  while (reverseQueue.length) {
+    const current = reverseQueue.shift()!;
+    if (canReachEnd.has(current)) continue;
+    canReachEnd.add(current);
+    graph.edges
+      .filter((edge) => edge.target === current)
+      .forEach((edge) => reverseQueue.push(edge.source));
+  }
+
+  return graph.nodes.filter(
+    (node) => !reachableFromStart.has(node.id) || !canReachEnd.has(node.id),
+  );
 }
 
 export function detectCycles(graph: DocumentTramiteGraph) {
@@ -163,6 +181,20 @@ export function validateTramiteGraph(
         issue(
           "missing_actor",
           `Defina quem atua na etapa “${node.label}”.`,
+          "error",
+          { nodeId: node.id },
+        ),
+      );
+    }
+    if (
+      node.node_type === "evidence" &&
+      !node.required_evidence &&
+      !node.required_file
+    ) {
+      errors.push(
+        issue(
+          "evidence_without_requirement",
+          `A etapa “${node.label}” precisa exigir evidência ou arquivo.`,
           "error",
           { nodeId: node.id },
         ),
