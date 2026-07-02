@@ -24,6 +24,7 @@ A sequência lógica oficial é:
 16. `15_TRAMITA_intelligent_document_coding`
 17. `16_TRAMITA_projects_operational_contexts`
 18. `17_TRAMITA_document_tramite_modeler`
+19. `18_TRAMITA_document_tramite_execution`
 
 No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 
@@ -36,6 +37,7 @@ No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 - `supabase/migrations/20260629_p11_intelligent_document_coding.sql`.
 - `supabase/migrations/20260630_p11a_projects_operational_contexts.sql`.
 - `supabase/migrations/20260630_p12_document_tramite_modeler.sql`.
+- `supabase/migrations/20260630_p12_1_document_tramite_execution.sql`.
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
@@ -100,6 +102,17 @@ A P-12.0.1 não cria novo ciclo. Como o ciclo 17 ainda não havia sido aplicado,
 o hardening foi incorporado diretamente em
 `20260630_p12_document_tramite_modeler.sql`: RLS parental explícita, validação
 SQL ampliada e publicação protegida por trigger/RPC.
+
+## P-12.1 — Execução Segura de Trâmites
+
+O ciclo 18 cria instâncias, etapas, conexões, evidências e eventos a partir de
+modelos P-12 publicados. Escritas são feitas somente pelas RPCs transacionais
+de início, conclusão, evidência e cancelamento.
+
+A execução é opcional e iniciada explicitamente no detalhe do documento. Ela
+não substitui `approval_flows`, não altera o documento automaticamente e não
+envia notificações ou e-mails. Integrações entre os dois mecanismos ficam para
+fase posterior.
 
 ## Hardening P-9A.1 — Grupos de Aprovação
 

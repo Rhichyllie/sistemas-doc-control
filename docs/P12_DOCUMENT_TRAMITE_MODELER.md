@@ -20,7 +20,7 @@ A separação adotada é:
 
 - **P-12:** modelo versionado e publicável;
 - **`approval_flows`:** execução real de aprovação existente;
-- **fase posterior:** criação transacional de instâncias a partir do modelo.
+- **P-12.1:** execução documental própria a partir do modelo publicado.
 
 ## Canvas
 
@@ -168,7 +168,19 @@ publicada continua vigente até a nova publicação.
 
 O Novo Documento Inteligente pode mostrar modelo publicado compatível, número
 de etapas e primeira ação. A sugestão não bloqueia e não executa o modelo.
-Gravar a sugestão na auditoria e gerar instâncias fica para P-12.1.
+Com a P-12.1 instalada, o usuário pode iniciar a instância explicitamente no
+detalhe após criar o documento. A sugestão continua sem bloquear a criação e
+nenhuma execução é iniciada automaticamente.
+
+## Integração P-12.1
+
+Modelos publicados podem gerar instâncias próprias nas tabelas
+`document_tramite_instance_*`. O modelador continua responsável apenas pelo
+desenho, validação, versionamento e publicação do modelo.
+
+A execução preserva um snapshot da versão publicada, registra decisões,
+evidências e eventos e permanece separada de `approval_flows`. Consulte
+`docs/P12_1_DOCUMENT_TRAMITE_EXECUTION.md`.
 
 ## Relação com TRAMITA e MYCELIA
 
@@ -178,11 +190,10 @@ dependência desta entrega. Nenhum serviço externo ou IA foi adicionado.
 
 ## Evoluções futuras
 
-- gerar instâncias e tarefas de forma transacional;
 - mapear etapas compatíveis para `approval_flows`;
 - notificações, e-mail e escalonamentos;
 - RDO/RDL e dossiês;
-- evidências append-only;
+- upload de arquivos de evidência;
 - calendário útil e ausências.
 
 ## Queries de conferência

@@ -472,7 +472,12 @@ documentos.
 Quando o ciclo P-12 estiver disponível, o Novo Documento Inteligente pode
 mostrar um modelo de trâmite publicado compatível com tipo, área e projeto. A
 sugestão é informativa, não bloqueia a criação e não gera `approval_flows`,
-tarefas ou notificações. A execução transacional fica para fase posterior.
+tarefas ou notificações.
+
+Com a P-12.1 instalada, o trâmite pode ser iniciado explicitamente no detalhe
+do documento após a criação. O Novo Documento Inteligente não inicia execução
+automaticamente; uma falha ou ausência do ciclo 18 não afeta o documento
+criado.
 
 ## Revisão flexível — P-10C.3
 

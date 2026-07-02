@@ -23,6 +23,7 @@ import { useDocumentRevisions } from "@/hooks/useDocumentRevisions";
 import { useAuditTrail } from "@/hooks/useAuditTrail";
 import { mapAuditEntriesToRecentActivities } from "@/hooks/useOperationalCockpit";
 import { RecentActivityList } from "@/components/operational/RecentActivityList";
+import { DocumentTramiteExecutionPanel } from "@/components/tramite-execution/DocumentTramiteExecutionPanel";
 import { formatDueLabel, getDueStatus } from "@/lib/workflowDates";
 import type { WorkflowAssignmentType } from "@/lib/workflowCompatibility";
 import {
@@ -718,6 +719,8 @@ function DocumentDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <DocumentTramiteExecutionPanel document={document} />
 
       <Card className="shadow-md">
         <CardHeader>
