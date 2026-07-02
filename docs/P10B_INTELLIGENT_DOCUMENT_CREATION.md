@@ -517,3 +517,7 @@ iniciar execução automaticamente.
 
 Sem o ciclo 20, o fluxo P-10B.1/P-18A continua funcional com a compensação
 existente no frontend.
+
+O hardening P-22.1 alinha a RPC ao contrato da criação inteligente: documentos
+novos começam na revisão `0` e aceitam período de revisão entre `1` e `120`
+meses. Importações com revisão inicial diferente ficam fora desse fluxo.

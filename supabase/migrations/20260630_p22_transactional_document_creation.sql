@@ -126,6 +126,10 @@ DECLARE
   v_file_name TEXT;
   v_file_size BIGINT;
   v_file_hash TEXT;
+  v_persisted_manual_code BOOLEAN;
+  v_persisted_external_code TEXT;
+  v_persisted_pattern_id UUID;
+  v_persisted_generation_mode TEXT;
   v_insert_columns TEXT;
   v_insert_values TEXT;
   v_sql TEXT;
@@ -164,16 +168,16 @@ BEGIN
       ERRCODE = '22023',
       MESSAGE = 'Informe a área do documento.';
   END IF;
-  IF p_revision IS NULL OR p_revision < 0 THEN
+  IF p_revision IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION USING
       ERRCODE = '22023',
-      MESSAGE = 'A revisão inicial deve ser um número inteiro maior ou igual a zero.';
+      MESSAGE = 'A revisão inicial de um novo documento deve ser 0.';
   END IF;
   IF p_review_period_months IS NOT NULL
-     AND (p_review_period_months < 1 OR p_review_period_months > 1200) THEN
+     AND (p_review_period_months < 1 OR p_review_period_months > 120) THEN
     RAISE EXCEPTION USING
       ERRCODE = '22023',
-      MESSAGE = 'O período de revisão deve estar entre 1 e 1200 meses.';
+      MESSAGE = 'O período de revisão deve estar entre 1 e 120 meses.';
   END IF;
   IF v_code_mode NOT IN ('automatic', 'selected_pattern', 'manual') THEN
     RAISE EXCEPTION USING
@@ -260,10 +264,33 @@ BEGIN
     v_file_name := NULLIF(BTRIM(p_file_metadata->>'file_name'), '');
     v_file_hash := NULLIF(BTRIM(p_file_metadata->>'file_hash'), '');
 
-    IF v_file_path IS NULL OR v_file_name IS NULL THEN
+    IF jsonb_typeof(p_file_metadata->'file_path') IS DISTINCT FROM 'string'
+       OR v_file_path IS NULL
+       OR CHAR_LENGTH(v_file_path) > 1024
+       OR v_file_path ~ '[[:cntrl:]]'
+       OR POSITION('..' IN v_file_path) > 0
+       OR LEFT(v_file_path, 1) = '/' THEN
       RAISE EXCEPTION USING
         ERRCODE = '22023',
-        MESSAGE = 'file_path e file_name são obrigatórios quando há arquivo enviado.';
+        MESSAGE = 'Caminho do arquivo inválido.';
+    END IF;
+    IF jsonb_typeof(p_file_metadata->'file_name') IS DISTINCT FROM 'string'
+       OR v_file_name IS NULL
+       OR CHAR_LENGTH(v_file_name) > 255
+       OR v_file_name ~ '[[:cntrl:]]' THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '22023',
+        MESSAGE = 'Nome do arquivo inválido.';
+    END IF;
+    IF v_file_hash IS NOT NULL
+       AND (
+         jsonb_typeof(p_file_metadata->'file_hash') IS DISTINCT FROM 'string'
+         OR CHAR_LENGTH(v_file_hash) > 256
+         OR v_file_hash ~ '[[:cntrl:]]'
+       ) THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '22023',
+        MESSAGE = 'Hash do arquivo inválido.';
     END IF;
 
     IF NULLIF(BTRIM(p_file_metadata->>'file_size'), '') IS NOT NULL THEN
@@ -416,6 +443,18 @@ BEGIN
         EXECUTE v_sql
         INTO v_version_id
         USING v_version_payload;
+
+        IF v_version_id IS NOT NULL
+           AND public.document_creation_column_exists(
+             'documents', 'working_version_id'
+           ) THEN
+          EXECUTE
+            'UPDATE public.documents
+             SET working_version_id = $1
+             WHERE id = $2
+               AND org_id = $3'
+          USING v_version_id, v_document_id, v_org_id;
+        END IF;
       END IF;
     END IF;
   END IF;
@@ -507,6 +546,76 @@ BEGIN
     RAISE EXCEPTION USING
       ERRCODE = '55000',
       MESSAGE = 'Nenhum mecanismo de codificação produziu um código para o documento.';
+  END IF;
+
+  IF v_code_mode = 'manual' THEN
+    IF public.document_creation_column_exists('documents', 'manual_code') THEN
+      EXECUTE
+        'SELECT manual_code
+         FROM public.documents
+         WHERE id = $1
+           AND org_id = $2'
+      INTO v_persisted_manual_code
+      USING v_document_id, v_org_id;
+
+      IF v_persisted_manual_code IS DISTINCT FROM true THEN
+        RAISE EXCEPTION USING
+          ERRCODE = '55000',
+          MESSAGE = 'O modo manual não foi confirmado na codificação final.';
+      END IF;
+    END IF;
+
+    IF public.document_creation_column_exists('documents', 'external_code') THEN
+      EXECUTE
+        'SELECT external_code
+         FROM public.documents
+         WHERE id = $1
+           AND org_id = $2'
+      INTO v_persisted_external_code
+      USING v_document_id, v_org_id;
+
+      IF UPPER(BTRIM(COALESCE(v_persisted_external_code, '')))
+         IS DISTINCT FROM UPPER(BTRIM(COALESCE(p_manual_code, ''))) THEN
+        RAISE EXCEPTION USING
+          ERRCODE = '55000',
+          MESSAGE = 'O código manual escolhido não foi confirmado na codificação final.';
+      END IF;
+    END IF;
+  ELSIF v_code_mode = 'selected_pattern'
+        AND public.document_creation_column_exists(
+          'documents', 'code_pattern_id'
+        ) THEN
+    EXECUTE
+      'SELECT code_pattern_id
+       FROM public.documents
+       WHERE id = $1
+         AND org_id = $2'
+    INTO v_persisted_pattern_id
+    USING v_document_id, v_org_id;
+
+    IF v_persisted_pattern_id IS DISTINCT FROM p_code_pattern_id THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '55000',
+        MESSAGE = 'O padrão escolhido não foi confirmado na codificação final.';
+    END IF;
+  ELSIF v_code_mode = 'automatic'
+        AND public.document_creation_column_exists(
+          'documents', 'code_generation_mode'
+        ) THEN
+    EXECUTE
+      'SELECT code_generation_mode
+       FROM public.documents
+       WHERE id = $1
+         AND org_id = $2'
+    INTO v_persisted_generation_mode
+    USING v_document_id, v_org_id;
+
+    IF LOWER(BTRIM(COALESCE(v_persisted_generation_mode, '')))
+       NOT IN ('automatic', 'configured', 'legacy', 'selected_pattern') THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '55000',
+        MESSAGE = 'O modo automático não foi confirmado na codificação final.';
+    END IF;
   END IF;
 
   IF public.document_creation_audit_supports_contract() THEN

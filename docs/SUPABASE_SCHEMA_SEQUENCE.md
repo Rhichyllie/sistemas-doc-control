@@ -172,6 +172,14 @@ O upload no Storage continua no frontend e é compensado quando a transação
 falha. O ciclo 20 não inicia trâmites, não altera `approval_flows` e não cria
 notificações.
 
+### Hardening P-22.1
+
+A P-22.1 não cria novo ciclo. Antes da primeira aplicação, o hardening foi
+incorporado em
+`20260630_p22_transactional_document_creation.sql`: revisão inicial zero,
+período máximo de 120 meses, vínculo da versão inicial, confirmação final da
+codificação e sanitização das referências de arquivo.
+
 ## Hardening P-9A.1 — Grupos de Aprovação
 
 A P-9A.1 é um repair complementar, não um novo ciclo principal. O arquivo

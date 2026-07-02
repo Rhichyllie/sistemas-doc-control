@@ -99,6 +99,28 @@ Padrão escolhido usa `allocate_document_code_for_pattern`. O modo automático
 usa `allocate_document_code_automatic` e preserva o gatilho legado como
 fallback quando o wrapper não estiver disponível.
 
+## P-22.1 — Hardening antes da aplicação
+
+A P-22.1 não cria outro ciclo SQL. O hardening foi incorporado diretamente em
+`20260630_p22_transactional_document_creation.sql` antes da primeira aplicação
+do ciclo 20.
+
+As proteções adicionadas são:
+
+- revisão inicial obrigatoriamente igual a `0`;
+- período de revisão limitado ao contrato P-10B de `1` a `120` meses;
+- `documents.working_version_id` aponta para a versão inicial quando a coluna
+  existe, sem alterar `published_version_id` nem publicar o documento;
+- código manual confirma `manual_code` e `external_code`, quando disponíveis;
+- padrão escolhido confirma `code_pattern_id`;
+- modo automático confirma um modo de geração compatível, preservando o
+  fallback legado;
+- `file_path`, `file_name` e `file_hash` têm limites, rejeitam caracteres de
+  controle e impedem referências inseguras com `..` ou caminho absoluto.
+
+Importação de documento com revisão inicial diferente de `0` não pertence à
+P-22. Ela deve usar um fluxo formal próprio em fase futura.
+
 ## Compatibilidade de schema
 
 A função monta os inserts a partir das colunas realmente existentes:
@@ -286,6 +308,7 @@ limit 50;
 - `document_template_usage_logs` permanece complementar no cliente;
 - ambientes sem contrato mínimo de `documents` precisam aplicar os ciclos
   base;
+- importação com revisão inicial diferente de `0` não é suportada;
 - código manual e padrão escolhido dependem do ciclo 19;
 - a RPC não inicia trâmites, aprovações, notificações ou e-mails.
 
