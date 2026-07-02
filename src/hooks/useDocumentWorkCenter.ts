@@ -624,7 +624,11 @@ export function useDocumentWorkCenter() {
     tramiteStatus: tramiteState.schemaStatus,
     approvalAvailable: !approvalState.error,
     projectsAvailable: projectsState.canUseProjects,
+    projectSchemaMode: projectsState.schemaMode,
     projects: projectsState.projects,
+    documents: documentsState.documents,
+    publishedTramiteTemplatesCount: templatesState.publishedTemplates.length,
+    tramiteModelingStatus: templatesState.schemaStatus,
     refresh,
     ...result,
   };

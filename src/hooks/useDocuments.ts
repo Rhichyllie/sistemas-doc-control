@@ -40,6 +40,9 @@ export interface Document {
   updated_at: string
   published_version_id?: string | null
   working_version_id?: string | null
+  code_pattern_id?: string | null
+  code_generation_mode?: string | null
+  manual_code?: boolean
   working_revision?: {
     id: string
     revision: number

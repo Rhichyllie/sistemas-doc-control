@@ -12,6 +12,10 @@ Rota:
 
 `/authenticated/documentos/central`
 
+> **Separação P-21:** a Home em `/authenticated/dashboard` mostra saúde,
+> maturidade e riscos executivos. A Central permanece a caixa operacional com
+> os itens que precisam de navegação e ação no detalhe.
+
 ## Diagnóstico anterior
 
 O TRAMITA já possuía:

@@ -151,6 +151,15 @@ Central usa as leituras e policies já existentes de documentos,
 Não existe migration `20_TRAMITA_document_work_center` nesta fase. A Central é
 somente leitura, não inicia trâmites e não altera `approval_flows`.
 
+## P-21 — Home Operacional Inteligente
+
+A P-21 é uma integração de frontend/produto e não adiciona ciclo SQL. A Home
+resume a saúde documental, riscos, maturidade dos módulos e próximo movimento
+recomendado usando as fontes existentes.
+
+A Home não replica a caixa de trabalho da Central e não altera dados. Não
+existe migration da P-21.
+
 ## Hardening P-9A.1 — Grupos de Aprovação
 
 A P-9A.1 é um repair complementar, não um novo ciclo principal. O arquivo
