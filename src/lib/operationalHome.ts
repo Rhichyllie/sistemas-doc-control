@@ -14,6 +14,7 @@ export type OperationalTarget =
   | "/authenticated/documentos/tramites"
   | "/authenticated/projetos"
   | "/authenticated/configuracoes/calendario"
+  | "/authenticated/equipe"
   | "/authenticated/indicadores"
   | "/authenticated/fluxo-de-aprovacao";
 
@@ -50,6 +51,7 @@ export interface OperationalCapability {
     | "tramite_modeling"
     | "tramite_execution"
     | "calendar_sla"
+    | "team_availability"
     | "work_center";
   label: string;
   description: string;
@@ -106,6 +108,11 @@ export interface OperationalHomeMetrics {
   tramiteExecutionAttention: boolean;
   calendarInstalled: boolean;
   calendarAttention: boolean;
+  availabilityInstalled: boolean;
+  availabilityAttention: boolean;
+  absentWithoutSubstitute: number;
+  activeSubstitutions: number;
+  deadlinesWithAbsentAssignee: number;
 }
 
 export function calculateOperationalHealth(
@@ -207,6 +214,24 @@ function risks(metrics: OperationalHomeMetrics): OperationalRisk[] {
       count: metrics.nearDueTramiteSteps,
       severity: "warning" as const,
       target: "/authenticated/documentos/central" as const,
+    },
+    {
+      id: "absent-assignee-deadline",
+      title: "Prazo com responsável ausente",
+      description:
+        "Etapas com prazo possuem responsável temporariamente indisponível.",
+      count: metrics.deadlinesWithAbsentAssignee,
+      severity: "critical" as const,
+      target: "/authenticated/documentos/central" as const,
+    },
+    {
+      id: "absence-without-substitute",
+      title: "Ausências sem substituto",
+      description:
+        "Pessoas indisponíveis não possuem substituto válido configurado.",
+      count: metrics.absentWithoutSubstitute,
+      severity: "warning" as const,
+      target: "/authenticated/equipe" as const,
     },
     {
       id: "sla-policy-gap",
@@ -359,6 +384,21 @@ function capabilities(
       target: "/authenticated/configuracoes/calendario",
     },
     {
+      id: "team_availability",
+      label: "Disponibilidade da equipe",
+      description: metrics.availabilityInstalled
+        ? `${metrics.activeSubstitutions} substituição(ões) ativa(s).`
+        : "Ausências e substituições ainda não instaladas.",
+      status: metrics.availabilityInstalled
+        ? metrics.absentWithoutSubstitute
+          ? "attention"
+          : "available"
+        : metrics.availabilityAttention
+          ? "attention"
+          : "not_installed",
+      target: "/authenticated/equipe",
+    },
+    {
       id: "work_center",
       label: "Central operacional",
       description: "Cockpit de pendências e próximos passos disponível.",
@@ -387,6 +427,24 @@ export function buildOperationalRecommendation(
       actionLabel: "Ver revisões",
       target: "/authenticated/documentos/central",
       severity: "critical",
+    };
+  }
+  if (metrics.deadlinesWithAbsentAssignee > 0) {
+    return {
+      title: "Revise prazos com responsável ausente",
+      description: `${metrics.deadlinesWithAbsentAssignee} etapa(s) possuem prazo e responsável indisponível.`,
+      actionLabel: "Abrir Central Documental",
+      target: "/authenticated/documentos/central",
+      severity: "critical",
+    };
+  }
+  if (metrics.absentWithoutSubstitute > 0) {
+    return {
+      title: "Defina substitutos para ausências ativas",
+      description: `${metrics.absentWithoutSubstitute} ausência(s) não possuem substituto válido.`,
+      actionLabel: "Abrir Equipe",
+      target: "/authenticated/equipe",
+      severity: "warning",
     };
   }
   if (metrics.stalledApprovals > 0) {

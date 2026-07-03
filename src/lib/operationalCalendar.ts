@@ -6,9 +6,7 @@ export type OperationalCalendarSchemaStatus =
   | "restricted"
   | "error";
 
-export type DeadlineCalculationMode =
-  | "operational_calendar"
-  | "simple_date";
+export type DeadlineCalculationMode = "operational_calendar" | "simple_date";
 
 export type OperationalWorkweek = Record<
   "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun",
@@ -38,6 +36,14 @@ export interface OperationalHoliday {
   name: string;
   scope: "organization" | "calendar";
   repeats_yearly: boolean;
+  country_code: string | null;
+  subdivision_code: string | null;
+  source: "manual" | "br_local_pack" | "nager_date_api" | null;
+  source_id: string | null;
+  imported_year: number | null;
+  holiday_type: string | null;
+  observed: boolean;
+  optional: boolean;
   metadata: Record<string, unknown>;
   created_by: string | null;
   created_at: string;
@@ -182,6 +188,25 @@ export function normalizeOperationalHoliday(
     name: String(row.name),
     scope: row.scope === "calendar" ? "calendar" : "organization",
     repeats_yearly: row.repeats_yearly === true,
+    country_code: row.country_code
+      ? String(row.country_code).toUpperCase()
+      : null,
+    subdivision_code: row.subdivision_code
+      ? String(row.subdivision_code)
+      : null,
+    source: ["manual", "br_local_pack", "nager_date_api"].includes(
+      String(row.source),
+    )
+      ? (String(row.source) as OperationalHoliday["source"])
+      : null,
+    source_id: row.source_id ? String(row.source_id) : null,
+    imported_year:
+      row.imported_year === null || row.imported_year === undefined
+        ? null
+        : Number(row.imported_year),
+    holiday_type: row.holiday_type ? String(row.holiday_type) : null,
+    observed: row.observed !== false,
+    optional: row.optional === true,
     metadata: asRecord(row.metadata),
     created_by: row.created_by ? String(row.created_by) : null,
     created_at: String(row.created_at ?? ""),
@@ -238,10 +263,7 @@ export function isBusinessDayLocal(
   if (!workweek[dayKey]) return false;
 
   return !holidays.some((holiday) => {
-    if (
-      holiday.calendar_id &&
-      holiday.calendar_id !== (calendar?.id ?? null)
-    ) {
+    if (holiday.calendar_id && holiday.calendar_id !== (calendar?.id ?? null)) {
       return false;
     }
     const holidayDate = parseDate(holiday.holiday_date);
@@ -321,10 +343,7 @@ export function selectSlaPolicy(
     policies
       .filter((policy) => {
         if (!policy.active) return false;
-        if (
-          context.kind === "document_review" &&
-          !policy.review_due_days
-        ) {
+        if (context.kind === "document_review" && !policy.review_due_days) {
           return false;
         }
         if (context.kind === "tramite_step" && !policy.step_due_days) {
@@ -336,7 +355,10 @@ export function selectSlaPolicy(
         ) {
           return false;
         }
-        if (policy.doc_type && !normalizedEquals(policy.doc_type, context.docType)) {
+        if (
+          policy.doc_type &&
+          !normalizedEquals(policy.doc_type, context.docType)
+        ) {
           return false;
         }
         if (policy.area && !normalizedEquals(policy.area, context.area)) {
@@ -387,12 +409,7 @@ export function calculateSuggestedDeadline(input: {
   return {
     dueDate:
       policy && days
-        ? addBusinessDaysLocal(
-            input.baseDate,
-            days,
-            calendar,
-            input.holidays,
-          )
+        ? addBusinessDaysLocal(input.baseDate, days, calendar, input.holidays)
         : null,
     policy,
     calendar,

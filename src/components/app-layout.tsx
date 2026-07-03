@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { House, FileStack, Users, LogOut, Settings, Palette, Download, DatabaseZap, GitBranch, Bell, ClipboardList, UserCircle, Inbox, ChartNoAxesCombined, UsersRound, Stethoscope, ScrollText, Code2, FolderKanban, Workflow, PanelsTopLeft, CalendarDays } from "lucide-react";
+import { House, FileStack, Users, LogOut, Settings, Palette, Download, DatabaseZap, GitBranch, Bell, ClipboardList, UserCircle, Inbox, ChartNoAxesCombined, UsersRound, Stethoscope, ScrollText, Code2, FolderKanban, Workflow, PanelsTopLeft, CalendarDays, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -57,6 +57,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [logoUrl, setLogoUrl] = useState("");
   const [openImportConfirm, setOpenImportConfirm] = useState(false);
   const [importFileData, setImportFileData] = useState<any>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load from localStorage on mount
@@ -65,7 +66,26 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const savedLogo = localStorage.getItem("companyLogo");
     if (savedName) setCompanyName(savedName);
     if (savedLogo) setLogoUrl(savedLogo);
+    try {
+      setSidebarCollapsed(
+        localStorage.getItem("tramita.sidebar.collapsed") === "true",
+      );
+    } catch {
+      setSidebarCollapsed(false);
+    }
   }, []);
+
+  function toggleSidebar() {
+    setSidebarCollapsed((current) => {
+      const next = !current;
+      try {
+        localStorage.setItem("tramita.sidebar.collapsed", String(next));
+      } catch {
+        // O estado React continua funcional quando o storage está indisponível.
+      }
+      return next;
+    });
+  }
 
   function handleSaveSettings() {
     localStorage.setItem("companyName", companyName);
@@ -120,32 +140,50 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen flex bg-background">
-      <aside 
-        className="w-64 text-sidebar-foreground flex flex-col shrink-0"
+      <aside
+        className={`${
+          sidebarCollapsed ? "w-20" : "w-20 md:w-64"
+        } sticky top-0 flex h-screen shrink-0 flex-col overflow-hidden text-sidebar-foreground transition-[width] duration-200`}
         style={{ backgroundColor: theme.sidebar }}
       >
-        <div className="p-5 border-b border-white/20">
+        <div
+          className={`border-b border-white/20 ${
+            sidebarCollapsed ? "p-3" : "p-3 md:p-5"
+          }`}
+        >
           <div className="flex flex-col items-center gap-3">
             {logoUrl ? (
               <img 
                 src={logoUrl} 
                 alt="Logo da Empresa" 
-                className="h-16 w-16 object-cover rounded-full" 
+                className={`rounded-full object-cover ${
+                  sidebarCollapsed ? "h-10 w-10" : "h-12 w-12 md:h-16 md:w-16"
+                }`}
               />
             ) : (
               <div 
-                className="h-14 w-14 rounded-full flex items-center justify-center"
+                className={`rounded-full flex items-center justify-center ${
+                  sidebarCollapsed ? "h-10 w-10" : "h-12 w-12 md:h-14 md:w-14"
+                }`}
                 style={{ backgroundColor: theme.button, color: theme.text }}
               >
                 <FileStack className="h-7 w-7" />
               </div>
             )}
-            <div className="text-center">
+            <div
+              className={`text-center ${
+                sidebarCollapsed ? "hidden" : "hidden md:block"
+              }`}
+            >
               <div className="font-semibold text-sm" style={{ color: theme.text }}>{companyName}</div>
               <div className="text-[10px] uppercase tracking-wider" style={{ color: theme.text + "99" }}>Document Control</div>
             </div>
           </div>
-          <div className="mt-3 flex justify-center gap-2">
+          <div
+            className={`mt-3 justify-center gap-2 ${
+              sidebarCollapsed ? "hidden" : "hidden md:flex"
+            }`}
+          >
             <Dialog open={openSettings} onOpenChange={setOpenSettings}>
               <DialogTrigger asChild>
                 <Button 
@@ -258,9 +296,25 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </DialogContent>
             </Dialog>
           </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="mx-auto mt-3 flex hover:bg-white/20"
+            style={{ color: theme.text }}
+            title={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+            aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+            onClick={toggleSidebar}
+          >
+            {sidebarCollapsed ? (
+              <PanelLeftOpen className="h-5 w-5" />
+            ) : (
+              <PanelLeftClose className="h-5 w-5" />
+            )}
+          </Button>
         </div>
 
-<nav className="flex-1 p-3 space-y-1">
+<nav className={`${sidebarCollapsed ? "px-2" : "px-2 md:px-3"} flex-1 space-y-1 overflow-y-auto py-3`}>
   {nav
     .filter(item => !item.managerOnly || profile?.role === "admin" || profile?.role === "manager")
     .map(item => {
@@ -277,7 +331,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <Link
           key={item.to}
           to={item.to}
-          className="flex items-center justify-between gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
+          title={item.label}
+          className={`flex items-center rounded-lg py-2 text-sm transition-colors ${
+            sidebarCollapsed
+              ? "justify-center px-2"
+              : "justify-center px-2 md:justify-between md:gap-2.5 md:px-3"
+          }`}
           style={{
             color: active ? theme.text : theme.text + "99",
             backgroundColor: active ? "rgba(255,255,255,0.18)" : "transparent",
@@ -288,34 +347,42 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         >
           <span className="flex items-center gap-2.5">
             <Icon className="h-4 w-4 flex-shrink-0" />
-            {item.label}
+            <span
+              className={sidebarCollapsed ? "hidden" : "hidden md:inline"}
+            >
+              {item.label}
+            </span>
           </span>
           {pendingCount > 0 && <Badge variant="destructive" className="h-5 min-w-5 px-1 text-[10px]">{pendingCount}</Badge>}
         </Link>
       );
     })}
 </nav>
-        <div className="p-3 border-t border-white/20">
-          <div className="px-2 py-2 text-xs">
+        <div className={`${sidebarCollapsed ? "p-2" : "p-2 md:p-3"} border-t border-white/20`}>
+          <div className={`${sidebarCollapsed ? "hidden" : "hidden md:block"} px-2 py-2 text-xs`}>
             <div className="font-medium truncate" style={{ color: theme.text }}>{user?.user_metadata?.full_name || user?.email}</div>
             <div className="truncate" style={{ color: theme.text + "99" }}>{user?.email}</div>
           </div>
-          <Button asChild variant="ghost" size="sm" className="w-full justify-start hover:bg-white/20" style={{ color: theme.text }}>
-            <Link to="/authenticated/meu-perfil"><UserCircle className="h-4 w-4 mr-2" /> Meu Perfil</Link>
+          <Button asChild variant="ghost" size="sm" className={`w-full hover:bg-white/20 ${sidebarCollapsed ? "justify-center px-0" : "justify-center md:justify-start"}`} style={{ color: theme.text }} title="Meu Perfil">
+            <Link to="/authenticated/meu-perfil"><UserCircle className={`h-4 w-4 ${sidebarCollapsed ? "" : "md:mr-2"}`} /><span className={sidebarCollapsed ? "hidden" : "hidden md:inline"}>Meu Perfil</span></Link>
           </Button>
           <Button 
             variant="ghost" 
             size="sm" 
-            className="w-full justify-start hover:bg-white/20"
+            className={`w-full hover:bg-white/20 ${
+              sidebarCollapsed ? "justify-center px-0" : "justify-center md:justify-start"
+            }`}
             style={{ color: theme.text }}
+            title="Sair"
             onClick={handleLogout}
           >
-            <LogOut className="h-4 w-4 mr-2" /> Sair
+            <LogOut className={`h-4 w-4 ${sidebarCollapsed ? "" : "md:mr-2"}`} />
+            <span className={sidebarCollapsed ? "hidden" : "hidden md:inline"}>Sair</span>
           </Button>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">
+      <main className="min-w-0 flex-1 overflow-auto">
         <div 
           className="w-full relative h-48"
           style={{

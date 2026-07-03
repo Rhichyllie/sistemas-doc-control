@@ -28,6 +28,7 @@ A sequência lógica oficial é:
 20. `19_TRAMITA_document_creation_integration_controls`
 21. `20_TRAMITA_transactional_document_creation`
 22. `21_TRAMITA_operational_calendar_sla`
+23. `22_TRAMITA_calendar_enterprise_hardening`
 
 No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 
@@ -44,6 +45,7 @@ No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 - `supabase/migrations/20260630_p18a_document_creation_integration_controls.sql`.
 - `supabase/migrations/20260630_p22_transactional_document_creation.sql`.
 - `supabase/migrations/20260630_p24_operational_calendar_sla.sql`.
+- `supabase/migrations/20260702_p24_2_calendar_enterprise_hardening.sql`.
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
@@ -207,6 +209,17 @@ datas.
 A P-24.1 não cria novo ciclo SQL. Ela corrige a hierarquia de rota, o caminho
 absoluto do menu, o destaque ativo e a apresentação administrativa sobre o
 mesmo ciclo `21_TRAMITA_operational_calendar_sla`.
+
+### P-24.2 — Calendário enterprise
+
+O ciclo 22 é um hardening aditivo do calendário antes da P-25. Ele acrescenta
+origem e rastreabilidade aos feriados importados, histórico de importações,
+ausências, delegações e funções read-only de disponibilidade/substituição.
+
+O ciclo `22_TRAMITA_calendar_enterprise_hardening` deve ser aplicado depois do
+ciclo 21. Ele não altera `approval_flows`, responsáveis persistidos, `due_at`,
+documentos ou autorização das RPCs P-12.1. A substituição é exibida como
+contexto operacional; permissão delegada para agir fica reservada à P-25.
 
 ## Hardening P-9A.1 — Grupos de Aprovação
 

@@ -4,6 +4,7 @@ import { useApprovalQueue } from "@/hooks/useApprovalQueue";
 import { useAuditTrail } from "@/hooks/useAuditTrail";
 import { useDocuments, type Document } from "@/hooks/useDocuments";
 import { useOperationalCalendar } from "@/hooks/useOperationalCalendar";
+import { useTeamAvailability } from "@/hooks/useTeamAvailability";
 import { useDocumentTramiteInstances } from "@/hooks/useDocumentTramiteInstances";
 import { useDocumentTramiteTemplates } from "@/hooks/useDocumentTramiteTemplates";
 import { useProjectOptions } from "@/hooks/useProjectOptions";
@@ -23,6 +24,7 @@ import {
   type DocumentTramiteInstanceStep,
 } from "@/lib/documentTramiteExecution";
 import type { DocumentTramiteTemplate } from "@/lib/documentTramiteModel";
+import { getAbsenceTypeLabel } from "@/lib/teamAvailability";
 import { supabase } from "@/lib/supabase";
 
 export type WorkCenterSchemaStatus = "ready" | "not_installed" | "restricted";
@@ -133,6 +135,7 @@ export function useDocumentWorkCenter() {
   const auditState = useAuditTrail();
   const projectsState = useProjectOptions();
   const calendarState = useOperationalCalendar();
+  const availabilityState = useTeamAvailability();
   const [codingStatus, setCodingStatus] =
     useState<WorkCenterSchemaStatus>("ready");
   const [codingMessage, setCodingMessage] = useState<string | null>(null);
@@ -299,6 +302,18 @@ export function useDocumentWorkCenter() {
         !step.due_at && Boolean(suggestedDeadline?.dueDate),
         suggestedDeadline?.policy?.name ?? null,
       );
+      const assigneeAvailability = step.assignee_user_id
+        ? availabilityState.getAvailability(step.assignee_user_id, {
+            projectId: document.project_id,
+            docType: document.doc_type,
+            area: document.area,
+            stepType: step.node_type,
+          })
+        : null;
+      const substituteName = assigneeAvailability?.substituteUserId
+        ? (usersById.get(assigneeAvailability.substituteUserId) ??
+          "Substituto configurado")
+        : null;
       const responsibleName = stepResponsible(step, document);
       const isMine = isStepAssignedToProfile(
         step,
@@ -320,6 +335,12 @@ export function useDocumentWorkCenter() {
         description: step.description || "Etapa ativa de trâmite documental.",
         ...documentFields(document),
         ...deadline,
+        assigneeUnavailable: assigneeAvailability?.unavailable ?? false,
+        substitutionActive: Boolean(substituteName),
+        substituteName,
+        absenceLabel: assigneeAvailability?.absence
+          ? getAbsenceTypeLabel(assigneeAvailability.absence.absence_type)
+          : null,
         responsibleName,
         isMine,
         createdAt: step.started_at ?? step.created_at,
@@ -424,10 +445,7 @@ export function useDocumentWorkCenter() {
       const suggestedReview = document.next_review_at
         ? null
         : calendarState.suggestDeadline(
-            (
-              document.published_at ??
-              document.created_at
-            ).slice(0, 10),
+            (document.published_at ?? document.created_at).slice(0, 10),
             {
               kind: "document_review",
               docType: document.doc_type,
@@ -460,25 +478,20 @@ export function useDocumentWorkCenter() {
             dueAt: effectiveReviewAt,
             remainingDays: reviewDays,
           }),
-          title:
-            reviewOverdue
-              ? "Revisão documental atrasada"
-              : "Próxima revisão documental",
-          description:
-            reviewOverdue
-              ? "A data programada para revisão já passou."
-              : reviewDays === 0
-                ? "A revisão está prevista para hoje."
-                : `A revisão está prevista para daqui a ${reviewDays} dias úteis.`,
+          title: reviewOverdue
+            ? "Revisão documental atrasada"
+            : "Próxima revisão documental",
+          description: reviewOverdue
+            ? "A data programada para revisão já passou."
+            : reviewDays === 0
+              ? "A revisão está prevista para hoje."
+              : `A revisão está prevista para daqui a ${reviewDays} dias úteis.`,
           ...documentFields(document),
           ...reviewDeadline,
           responsibleName: document.author?.full_name ?? null,
           isMine: owned,
           createdAt: document.updated_at,
-          statusLabel: normalizeWorkItemStatus(
-            "published",
-            effectiveReviewAt,
-          ),
+          statusLabel: normalizeWorkItemStatus("published", effectiveReviewAt),
           actionLabel: buildWorkItemAction("review_due"),
         });
       }
@@ -601,8 +614,7 @@ export function useDocumentWorkCenter() {
           activeStepLabels: activeSteps.map((step) => step.label),
           progress: summary.progress,
           dueAt: effectiveInstanceDueAt,
-          dueAtSuggested:
-            !summary.nextDueAt && Boolean(effectiveInstanceDueAt),
+          dueAtSuggested: !summary.nextDueAt && Boolean(effectiveInstanceDueAt),
           deadlineMode: calendarState.canUseCalendar
             ? "operational_calendar"
             : "simple_date",
@@ -648,23 +660,32 @@ export function useDocumentWorkCenter() {
         ? accessibleRecentDocuments.filter(
             (document) =>
               document.status === "published" &&
-              !calendarState.suggestDeadline(
-                document.created_at.slice(0, 10),
-                {
-                  kind: "document_review",
-                  docType: document.doc_type,
-                  area: document.area,
-                  projectId: document.project_id,
-                },
-              ).policy,
+              !calendarState.suggestDeadline(document.created_at.slice(0, 10), {
+                kind: "document_review",
+                docType: document.doc_type,
+                area: document.area,
+                projectId: document.project_id,
+              }).policy,
           ).length
         : 0,
+      absentWithoutSubstitute:
+        availabilityState.absencesWithoutSubstitute.length,
+      activeSubstitutions: availabilityState.activeSubstitutionCount,
+      deadlinesWithAbsentAssignee: accessibleItems.filter(
+        (item) =>
+          item.type === "tramite_step" &&
+          item.assigneeUnavailable &&
+          Boolean(item.dueAt),
+      ).length,
     };
   }, [
     actorsState.groupMembers,
     actorsState.groups,
     actorsState.users,
     approvalState.queue,
+    availabilityState.absencesWithoutSubstitute.length,
+    availabilityState.activeSubstitutionCount,
+    availabilityState.getAvailability,
     auditState.entries,
     calendarState.canUseCalendar,
     calendarState.getBusinessDaysUntil,
@@ -703,6 +724,12 @@ export function useDocumentWorkCenter() {
         : calendarState.status === "empty"
           ? "Nenhum calendário operacional configurado. O fallback considera segunda a sexta."
           : null,
+    availabilityState.status === "not_installed"
+      ? "Ausências e substituições ainda não instaladas; responsáveis são exibidos pelo contrato original."
+      : availabilityState.status === "restricted" ||
+          availabilityState.status === "error"
+        ? availabilityState.error
+        : null,
     auditState.error
       ? "Sugestões auditadas não puderam ser consultadas; a Central usa os modelos aplicáveis atuais."
       : null,
@@ -721,6 +748,7 @@ export function useDocumentWorkCenter() {
       auditState.refetch(),
       projectsState.refresh(),
       calendarState.refresh(),
+      availabilityState.refresh(),
     ]);
   }, [
     actorsState,
@@ -729,6 +757,7 @@ export function useDocumentWorkCenter() {
     documentsState,
     projectsState,
     calendarState,
+    availabilityState,
     templatesState,
     tramiteState,
   ]);
@@ -746,6 +775,7 @@ export function useDocumentWorkCenter() {
       auditState.loading ||
       projectsState.isLoading ||
       calendarState.isLoading ||
+      availabilityState.isLoading ||
       codingLoading,
     error: documentsState.error,
     warnings,
@@ -756,6 +786,7 @@ export function useDocumentWorkCenter() {
     projectSchemaMode: projectsState.schemaMode,
     calendarStatus: calendarState.status,
     calendarAvailable: calendarState.canUseCalendar,
+    availabilityStatus: availabilityState.status,
     projects: projectsState.projects,
     documents: documentsState.documents,
     publishedTramiteTemplatesCount: templatesState.publishedTemplates.length,

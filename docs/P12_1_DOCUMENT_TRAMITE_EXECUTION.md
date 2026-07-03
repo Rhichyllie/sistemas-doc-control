@@ -417,3 +417,14 @@ uma sugestão com base no calendário e na política SLA aplicável. A sugestão
 marcada como não persistida e não muda etapa, documento, `approval_flows` ou
 status automaticamente. Sem o ciclo 21, o painel preserva os prazos existentes
 e omite a sugestão.
+
+## Integração P-24.2 — Ausências e substituições
+
+O painel de execução pode informar que o responsável original está ausente e
+mostrar o substituto resolvido pelo ciclo 22. A informação não altera
+`assignee_user_id` e não modifica a autoria dos eventos.
+
+Nesta fase, `document_tramite_actor_can_act` continua sendo a autoridade e não
+foi ampliada para substitutos. Portanto, a substituição é informativa. A
+autorização delegada para concluir etapas exige validação e auditoria próprias
+e ficou reservada à P-25. `approval_flows` permanece inalterado.

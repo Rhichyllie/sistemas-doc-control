@@ -38,6 +38,10 @@ import {
   type SuggestedDeadline,
 } from "@/lib/operationalCalendar";
 import { formatEvidenceFileSize } from "@/lib/tramiteEvidenceFiles";
+import {
+  getAbsenceTypeLabel,
+  type ResolvedTeamAvailability,
+} from "@/lib/teamAvailability";
 import { TramiteStepAssignmentBadge } from "./TramiteStepAssignmentBadge";
 
 const EVIDENCE_LABELS: Record<
@@ -68,6 +72,8 @@ export function TramiteStepActionCard({
   userName,
   groupName,
   suggestedDeadline,
+  assigneeAvailability,
+  substituteName,
   onComplete,
   onAddEvidence,
   onOpenEvidence,
@@ -79,6 +85,8 @@ export function TramiteStepActionCard({
   userName?: string;
   groupName?: string;
   suggestedDeadline?: SuggestedDeadline | null;
+  assigneeAvailability?: ResolvedTeamAvailability | null;
+  substituteName?: string;
   onComplete: (input: {
     decision: TramiteStepDecision;
     comment: string | null;
@@ -138,6 +146,24 @@ export function TramiteStepActionCard({
           {explainStepRequirement(step)}
         </p>
 
+        {assigneeAvailability?.unavailable && (
+          <Alert>
+            <ShieldAlert className="h-4 w-4" />
+            <AlertTitle>
+              {assigneeAvailability.absence
+                ? getAbsenceTypeLabel(assigneeAvailability.absence.absence_type)
+                : "Responsável ausente"}
+            </AlertTitle>
+            <AlertDescription>
+              {substituteName
+                ? `Substituto configurado: ${substituteName}.`
+                : "Nenhum substituto válido foi resolvido."}{" "}
+              A etapa mantém o responsável original. Ação delegada ainda não
+              está habilitada.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {(step.due_at || suggestedDeadline?.dueDate) && (
           <div className="flex items-start gap-2 rounded-lg border bg-muted/20 p-3">
             <CalendarClock className="mt-0.5 h-4 w-4 text-primary" />
@@ -147,13 +173,10 @@ export function TramiteStepActionCard({
                 {" · "}
                 {new Intl.DateTimeFormat("pt-BR", {
                   dateStyle: "short",
-                  timeStyle: step.due_at?.includes("T")
-                    ? "short"
-                    : undefined,
+                  timeStyle: step.due_at?.includes("T") ? "short" : undefined,
                 }).format(
                   new Date(
-                    step.due_at ??
-                      `${suggestedDeadline?.dueDate}T12:00:00`,
+                    step.due_at ?? `${suggestedDeadline?.dueDate}T12:00:00`,
                   ),
                 )}
               </p>

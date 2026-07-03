@@ -98,12 +98,19 @@ export function useOperationalHome() {
       tramiteExecutionAttention: ["restricted", "error"].includes(
         workCenter.tramiteStatus,
       ),
-      calendarInstalled: ["ready", "empty"].includes(
-        workCenter.calendarStatus,
-      ),
+      calendarInstalled: ["ready", "empty"].includes(workCenter.calendarStatus),
       calendarAttention: ["restricted", "error"].includes(
         workCenter.calendarStatus,
       ),
+      availabilityInstalled: ["ready", "empty"].includes(
+        workCenter.availabilityStatus,
+      ),
+      availabilityAttention: ["restricted", "error"].includes(
+        workCenter.availabilityStatus,
+      ),
+      absentWithoutSubstitute: workCenter.absentWithoutSubstitute,
+      activeSubstitutions: workCenter.activeSubstitutions,
+      deadlinesWithAbsentAssignee: workCenter.deadlinesWithAbsentAssignee,
     };
     return {
       metrics,
@@ -120,6 +127,10 @@ export function useOperationalHome() {
     workCenter.activeInstances.length,
     workCenter.codingStatus,
     workCenter.calendarStatus,
+    workCenter.availabilityStatus,
+    workCenter.absentWithoutSubstitute,
+    workCenter.activeSubstitutions,
+    workCenter.deadlinesWithAbsentAssignee,
     workCenter.documents,
     workCenter.documentsWithoutSlaPolicy,
     workCenter.projects.length,

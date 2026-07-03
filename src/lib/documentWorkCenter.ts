@@ -14,9 +14,7 @@ export type DocumentWorkItemOrigin =
   | "creation";
 
 export type DocumentWorkItemPriority = "critical" | "high" | "medium" | "low";
-export type DocumentDeadlineMode =
-  | "operational_calendar"
-  | "simple_date";
+export type DocumentDeadlineMode = "operational_calendar" | "simple_date";
 
 export interface DocumentWorkItem {
   id: string;
@@ -38,6 +36,10 @@ export interface DocumentWorkItem {
   deadlineMode?: DocumentDeadlineMode;
   businessDaysRemaining?: number | null;
   slaPolicyName?: string | null;
+  assigneeUnavailable?: boolean;
+  substitutionActive?: boolean;
+  substituteName?: string | null;
+  absenceLabel?: string | null;
   responsibleName: string | null;
   isMine: boolean;
   createdAt: string;

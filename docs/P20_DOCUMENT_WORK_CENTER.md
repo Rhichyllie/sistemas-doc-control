@@ -190,3 +190,17 @@ aplicável pode fornecer uma sugestão identificada como **não persistida**.
 
 Sem o ciclo 21, a Central mantém o comportamento anterior por comparação
 simples de datas. Nenhum prazo, status ou etapa é alterado pela tela.
+
+## Integração P-24.2 — Disponibilidade da equipe
+
+Quando o ciclo 22 está disponível, a Central cruza etapas atribuídas a usuário
+específico com ausências e delegações da organização. Ela pode exibir:
+
+- **Responsável ausente**;
+- **Substituição ativa** e o nome do substituto;
+- **Ausência sem substituto**, como atenção operacional;
+- prazos próximos cujo responsável está indisponível.
+
+Esse cruzamento é somente leitura. A Central não muda `assignee_user_id`, não
+conclui etapas e não concede ao substituto autorização para agir. Sem o ciclo
+22, a caixa continua funcionando sem esses badges.

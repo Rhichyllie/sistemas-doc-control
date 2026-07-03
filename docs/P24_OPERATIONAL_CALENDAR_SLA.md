@@ -376,3 +376,262 @@ select public.calculate_tramite_step_due_date(
 - versionamento de políticas e auditoria administrativa;
 - consulta consolidada/paginada para grandes organizações;
 - alertas e notificações somente em fase própria e opt-in.
+
+## P-24.2 — Calendário Enterprise, Feriados Globais e Substituições
+
+### Objetivo e diagnóstico
+
+A P-24.2 transforma a configuração básica em um módulo operacional:
+
+- o menu lateral pode ser recolhido e preserva a preferência local;
+- a tela foi separada em Visão geral, Calendário padrão, Feriados, Políticas
+  SLA, Ausências e substituições e Diagnóstico;
+- o fuso deixa de ser texto livre e passa a aceitar somente identificadores
+  IANA;
+- feriados podem ser cadastrados manualmente ou importados sob demanda;
+- ausências e delegações passam a compor o contexto da Home, da Central e do
+  detalhe da execução.
+
+A implementação anterior concentrava calendário, feriados e SLA em uma única
+área extensa, sem navegação interna, usava um `input` livre para timezone e
+não tinha origem de feriado nem indisponibilidade temporária de pessoas.
+
+### Migration aditiva
+
+Arquivo para revisão e aplicação manual, depois do ciclo 21:
+
+`supabase/migrations/20260702_p24_2_calendar_enterprise_hardening.sql`
+
+Nome no SQL Editor:
+
+`22_TRAMITA_calendar_enterprise_hardening`
+
+A migration não reescreve
+`20260630_p24_operational_calendar_sla.sql`. Ela adiciona:
+
+- origem, país, subdivisão, tipo e ano aos feriados;
+- `operational_holiday_import_runs`;
+- `team_absences`;
+- `team_delegation_rules`;
+- `is_valid_iana_timezone`;
+- `is_user_unavailable`;
+- `resolve_user_substitute`.
+
+As funções de disponibilidade são read-only. Nenhuma delas reatribui etapa,
+muda documento, recalcula `due_at` ou altera `approval_flows`.
+
+### Menu e navegação
+
+O menu expandido mostra ícone e texto. Recolhido, mantém somente ícones,
+tooltip, indicação ativa e amplia a área principal. A preferência é salva em
+`tramita.sidebar.collapsed`; se o armazenamento local falhar, o estado React
+continua funcional.
+
+Os caminhos são absolutos:
+
+- `/authenticated/configuracoes`;
+- `/authenticated/configuracoes/calendario`.
+
+### Fuso horário IANA
+
+O seletor usa `Intl.supportedValuesOf('timeZone')` quando disponível e uma
+lista curada como fallback. Antes de salvar, o frontend valida o valor; a
+migration também protege novas escritas com uma constraint `NOT VALID`, para
+não bloquear dados legados já existentes.
+
+Um valor legado inválido é exibido com orientação para correção e não pode ser
+salvo novamente. Existem presets para Brasil padrão, operação 6x1 e operação
+24/7. Os horários ficam preparados para evolução em horas úteis; o cálculo
+atual continua baseado em dias.
+
+### Importação de feriados
+
+A importação é sempre manual e persiste os dados no banco para uso posterior
+sem dependência contínua da fonte.
+
+Providers implementados:
+
+- **BR_LOCAL_PACK:** calendário nacional brasileiro calculado localmente,
+  incluindo Sexta-feira Santa; Carnaval e Corpus Christi entram somente
+  quando observâncias opcionais forem solicitadas;
+- **NAGER_DATE_API:** consulta sob demanda a
+  `https://date.nager.at/api/v4/Holidays/{CountryCode}/{Year}`.
+
+Países expostos: Brasil, Argentina, Bolívia, Canadá, Chile, Colômbia, Equador,
+Espanha, França, Reino Unido, México, Angola, Peru, Paraguai, Portugal,
+Estados Unidos, Uruguai e Venezuela. Somente Brasil possui pack local nesta
+fase; os demais usam Nager.Date quando suportados pela fonte.
+
+Reimportações são protegidas por identidade de organização, calendário, data,
+nome, país e subdivisão. A interface informa incluídos e ignorados. Falha da
+API não remove feriados existentes; falha no log de importação não desfaz os
+feriados já gravados.
+
+### Ausências e substituições
+
+`team_absences` representa férias, licença, afastamento, viagem, treinamento
+ou indisponibilidade. `team_delegation_rules` define substituto geral ou por
+projeto, tipo documental, área ou tipo de etapa.
+
+Usuários leem o contexto da própria organização. Admin/manager gerencia todos;
+um usuário comum pode cadastrar sua própria ausência futura e sua própria
+delegação. Policies validam titular, substituto e organização.
+
+`resolve_user_substitute` prioriza o substituto da ausência e depois a regra
+ativa mais específica e de menor prioridade numérica. Um substituto ausente,
+de outra organização ou em ciclo direto com o titular não é retornado.
+
+Home, Central e detalhe mostram a substituição sem modificar o responsável
+persistido. O substituto **não pode agir pela autorização original nesta
+fase**: a P-12.1 não foi alterada. Autorização delegada auditável, eventos e
+escalonamento pertencem à P-25.
+
+### Queries de conferência
+
+#### `22_CHECK_01_calendar_enterprise_columns`
+
+```sql
+select column_name, data_type, is_nullable, column_default
+from information_schema.columns
+where table_schema = 'public'
+  and table_name = 'operational_holidays'
+  and column_name in (
+    'country_code', 'subdivision_code', 'source', 'source_id',
+    'imported_year', 'holiday_type', 'observed', 'optional'
+  )
+order by ordinal_position;
+```
+
+#### `22_CHECK_02_holiday_import_runs`
+
+```sql
+select to_regclass(
+  'public.operational_holiday_import_runs'
+) as operational_holiday_import_runs;
+
+select *
+from public.operational_holiday_import_runs
+order by created_at desc
+limit 50;
+```
+
+#### `22_CHECK_03_team_absence_tables`
+
+```sql
+select
+  to_regclass('public.team_absences') as team_absences,
+  to_regclass('public.team_delegation_rules') as team_delegation_rules;
+```
+
+#### `22_CHECK_04_availability_functions`
+
+```sql
+select
+  proname,
+  pg_get_function_arguments(oid) as arguments,
+  pg_get_function_result(oid) as result,
+  prosecdef as security_definer
+from pg_proc
+where pronamespace = 'public'::regnamespace
+  and proname in (
+    'is_valid_iana_timezone',
+    'is_user_unavailable',
+    'resolve_user_substitute'
+  )
+order by proname;
+```
+
+#### `22_CHECK_05_active_absences`
+
+```sql
+select
+  id, org_id, user_id, absence_type, starts_at, ends_at,
+  status, substitute_user_id, reason
+from public.team_absences
+where status in ('scheduled', 'active')
+  and now() >= starts_at
+  and now() < ends_at
+order by starts_at;
+```
+
+#### `22_CHECK_06_delegation_rules`
+
+```sql
+select
+  id, org_id, owner_user_id, substitute_user_id, scope,
+  project_id, doc_type, area, step_type, starts_at, ends_at,
+  priority, active
+from public.team_delegation_rules
+where active
+order by priority, created_at;
+```
+
+#### `22_CHECK_07_holidays_by_country`
+
+```sql
+select
+  holiday_date, name, country_code, subdivision_code, source,
+  imported_year, holiday_type, observed, optional
+from public.operational_holidays
+where country_code = 'BR'
+  and imported_year = extract(year from current_date)::integer
+order by holiday_date, name;
+```
+
+#### `22_CHECK_08_rls_policies`
+
+```sql
+select schemaname, tablename, policyname, cmd, qual, with_check
+from pg_policies
+where schemaname = 'public'
+  and tablename in (
+    'operational_holiday_import_runs',
+    'team_absences',
+    'team_delegation_rules'
+  )
+order by tablename, policyname;
+```
+
+### Testes manuais P-24.2
+
+1. Recolha e expanda o menu.
+2. Recarregue a página e confirme a preferência preservada.
+3. Abra **Calendário e SLA** e confirme a URL absoluta.
+4. Confirme que nenhuma URL relativa duplicada é produzida.
+5. Tente salvar timezone inválido e confirme o bloqueio.
+6. Salve `America/Sao_Paulo`.
+7. Teste os presets Brasil, 6x1 e 24/7.
+8. Cadastre um feriado manual.
+9. Importe o pack Brasil local.
+10. Importe outro país por Nager.Date.
+11. Reimporte país/ano e confirme duplicatas ignoradas.
+12. Confira o histórico da importação.
+13. Crie ausência futura com substituto.
+14. Confirme a resolução no período.
+15. Tente titular e substituto iguais.
+16. Tente pessoa de outra organização.
+17. Crie e pause uma delegação.
+18. Confira badge de ausência/substituição na Central.
+19. Confira risco de ausência sem substituto na Home.
+20. Confira o aviso no detalhe de uma etapa atribuída.
+21. Confirme que `assignee_user_id` não mudou.
+22. Confirme que `approval_flows` não mudou.
+23. Crie documento, inicie trâmite e anexe evidência P-23.
+24. Abra Home e Central sem ciclo 22 e confirme fallback.
+
+### Limitações P-24.2
+
+- somente o Brasil possui provider local;
+- Nager.Date depende de rede e cobertura da fonte;
+- subdivisões são filtradas quando fornecidas pela API, sem catálogo local;
+- horários úteis ainda não entram no cálculo fino;
+- ausências não reatribuem etapas;
+- substitutos ainda não recebem autorização para concluir etapas;
+- não há notificações, e-mails ou escalonamento;
+- a atualização não é em tempo real.
+
+### Próximo passo
+
+A P-25 deve consumir disponibilidade e substituição com autorização explícita,
+evento `delegated_from_user_id`, notificações internas e escalonamento
+auditável, sem reatribuição silenciosa.

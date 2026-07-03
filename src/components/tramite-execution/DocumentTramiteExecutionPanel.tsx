@@ -28,6 +28,7 @@ import { useDocumentTramiteExecution } from "@/hooks/useDocumentTramiteExecution
 import { useDocumentTramiteInstances } from "@/hooks/useDocumentTramiteInstances";
 import { useDocumentTramiteTemplates } from "@/hooks/useDocumentTramiteTemplates";
 import { useOperationalCalendar } from "@/hooks/useOperationalCalendar";
+import { useTeamAvailability } from "@/hooks/useTeamAvailability";
 import { useTramiteEvidenceUpload } from "@/hooks/useTramiteEvidenceUpload";
 import { useWorkflowActors } from "@/hooks/useWorkflowActors";
 import type { Document } from "@/hooks/useDocuments";
@@ -105,6 +106,7 @@ export function DocumentTramiteExecutionPanel({
   });
   const templateState = useDocumentTramiteTemplates();
   const calendarState = useOperationalCalendar();
+  const availabilityState = useTeamAvailability();
   const actors = useWorkflowActors();
 
   const applicableTemplates = useMemo(
@@ -572,47 +574,69 @@ export function DocumentTramiteExecutionPanel({
               {selected.status === "active" &&
                 instancesState.steps
                   .filter((step) => step.status === "active")
-                  .map((step) => (
-                    <TramiteStepActionCard
-                      key={step.id}
-                      step={step}
-                      evidence={instancesState.evidence}
-                      actor={{
-                        profileId: profile?.id ?? null,
-                        role: profile?.role ?? null,
-                        documentAuthorId: document.author_id,
-                        activeGroupIds,
-                      }}
-                      userName={
-                        step.assignee_user_id
-                          ? userNames[step.assignee_user_id]
-                          : undefined
-                      }
-                      groupName={
-                        step.assignee_group_id
-                          ? groupNames[step.assignee_group_id]
-                          : undefined
-                      }
-                      isCompleting={execution.isCompleting}
-                      suggestedDeadline={
-                        step.due_at
-                          ? null
-                          : calendarState.suggestDeadline(
-                              (step.started_at ?? step.created_at).slice(0, 10),
-                              {
-                                kind: "tramite_step",
-                                docType: document.doc_type,
-                                area: document.area,
-                                projectId: document.project_id,
-                                stepType: step.node_type,
-                              },
-                            )
-                      }
-                      onComplete={(input) => handleComplete(step, input)}
-                      onAddEvidence={() => setEvidenceStep(step)}
-                      onOpenEvidence={handleOpenEvidence}
-                    />
-                  ))}
+                  .map((step) => {
+                    const assigneeAvailability = step.assignee_user_id
+                      ? availabilityState.getAvailability(
+                          step.assignee_user_id,
+                          {
+                            projectId: document.project_id,
+                            docType: document.doc_type,
+                            area: document.area,
+                            stepType: step.node_type,
+                          },
+                        )
+                      : null;
+                    return (
+                      <TramiteStepActionCard
+                        key={step.id}
+                        step={step}
+                        evidence={instancesState.evidence}
+                        actor={{
+                          profileId: profile?.id ?? null,
+                          role: profile?.role ?? null,
+                          documentAuthorId: document.author_id,
+                          activeGroupIds,
+                        }}
+                        userName={
+                          step.assignee_user_id
+                            ? userNames[step.assignee_user_id]
+                            : undefined
+                        }
+                        groupName={
+                          step.assignee_group_id
+                            ? groupNames[step.assignee_group_id]
+                            : undefined
+                        }
+                        assigneeAvailability={assigneeAvailability}
+                        substituteName={
+                          assigneeAvailability?.substituteUserId
+                            ? userNames[assigneeAvailability.substituteUserId]
+                            : undefined
+                        }
+                        isCompleting={execution.isCompleting}
+                        suggestedDeadline={
+                          step.due_at
+                            ? null
+                            : calendarState.suggestDeadline(
+                                (step.started_at ?? step.created_at).slice(
+                                  0,
+                                  10,
+                                ),
+                                {
+                                  kind: "tramite_step",
+                                  docType: document.doc_type,
+                                  area: document.area,
+                                  projectId: document.project_id,
+                                  stepType: step.node_type,
+                                },
+                              )
+                        }
+                        onComplete={(input) => handleComplete(step, input)}
+                        onAddEvidence={() => setEvidenceStep(step)}
+                        onOpenEvidence={handleOpenEvidence}
+                      />
+                    );
+                  })}
 
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,0.7fr)]">
                 <div>

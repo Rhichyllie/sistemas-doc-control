@@ -136,7 +136,9 @@ function WorkItemCard({ item }: { item: DocumentWorkItem }) {
                 {formatDate(item.dueAt)}
               </span>
               {item.dueAt && (
-                <span>{getDeadlineModeLabel(item.deadlineMode ?? "simple_date")}</span>
+                <span>
+                  {getDeadlineModeLabel(item.deadlineMode ?? "simple_date")}
+                </span>
               )}
               {item.responsibleName && (
                 <span>Responsável: {item.responsibleName}</span>
@@ -154,6 +156,23 @@ function WorkItemCard({ item }: { item: DocumentWorkItem }) {
                     Política: {item.slaPolicyName}
                   </Badge>
                 )}
+              </div>
+            )}
+            {item.assigneeUnavailable && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge variant="destructive">
+                  {item.absenceLabel ?? "Responsável ausente"}
+                </Badge>
+                {item.substituteName ? (
+                  <Badge variant="secondary">
+                    Substituto: {item.substituteName}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline">Sem substituto válido</Badge>
+                )}
+                <span className="text-xs text-muted-foreground">
+                  A etapa não foi reatribuída automaticamente.
+                </span>
               </div>
             )}
           </div>

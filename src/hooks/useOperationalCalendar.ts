@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { getErrorMessage } from "@/lib/errorUtils";
+import type {
+  HolidayCandidate,
+  HolidayProviderId,
+} from "@/lib/holidayProviders";
 import {
   DEFAULT_OPERATIONAL_WORKWEEK,
   businessDaysUntil,
@@ -16,6 +20,7 @@ import {
   type SlaPolicyContext,
 } from "@/lib/operationalCalendar";
 import { supabase } from "@/lib/supabase";
+import { getSupportedTimeZones, isValidTimeZone } from "@/lib/timeZones";
 
 export interface OperationalCalendarInput {
   name: string;
@@ -30,6 +35,30 @@ export interface OperationalHolidayInput {
   holidayDate: string;
   name: string;
   repeatsYearly?: boolean;
+  countryCode?: string | null;
+  subdivisionCode?: string | null;
+  holidayType?: string | null;
+  observed?: boolean;
+  optional?: boolean;
+}
+
+export type CalendarEnterpriseStatus =
+  | "loading"
+  | "ready"
+  | "not_installed"
+  | "restricted"
+  | "error";
+
+export interface HolidayImportRun {
+  id: string;
+  country_code: string;
+  subdivision_code: string | null;
+  provider: HolidayProviderId;
+  year: number;
+  imported_count: number;
+  skipped_count: number;
+  status: string;
+  created_at: string;
 }
 
 export interface DocumentSlaPolicyInput {
@@ -66,6 +95,7 @@ function classifyCalendarError(error: unknown) {
       "operational_calendars",
       "operational_holidays",
       "document_sla_policies",
+      "operational_holiday_import_runs",
     ].some((table) => message.includes(table)) &&
       (message.includes("does not exist") || message.includes("schema cache")))
   ) {
@@ -109,9 +139,11 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
   );
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [enterpriseStatus, setEnterpriseStatus] =
+    useState<CalendarEnterpriseStatus>("loading");
+  const [importRuns, setImportRuns] = useState<HolidayImportRun[]>([]);
 
-  const canManage =
-    profile?.role === "admin" || profile?.role === "manager";
+  const canManage = profile?.role === "admin" || profile?.role === "manager";
 
   const refresh = useCallback(async () => {
     if (!enabled) {
@@ -121,6 +153,7 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
     if (!profile?.org_id) {
       setStatus("restricted");
       setError("Seu perfil não possui organização válida.");
+      setEnterpriseStatus("restricted");
       return;
     }
 
@@ -139,6 +172,13 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
       setHolidays([]);
       setPolicies([]);
       setStatus(nextStatus);
+      setEnterpriseStatus(
+        nextStatus === "not_installed"
+          ? "not_installed"
+          : nextStatus === "restricted"
+            ? "restricted"
+            : "error",
+      );
       setError(
         `${statusMessage(nextStatus)} ${getErrorMessage(calendarResult.error, "")}`.trim(),
       );
@@ -170,6 +210,13 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
       setHolidays([]);
       setPolicies([]);
       setStatus(nextStatus);
+      setEnterpriseStatus(
+        nextStatus === "not_installed"
+          ? "not_installed"
+          : nextStatus === "restricted"
+            ? "restricted"
+            : "error",
+      );
       setError(
         `${statusMessage(nextStatus)} ${getErrorMessage(secondaryError, "")}`.trim(),
       );
@@ -191,6 +238,27 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
         .filter((item): item is DocumentSlaPolicy => Boolean(item)),
     );
     setStatus(loadedCalendars.length > 0 ? "ready" : "empty");
+
+    const importRunResult = await supabase
+      .from("operational_holiday_import_runs")
+      .select(
+        "id, country_code, subdivision_code, provider, year, imported_count, skipped_count, status, created_at",
+      )
+      .eq("org_id", profile.org_id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (!importRunResult.error) {
+      setImportRuns(
+        (importRunResult.data ?? []) as unknown as HolidayImportRun[],
+      );
+      setEnterpriseStatus("ready");
+    } else {
+      const enterpriseError = classifyCalendarError(importRunResult.error);
+      setImportRuns([]);
+      setEnterpriseStatus(
+        enterpriseError === "not_installed" ? "not_installed" : enterpriseError,
+      );
+    }
   }, [enabled, profile?.org_id]);
 
   useEffect(() => {
@@ -199,9 +267,7 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
 
   const defaultCalendar = useMemo(
     () =>
-      calendars.find((calendar) => calendar.is_default) ??
-      calendars[0] ??
-      null,
+      calendars.find((calendar) => calendar.is_default) ?? calendars[0] ?? null,
     [calendars],
   );
 
@@ -218,8 +284,7 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
   );
 
   const getBusinessDaysUntil = useCallback(
-    (dueAt: string) =>
-      businessDaysUntil(dueAt, defaultCalendar, holidays),
+    (dueAt: string) => businessDaysUntil(dueAt, defaultCalendar, holidays),
     [defaultCalendar, holidays],
   );
 
@@ -248,6 +313,11 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
       if (!ensureManagePermission() || !profile) return false;
       if (!input.name.trim()) {
         setError("Informe o nome do calendário.");
+        return false;
+      }
+      const timeZones = getSupportedTimeZones();
+      if (!isValidTimeZone(input.timezone, timeZones)) {
+        setError("Escolha um fuso horário IANA válido.");
         return false;
       }
       if (
@@ -283,7 +353,10 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
       setIsSaving(false);
       if (result.error) {
         setError(
-          getErrorMessage(result.error, "Não foi possível salvar o calendário."),
+          getErrorMessage(
+            result.error,
+            "Não foi possível salvar o calendário.",
+          ),
         );
         return false;
       }
@@ -309,8 +382,20 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
           calendar_id: input.calendarId ?? defaultCalendar?.id ?? null,
           holiday_date: input.holidayDate,
           name: input.name.trim(),
-          scope: input.calendarId || defaultCalendar ? "calendar" : "organization",
+          scope:
+            input.calendarId || defaultCalendar ? "calendar" : "organization",
           repeats_yearly: input.repeatsYearly ?? false,
+          ...(enterpriseStatus === "ready"
+            ? {
+                country_code: input.countryCode?.toUpperCase() || null,
+                subdivision_code: input.subdivisionCode || null,
+                source: "manual",
+                imported_year: Number(input.holidayDate.slice(0, 4)),
+                holiday_type: input.holidayType || "manual",
+                observed: input.observed ?? true,
+                optional: input.optional ?? false,
+              }
+            : {}),
           created_by: profile.id,
         });
       setIsSaving(false);
@@ -323,7 +408,135 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
       await refresh();
       return true;
     },
-    [defaultCalendar, ensureManagePermission, profile, refresh],
+    [
+      defaultCalendar,
+      ensureManagePermission,
+      enterpriseStatus,
+      profile,
+      refresh,
+    ],
+  );
+
+  const importHolidays = useCallback(
+    async (input: {
+      candidates: HolidayCandidate[];
+      provider: HolidayProviderId;
+      countryCode: string;
+      subdivisionCode?: string | null;
+      year: number;
+    }) => {
+      if (!ensureManagePermission() || !profile) return null;
+      if (enterpriseStatus !== "ready") {
+        setError(
+          "Aplique o ciclo 22 para importar feriados com rastreabilidade.",
+        );
+        return null;
+      }
+      if (!defaultCalendar) {
+        setError("Configure primeiro o calendário padrão.");
+        return null;
+      }
+
+      setIsSaving(true);
+      setError(null);
+      let imported = 0;
+      let skipped = 0;
+      const warnings: string[] = [];
+      const existingKeys = new Set(
+        holidays.map((holiday) =>
+          [
+            holiday.calendar_id ?? "",
+            holiday.holiday_date,
+            holiday.name.trim().toLocaleLowerCase("pt-BR"),
+            holiday.country_code ?? "",
+            holiday.subdivision_code ?? "",
+          ].join("|"),
+        ),
+      );
+
+      for (const candidate of input.candidates) {
+        const key = [
+          defaultCalendar.id,
+          candidate.date,
+          candidate.name.trim().toLocaleLowerCase("pt-BR"),
+          candidate.countryCode,
+          candidate.subdivisionCode ?? "",
+        ].join("|");
+        if (existingKeys.has(key)) {
+          skipped += 1;
+          continue;
+        }
+
+        const { error: insertError } = await supabase
+          .from("operational_holidays")
+          .insert({
+            org_id: profile.org_id,
+            calendar_id: defaultCalendar.id,
+            holiday_date: candidate.date,
+            name: candidate.name,
+            scope: "calendar",
+            repeats_yearly: false,
+            country_code: candidate.countryCode,
+            subdivision_code: candidate.subdivisionCode,
+            source: candidate.source,
+            source_id: candidate.sourceId,
+            imported_year: candidate.importedYear,
+            holiday_type: candidate.holidayType,
+            observed: candidate.observed,
+            optional: candidate.optional,
+            metadata: candidate.metadata,
+            created_by: profile.id,
+          });
+        if (!insertError) {
+          imported += 1;
+          existingKeys.add(key);
+        } else if (String(insertError.code).toUpperCase() === "23505") {
+          skipped += 1;
+        } else {
+          warnings.push(
+            `${candidate.name}: ${getErrorMessage(insertError, "falha de importação")}`,
+          );
+        }
+      }
+
+      const runStatus =
+        warnings.length > 0
+          ? imported > 0
+            ? "partial"
+            : "failed"
+          : "completed";
+      const { error: logError } = await supabase
+        .from("operational_holiday_import_runs")
+        .insert({
+          org_id: profile.org_id,
+          calendar_id: defaultCalendar.id,
+          country_code: input.countryCode.toUpperCase(),
+          subdivision_code: input.subdivisionCode || null,
+          provider: input.provider,
+          year: input.year,
+          imported_count: imported,
+          skipped_count: skipped,
+          status: runStatus,
+          metadata: { warnings },
+          created_by: profile.id,
+        });
+      if (logError) {
+        warnings.push(
+          "Os feriados foram processados, mas o histórico da importação não pôde ser salvo.",
+        );
+      }
+      setIsSaving(false);
+      await refresh();
+      return { imported, skipped, warnings };
+    },
+    [
+      defaultCalendar,
+      ensureManagePermission,
+      enterpriseStatus,
+      holidays,
+      profile,
+      refresh,
+    ],
   );
 
   const deleteHoliday = useCallback(
@@ -362,8 +575,7 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
         (!reviewDays && !stepDays) ||
         (reviewDays !== null &&
           (!Number.isInteger(reviewDays) || reviewDays <= 0)) ||
-        (stepDays !== null &&
-          (!Number.isInteger(stepDays) || stepDays <= 0))
+        (stepDays !== null && (!Number.isInteger(stepDays) || stepDays <= 0))
       ) {
         setError(
           "Informe ao menos um prazo positivo em dias úteis para revisão ou etapa.",
@@ -371,7 +583,9 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
         return false;
       }
       if (!Number.isInteger(priority) || priority < 0) {
-        setError("A prioridade deve ser um número inteiro igual ou maior que zero.");
+        setError(
+          "A prioridade deve ser um número inteiro igual ou maior que zero.",
+        );
         return false;
       }
 
@@ -404,7 +618,10 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
       setIsSaving(false);
       if (result.error) {
         setError(
-          getErrorMessage(result.error, "Não foi possível salvar a política SLA."),
+          getErrorMessage(
+            result.error,
+            "Não foi possível salvar a política SLA.",
+          ),
         );
         return false;
       }
@@ -444,16 +661,20 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
     status,
     schemaMessage: statusMessage(status),
     error,
-    isLoading: status === "loading",
+    isLoading: status === "loading" || enterpriseStatus === "loading",
     isSaving,
     canManage,
     canUseCalendar: status === "ready",
+    enterpriseStatus,
+    canUseEnterpriseCalendar: enterpriseStatus === "ready",
+    importRuns,
     fallbackWorkweek: DEFAULT_OPERATIONAL_WORKWEEK,
     refresh,
     suggestDeadline,
     getBusinessDaysUntil,
     saveDefaultCalendar,
     addHoliday,
+    importHolidays,
     deleteHoliday,
     savePolicy,
     togglePolicy,

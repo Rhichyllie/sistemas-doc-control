@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
+  CheckCircle2,
   Clock3,
+  Globe2,
   Loader2,
+  RefreshCw,
   ShieldCheck,
   Trash2,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -28,13 +32,28 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TeamAvailabilityPanel } from "@/components/team/TeamAvailabilityPanel";
 import { useOperationalCalendar } from "@/hooks/useOperationalCalendar";
 import { useProjectOptions } from "@/hooks/useProjectOptions";
+import { useTeam } from "@/hooks/useTeam";
+import { useTeamAvailability } from "@/hooks/useTeamAvailability";
 import { DOC_TYPES } from "@/lib/constants";
+import {
+  buildBrazilHolidayPack,
+  fetchNagerDateHolidays,
+  HOLIDAY_COUNTRIES,
+  type HolidayProviderId,
+} from "@/lib/holidayProviders";
 import {
   DEFAULT_OPERATIONAL_WORKWEEK,
   type OperationalWorkweek,
 } from "@/lib/operationalCalendar";
+import {
+  formatTimeZoneLabel,
+  getSupportedTimeZones,
+  isValidTimeZone,
+} from "@/lib/timeZones";
 
 const WORKWEEK_LABELS: Array<{
   key: keyof OperationalWorkweek;
@@ -58,20 +77,38 @@ const STEP_TYPES = [
   { value: "publication", label: "Publicação" },
 ];
 
-function CalendarPageHeader() {
+const SOURCE_LABELS: Record<string, string> = {
+  manual: "Manual",
+  br_local_pack: "Brasil local",
+  nager_date_api: "Nager.Date",
+};
+
+function MetricCard({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string | number;
+  detail: string;
+}) {
   return (
-    <div>
-      <h1 className="text-3xl font-bold tracking-tight">Calendário e SLA</h1>
-      <p className="mt-1 text-muted-foreground">
-        Configure dias úteis, feriados e políticas de prazo operacional.
-      </p>
-    </div>
+    <Card>
+      <CardContent className="p-4">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="mt-1 text-2xl font-semibold">{value}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+      </CardContent>
+    </Card>
   );
 }
 
 export function OperationalCalendarAdmin() {
   const calendar = useOperationalCalendar();
+  const availability = useTeamAvailability();
+  const team = useTeam();
   const projectOptions = useProjectOptions();
+  const timeZones = useMemo(() => getSupportedTimeZones(), []);
   const [calendarName, setCalendarName] = useState("Calendário operacional");
   const [timezone, setTimezone] = useState("America/Sao_Paulo");
   const [startTime, setStartTime] = useState("08:00");
@@ -82,6 +119,21 @@ export function OperationalCalendarAdmin() {
   const [holidayName, setHolidayName] = useState("");
   const [holidayDate, setHolidayDate] = useState("");
   const [holidayRepeats, setHolidayRepeats] = useState(false);
+  const [manualCountry, setManualCountry] = useState("BR");
+  const [importCountry, setImportCountry] = useState("BR");
+  const [importYear, setImportYear] = useState(
+    String(new Date().getFullYear()),
+  );
+  const [importSubdivision, setImportSubdivision] = useState("");
+  const [provider, setProvider] = useState<HolidayProviderId>("br_local_pack");
+  const [includeOptional, setIncludeOptional] = useState(false);
+  const [includeNational, setIncludeNational] = useState(true);
+  const [includeSubdivisions, setIncludeSubdivisions] = useState(true);
+  const [importResult, setImportResult] = useState<{
+    imported: number;
+    skipped: number;
+    warnings: string[];
+  } | null>(null);
   const [policyName, setPolicyName] = useState("");
   const [reviewDays, setReviewDays] = useState("");
   const [stepDays, setStepDays] = useState("5");
@@ -105,6 +157,9 @@ export function OperationalCalendarAdmin() {
     setWorkweek(calendar.defaultCalendar.workweek);
   }, [calendar.defaultCalendar]);
 
+  const timezoneValid = isValidTimeZone(timezone, timeZones);
+  const canConfigure =
+    calendar.canManage && ["ready", "empty"].includes(calendar.status);
   const sortedHolidays = useMemo(
     () =>
       [...calendar.holidays].sort((left, right) =>
@@ -112,153 +167,206 @@ export function OperationalCalendarAdmin() {
       ),
     [calendar.holidays],
   );
-  const moduleState = useMemo(() => {
-    if (calendar.status === "ready") {
-      if (!calendar.calendars.some((item) => item.is_default)) {
-        return {
-          label: "Sem calendário padrão",
-          description:
-            "Há calendário disponível, mas nenhum está marcado como padrão.",
-          variant: "secondary" as const,
-        };
-      }
-      return {
-        label: "Instalado",
-        description: "Usando calendário operacional.",
-        variant: "default" as const,
-      };
-    }
-    if (calendar.status === "empty") {
-      return {
-        label: "Sem calendário padrão",
-        description: "Usando fallback de segunda a sexta.",
-        variant: "secondary" as const,
-      };
-    }
-    if (calendar.status === "not_installed") {
-      return {
-        label: "Não instalado",
-        description:
-          "Usando comparação simples porque o ciclo 21 não está instalado.",
-        variant: "destructive" as const,
-      };
-    }
-    return {
-      label: "Atenção",
-      description:
-        calendar.status === "restricted"
-          ? "Leitura limitada por organização ou permissão."
-          : "Não foi possível confirmar o calendário operacional.",
-      variant: "outline" as const,
-    };
-  }, [calendar.calendars, calendar.status]);
-  const canConfigure =
-    calendar.canManage && ["ready", "empty"].includes(calendar.status);
+  const nextHoliday = sortedHolidays.find(
+    (holiday) =>
+      holiday.observed &&
+      new Date(`${holiday.holiday_date}T23:59:59`).getTime() >= Date.now(),
+  );
+  const activePolicies = calendar.policies.filter(
+    (policy) => policy.active,
+  ).length;
+  const hasExplicitDefault = calendar.calendars.some((item) => item.is_default);
+  const cycle21Label =
+    calendar.status === "ready" || calendar.status === "empty"
+      ? "Instalado"
+      : calendar.status === "not_installed"
+        ? "Não instalado"
+        : "Atenção";
+  const cycle22Label =
+    calendar.enterpriseStatus === "ready"
+      ? "Instalado"
+      : calendar.enterpriseStatus === "not_installed"
+        ? "Não instalado"
+        : calendar.enterpriseStatus === "loading"
+          ? "Verificando"
+          : "Atenção";
+  const calculationMode =
+    calendar.status === "ready"
+      ? "Calendário operacional"
+      : calendar.status === "empty"
+        ? "Fallback segunda a sexta"
+        : "Comparação simples";
 
   if (calendar.isLoading) {
     return (
-      <div className="flex min-h-[320px] items-center justify-center gap-2 text-muted-foreground">
+      <div className="flex min-h-[360px] items-center justify-center gap-2 text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin" />
-        Carregando calendário operacional...
+        Carregando Calendário e SLA...
       </div>
     );
   }
 
-  if (calendar.status === "not_installed") {
-    return (
-      <div className="space-y-6">
-        <CalendarPageHeader />
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <CardTitle>Estado do módulo</CardTitle>
-                <CardDescription>{moduleState.description}</CardDescription>
-              </div>
-              <Badge variant={moduleState.variant}>{moduleState.label}</Badge>
-            </div>
-          </CardHeader>
-        </Card>
-        <Alert>
-          <CalendarDays className="h-4 w-4" />
-          <AlertTitle>Calendário operacional indisponível</AlertTitle>
-          <AlertDescription>
-            O ciclo 21_TRAMITA_operational_calendar_sla ainda não foi aplicado.
-            Aplique o ciclo 21 no Supabase para habilitar esta tela. Enquanto
-            isso, Home e Central continuam usando comparação simples de datas.
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
+  async function saveCalendar() {
+    if (!timezoneValid) {
+      toast.error("Escolha um fuso horário IANA válido.");
+      return;
+    }
+    if (
+      await calendar.saveDefaultCalendar({
+        name: calendarName,
+        timezone,
+        workweek,
+        defaultStartTime: startTime,
+        defaultEndTime: endTime,
+      })
+    ) {
+      toast.success("Calendário operacional salvo.");
+    }
   }
 
-  async function handleSaveCalendar() {
-    const saved = await calendar.saveDefaultCalendar({
-      name: calendarName,
-      timezone,
-      workweek,
-      defaultStartTime: startTime,
-      defaultEndTime: endTime,
-    });
-    if (saved) toast.success("Calendário operacional salvo.");
+  function applyPreset(preset: "br_standard" | "six_by_one" | "always") {
+    if (preset === "br_standard") {
+      setTimezone("America/Sao_Paulo");
+      setWorkweek(DEFAULT_OPERATIONAL_WORKWEEK);
+      setStartTime("08:00");
+      setEndTime("18:00");
+    } else if (preset === "six_by_one") {
+      setWorkweek({ ...DEFAULT_OPERATIONAL_WORKWEEK, sat: true });
+      setStartTime("08:00");
+      setEndTime("18:00");
+    } else {
+      setWorkweek({
+        mon: true,
+        tue: true,
+        wed: true,
+        thu: true,
+        fri: true,
+        sat: true,
+        sun: true,
+      });
+      setStartTime("00:00");
+      setEndTime("23:59");
+    }
   }
 
-  async function handleAddHoliday() {
-    const saved = await calendar.addHoliday({
-      calendarId: calendar.defaultCalendar?.id,
-      holidayDate,
-      name: holidayName,
-      repeatsYearly: holidayRepeats,
-    });
-    if (!saved) return;
-    setHolidayName("");
-    setHolidayDate("");
-    setHolidayRepeats(false);
-    toast.success("Feriado cadastrado.");
+  async function addManualHoliday() {
+    if (
+      await calendar.addHoliday({
+        calendarId: calendar.defaultCalendar?.id,
+        holidayDate,
+        name: holidayName,
+        repeatsYearly: holidayRepeats,
+        countryCode: manualCountry,
+      })
+    ) {
+      setHolidayName("");
+      setHolidayDate("");
+      setHolidayRepeats(false);
+      toast.success("Feriado cadastrado.");
+    }
   }
 
-  async function handleSavePolicy() {
-    const normalizedReviewDays = reviewDays.trim()
-      ? Number(reviewDays)
-      : null;
+  async function importHolidays() {
+    const year = Number(importYear);
+    if (!Number.isInteger(year) || year < 1900 || year > 2200) {
+      toast.error("Informe um ano entre 1900 e 2200.");
+      return;
+    }
+    try {
+      let candidates =
+        provider === "br_local_pack"
+          ? buildBrazilHolidayPack(year, includeOptional)
+          : await fetchNagerDateHolidays({
+              countryCode: importCountry,
+              year,
+              subdivisionCode: importSubdivision || null,
+              includeOptional,
+              includeNational,
+              includeSubdivisions,
+            });
+      if (provider === "br_local_pack" && !includeNational) {
+        candidates = candidates.filter((holiday) => holiday.optional);
+      }
+      const result = await calendar.importHolidays({
+        candidates,
+        provider,
+        countryCode: importCountry,
+        subdivisionCode: importSubdivision || null,
+        year,
+      });
+      if (!result) return;
+      setImportResult(result);
+      toast.success(
+        `${result.imported} feriado(s) importado(s); ${result.skipped} ignorado(s).`,
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível importar os feriados.",
+      );
+    }
+  }
+
+  async function savePolicy() {
     const normalizedStepDays = stepDays.trim() ? Number(stepDays) : null;
-    const warning = Number(warningDays);
-    const saved = await calendar.savePolicy({
-      name: policyName,
-      docType: docType === "all" ? null : docType,
-      area: area || null,
-      projectId: projectId === "all" ? null : projectId,
-      stepType:
-        normalizedStepDays && stepType !== "all" ? stepType : null,
-      calendarId: calendar.defaultCalendar?.id,
-      reviewDueDays: normalizedReviewDays,
-      stepDueDays: normalizedStepDays,
-      warningBeforeDays: warning,
-      severity,
-      priority: Number(priority),
-      active: policyActive,
-    });
-    if (!saved) return;
-    setPolicyName("");
-    toast.success("Política SLA criada.");
+    if (
+      await calendar.savePolicy({
+        name: policyName,
+        docType: docType === "all" ? null : docType,
+        area: area || null,
+        projectId: projectId === "all" ? null : projectId,
+        stepType: normalizedStepDays && stepType !== "all" ? stepType : null,
+        calendarId: calendar.defaultCalendar?.id,
+        reviewDueDays: reviewDays.trim() ? Number(reviewDays) : null,
+        stepDueDays: normalizedStepDays,
+        warningBeforeDays: Number(warningDays),
+        severity,
+        priority: Number(priority),
+        active: policyActive,
+      })
+    ) {
+      setPolicyName("");
+      toast.success("Política SLA criada.");
+    }
   }
 
   return (
     <div className="space-y-6">
-      <CalendarPageHeader />
+      <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
+        <div>
+          <Badge variant="outline" className="mb-3">
+            Governança de prazo
+          </Badge>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Calendário e SLA
+          </h1>
+          <p className="mt-2 max-w-3xl text-muted-foreground">
+            Calendários operacionais, feriados, disponibilidade da equipe e
+            políticas de prazo.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() =>
+            void Promise.all([calendar.refresh(), availability.refresh()])
+          }
+        >
+          <RefreshCw className="h-4 w-4" />
+          Atualizar diagnóstico
+        </Button>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle>Estado do módulo</CardTitle>
-              <CardDescription>{moduleState.description}</CardDescription>
-            </div>
-            <Badge variant={moduleState.variant}>{moduleState.label}</Badge>
-          </div>
-        </CardHeader>
-      </Card>
-
+      {calendar.status === "not_installed" && (
+        <Alert>
+          <CalendarDays className="h-4 w-4" />
+          <AlertTitle>Ciclo 21 não instalado</AlertTitle>
+          <AlertDescription>
+            Aplique 21_TRAMITA_operational_calendar_sla. Home e Central
+            continuam usando comparação simples de datas.
+          </AlertDescription>
+        </Alert>
+      )}
       {!calendar.canManage && (
         <Alert>
           <ShieldCheck className="h-4 w-4" />
@@ -269,171 +377,436 @@ export function OperationalCalendarAdmin() {
           </AlertDescription>
         </Alert>
       )}
-
-      {(calendar.error || calendar.schemaMessage) && (
-        <Alert variant={calendar.error ? "destructive" : "default"}>
-          <AlertTitle>
-            {calendar.error ? "Atenção ao calendário" : "Modo de cálculo"}
-          </AlertTitle>
-          <AlertDescription>
-            {calendar.error ?? calendar.schemaMessage}
-          </AlertDescription>
+      {calendar.error && (
+        <Alert variant="destructive">
+          <AlertTitle>Falha no calendário</AlertTitle>
+          <AlertDescription>{calendar.error}</AlertDescription>
         </Alert>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock3 className="h-5 w-5" />
-              Calendário padrão
-            </CardTitle>
-            <CardDescription>
-              Define a semana útil e a jornada de referência da organização.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="calendar-name">Nome</Label>
-                <Input
-                  id="calendar-name"
-                  value={calendarName}
-                  disabled={!canConfigure}
-                  onChange={(event) => setCalendarName(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="calendar-timezone">Fuso horário</Label>
-                <Input
-                  id="calendar-timezone"
-                  value={timezone}
-                  disabled={!canConfigure}
-                  onChange={(event) => setTimezone(event.target.value)}
-                />
-              </div>
-            </div>
+      <Tabs defaultValue="overview" className="space-y-5">
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/60 p-1">
+          <TabsTrigger value="overview">Visão geral</TabsTrigger>
+          <TabsTrigger value="calendar">Calendário padrão</TabsTrigger>
+          <TabsTrigger value="holidays">Feriados</TabsTrigger>
+          <TabsTrigger value="sla">Políticas SLA</TabsTrigger>
+          <TabsTrigger value="availability">
+            Ausências e substituições
+          </TabsTrigger>
+          <TabsTrigger value="diagnostics">Diagnóstico</TabsTrigger>
+        </TabsList>
 
-            <div className="space-y-2">
-              <Label>Dias úteis</Label>
-              <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
-                {WORKWEEK_LABELS.map((day) => (
-                  <label
-                    key={day.key}
-                    className="flex flex-col items-center gap-2 rounded-lg border p-2 text-xs"
-                  >
-                    {day.label}
-                    <Switch
-                      checked={workweek[day.key]}
-                      disabled={!canConfigure}
-                      onCheckedChange={(checked) =>
-                        setWorkweek((current) => ({
-                          ...current,
-                          [day.key]: checked,
-                        }))
-                      }
-                      aria-label={`${day.label} é dia útil`}
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="calendar-start">Início da jornada</Label>
-                <Input
-                  id="calendar-start"
-                  type="time"
-                  value={startTime}
-                  disabled={!canConfigure}
-                  onChange={(event) => setStartTime(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="calendar-end">Fim da jornada</Label>
-                <Input
-                  id="calendar-end"
-                  type="time"
-                  value={endTime}
-                  disabled={!canConfigure}
-                  onChange={(event) => setEndTime(event.target.value)}
-                />
-              </div>
-            </div>
-
-            <Button
-              onClick={handleSaveCalendar}
-              disabled={calendar.isSaving || !canConfigure}
-            >
-              {calendar.isSaving && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Salvar calendário padrão
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarDays className="h-5 w-5" />
-              Feriados
-            </CardTitle>
-            <CardDescription>
-              Datas cadastradas são ignoradas no cálculo de dias úteis.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
-              <div className="space-y-2">
-                <Label htmlFor="holiday-name">Nome</Label>
-                <Input
-                  id="holiday-name"
-                  placeholder="Ex.: Feriado municipal"
-                  value={holidayName}
-                  disabled={!canConfigure}
-                  onChange={(event) => setHolidayName(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="holiday-date">Data</Label>
-                <Input
-                  id="holiday-date"
-                  type="date"
-                  value={holidayDate}
-                  disabled={!canConfigure}
-                  onChange={(event) => setHolidayDate(event.target.value)}
-                />
-              </div>
-            </div>
-            <label className="flex items-center gap-3 text-sm">
-              <Switch
-                checked={holidayRepeats}
-                disabled={!canConfigure}
-                onCheckedChange={setHolidayRepeats}
-              />
-              Repetir anualmente
-            </label>
-            <Button
-              variant="secondary"
-              onClick={handleAddHoliday}
-              disabled={
-                calendar.isSaving ||
-                !calendar.defaultCalendar ||
-                !canConfigure
+        <TabsContent value="overview" className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+              label="Ciclo 21"
+              value={cycle21Label}
+              detail="Calendário e políticas SLA"
+            />
+            <MetricCard
+              label="Ciclo 22"
+              value={cycle22Label}
+              detail="Importação e disponibilidade"
+            />
+            <MetricCard
+              label="Políticas ativas"
+              value={activePolicies}
+              detail="Revisões e etapas"
+            />
+            <MetricCard
+              label="Modo de cálculo"
+              value={calculationMode}
+              detail={
+                hasExplicitDefault
+                  ? "Calendário padrão definido"
+                  : "Sem calendário padrão explícito"
               }
-            >
-              Adicionar feriado
-            </Button>
-            {!calendar.defaultCalendar && (
-              <p className="text-xs text-muted-foreground">
-                Salve primeiro o calendário padrão.
-              </p>
-            )}
+            />
+            <MetricCard
+              label="Próximo feriado"
+              value={
+                nextHoliday
+                  ? new Intl.DateTimeFormat("pt-BR").format(
+                      new Date(`${nextHoliday.holiday_date}T12:00:00`),
+                    )
+                  : "Não cadastrado"
+              }
+              detail={nextHoliday?.name ?? "Nenhuma data futura"}
+            />
+            <MetricCard
+              label="Pessoas ausentes hoje"
+              value={availability.activeAbsences.length}
+              detail="Ausências dentro do período atual"
+            />
+            <MetricCard
+              label="Substituições ativas"
+              value={availability.activeSubstitutionCount}
+              detail="Ausências e regras válidas"
+            />
+            <MetricCard
+              label="Sem substituto"
+              value={availability.absencesWithoutSubstitute.length}
+              detail="Risco operacional"
+            />
+          </div>
+          <Alert>
+            <CheckCircle2 className="h-4 w-4" />
+            <AlertTitle>Datas persistidas continuam prioritárias</AlertTitle>
+            <AlertDescription>
+              Sugestões calculadas não alteram documentos, etapas, responsáveis
+              ou status automaticamente.
+            </AlertDescription>
+          </Alert>
+        </TabsContent>
 
-            <Separator />
-            <div className="max-h-64 space-y-2 overflow-auto">
+        <TabsContent value="calendar">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock3 className="h-5 w-5" />
+                Calendário padrão
+              </CardTitle>
+              <CardDescription>
+                Configure semana, jornada e fuso IANA da organização.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => applyPreset("br_standard")}
+                  disabled={!canConfigure}
+                >
+                  Usar Brasil padrão
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => applyPreset("six_by_one")}
+                  disabled={!canConfigure}
+                >
+                  Usar operação 6x1
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => applyPreset("always")}
+                  disabled={!canConfigure}
+                >
+                  Usar operação 24/7
+                </Button>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Nome</Label>
+                  <Input
+                    value={calendarName}
+                    onChange={(event) => setCalendarName(event.target.value)}
+                    disabled={!canConfigure}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fuso horário IANA</Label>
+                  <Select
+                    value={timezoneValid ? timezone : undefined}
+                    onValueChange={setTimezone}
+                    disabled={!canConfigure}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Escolha um fuso válido" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-80">
+                      {timeZones.map((zone) => (
+                        <SelectItem key={zone} value={zone}>
+                          {formatTimeZoneLabel(zone)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!timezoneValid && (
+                    <p className="text-sm text-destructive">
+                      Fuso inválido salvo. Escolha um fuso válido para
+                      continuar.
+                    </p>
+                  )}
+                  {timezoneValid && (
+                    <p className="text-xs text-muted-foreground">
+                      Atual: {formatTimeZoneLabel(timezone)}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Dias úteis</Label>
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                  {WORKWEEK_LABELS.map((day) => (
+                    <label
+                      key={day.key}
+                      className="flex flex-col items-center gap-2 rounded-lg border p-3 text-xs"
+                    >
+                      {day.label}
+                      <Switch
+                        checked={workweek[day.key]}
+                        disabled={!canConfigure}
+                        onCheckedChange={(checked) =>
+                          setWorkweek((current) => ({
+                            ...current,
+                            [day.key]: checked,
+                          }))
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Início da jornada</Label>
+                  <Input
+                    type="time"
+                    value={startTime}
+                    disabled={!canConfigure}
+                    onChange={(event) => setStartTime(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fim da jornada</Label>
+                  <Input
+                    type="time"
+                    value={endTime}
+                    disabled={!canConfigure}
+                    onChange={(event) => setEndTime(event.target.value)}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                As horas ficam preparadas para cálculo fino futuro. Nesta fase,
+                os prazos continuam calculados por dia útil.
+              </p>
+              <Button
+                onClick={saveCalendar}
+                disabled={!canConfigure || calendar.isSaving || !timezoneValid}
+              >
+                Salvar calendário padrão
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="holidays" className="space-y-5">
+          <div className="grid gap-5 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Novo feriado manual</CardTitle>
+                <CardDescription>
+                  Cadastros manuais continuam suportados.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Nome</Label>
+                    <Input
+                      value={holidayName}
+                      disabled={!canConfigure}
+                      onChange={(event) => setHolidayName(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Data</Label>
+                    <Input
+                      type="date"
+                      value={holidayDate}
+                      disabled={!canConfigure}
+                      onChange={(event) => setHolidayDate(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>País</Label>
+                    <Select
+                      value={manualCountry}
+                      onValueChange={setManualCountry}
+                      disabled={!canConfigure}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {HOLIDAY_COUNTRIES.map((country) => (
+                          <SelectItem key={country.code} value={country.code}>
+                            {country.code} · {country.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <label className="flex items-end gap-3 pb-2 text-sm">
+                    <Switch
+                      checked={holidayRepeats}
+                      disabled={!canConfigure}
+                      onCheckedChange={setHolidayRepeats}
+                    />
+                    Repetir anualmente
+                  </label>
+                </div>
+                <Button
+                  onClick={addManualHoliday}
+                  disabled={!canConfigure || !calendar.defaultCalendar}
+                >
+                  Adicionar feriado
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Globe2 className="h-5 w-5" />
+                  Importar feriados
+                </CardTitle>
+                <CardDescription>
+                  Importação manual; os dados ficam salvos localmente no banco.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {calendar.enterpriseStatus !== "ready" && (
+                  <Alert>
+                    <AlertDescription>
+                      Aplique o ciclo 22 para habilitar importação rastreável.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>País</Label>
+                    <Select
+                      value={importCountry}
+                      onValueChange={(value) => {
+                        setImportCountry(value);
+                        if (value !== "BR") setProvider("nager_date_api");
+                      }}
+                      disabled={!canConfigure}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {HOLIDAY_COUNTRIES.map((country) => (
+                          <SelectItem key={country.code} value={country.code}>
+                            {country.code} · {country.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Ano</Label>
+                    <Input
+                      type="number"
+                      min={1900}
+                      max={2200}
+                      value={importYear}
+                      disabled={!canConfigure}
+                      onChange={(event) => setImportYear(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Provider</Label>
+                    <Select
+                      value={provider}
+                      onValueChange={(value) =>
+                        setProvider(value as HolidayProviderId)
+                      }
+                      disabled={!canConfigure}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {importCountry === "BR" && (
+                          <SelectItem value="br_local_pack">
+                            Brasil local
+                          </SelectItem>
+                        )}
+                        <SelectItem value="nager_date_api">
+                          Nager.Date · fonte externa
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Região/subdivisão</Label>
+                    <Input
+                      value={importSubdivision}
+                      disabled={!canConfigure}
+                      onChange={(event) =>
+                        setImportSubdivision(event.target.value)
+                      }
+                      placeholder="Opcional, ex.: BR-SP"
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-2 text-sm sm:grid-cols-3">
+                  <label className="flex items-center gap-2">
+                    <Switch
+                      checked={includeNational}
+                      disabled={!canConfigure}
+                      onCheckedChange={setIncludeNational}
+                    />
+                    Nacionais
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <Switch
+                      checked={includeOptional}
+                      disabled={!canConfigure}
+                      onCheckedChange={setIncludeOptional}
+                    />
+                    Observâncias
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <Switch
+                      checked={includeSubdivisions}
+                      disabled={!canConfigure}
+                      onCheckedChange={setIncludeSubdivisions}
+                    />
+                    Subdivisões
+                  </label>
+                </div>
+                <Button
+                  onClick={importHolidays}
+                  disabled={
+                    !canConfigure ||
+                    calendar.enterpriseStatus !== "ready" ||
+                    calendar.isSaving
+                  }
+                >
+                  {calendar.isSaving && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                  Importar feriados
+                </Button>
+                {importResult && (
+                  <Alert>
+                    <AlertTitle>Importação concluída</AlertTitle>
+                    <AlertDescription>
+                      {importResult.imported} adicionado(s),{" "}
+                      {importResult.skipped} ignorado(s).
+                      {importResult.warnings.length
+                        ? ` ${importResult.warnings.length} aviso(s).`
+                        : ""}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Feriados cadastrados</CardTitle>
+              <CardDescription>
+                {sortedHolidays.length} data(s) no calendário.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
               {sortedHolidays.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Nenhum feriado cadastrado.
@@ -442,21 +815,34 @@ export function OperationalCalendarAdmin() {
                 sortedHolidays.map((holiday) => (
                   <div
                     key={holiday.id}
-                    className="flex items-center justify-between gap-3 rounded-lg border p-3"
+                    className="flex flex-col justify-between gap-3 rounded-lg border p-3 sm:flex-row sm:items-center"
                   >
                     <div>
-                      <p className="text-sm font-medium">{holiday.name}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{holiday.name}</p>
+                        <Badge variant="outline">
+                          {SOURCE_LABELS[holiday.source ?? "manual"] ??
+                            "Manual"}
+                        </Badge>
+                        {holiday.optional && (
+                          <Badge variant="secondary">Opcional</Badge>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(
-                          `${holiday.holiday_date}T12:00:00`,
-                        ).toLocaleDateString("pt-BR")}
-                        {holiday.repeats_yearly ? " · anual" : ""}
+                        {new Intl.DateTimeFormat("pt-BR").format(
+                          new Date(`${holiday.holiday_date}T12:00:00`),
+                        )}
+                        {holiday.country_code
+                          ? ` · ${holiday.country_code}`
+                          : ""}
+                        {holiday.subdivision_code
+                          ? ` · ${holiday.subdivision_code}`
+                          : ""}
                       </p>
                     </div>
                     <Button
                       size="icon"
                       variant="ghost"
-                      aria-label={`Remover ${holiday.name}`}
                       disabled={!canConfigure}
                       onClick={async () => {
                         if (await calendar.deleteHoliday(holiday.id)) {
@@ -469,259 +855,290 @@ export function OperationalCalendarAdmin() {
                   </div>
                 ))
               )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5" />
-            Políticas de prazo
-          </CardTitle>
-          <CardDescription>
-            Defina prazos em dias úteis para revisões documentais ou etapas de
-            trâmite. O sistema apenas calcula e sinaliza.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="policy-name">Nome da política</Label>
-              <Input
-                id="policy-name"
-                placeholder="Ex.: Aprovação técnica em 5 dias úteis"
-                value={policyName}
-                disabled={!canConfigure}
-                onChange={(event) => setPolicyName(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Tipo documental</Label>
-              <Select
-                value={docType}
-                onValueChange={setDocType}
-                disabled={!canConfigure}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os tipos</SelectItem>
-                  {DOC_TYPES.map((type) => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="policy-area">Área</Label>
-              <Input
-                id="policy-area"
-                placeholder="Todas ou código da área"
-                value={area}
-                disabled={!canConfigure}
-                onChange={(event) => setArea(event.target.value.toUpperCase())}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Tipo de etapa</Label>
-              <Select
-                value={stepType}
-                onValueChange={setStepType}
-                disabled={!canConfigure}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas as etapas</SelectItem>
-                  {STEP_TYPES.map((type) => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="review-days">Dias para revisão</Label>
-              <Input
-                id="review-days"
-                type="number"
-                min={1}
-                placeholder="Opcional"
-                value={reviewDays}
-                disabled={!canConfigure}
-                onChange={(event) => setReviewDays(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="step-days">Dias para etapa</Label>
-              <Input
-                id="step-days"
-                type="number"
-                min={1}
-                placeholder="Opcional"
-                value={stepDays}
-                disabled={!canConfigure}
-                onChange={(event) => setStepDays(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="warning-days">Avisar antes (dias úteis)</Label>
-              <Input
-                id="warning-days"
-                type="number"
-                min={0}
-                value={warningDays}
-                disabled={!canConfigure}
-                onChange={(event) => setWarningDays(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="policy-priority">Prioridade</Label>
-              <Input
-                id="policy-priority"
-                type="number"
-                min={0}
-                value={priority}
-                disabled={!canConfigure}
-                onChange={(event) => setPriority(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Severidade</Label>
-              <Select
-                value={severity}
-                disabled={!canConfigure}
-                onValueChange={(value) =>
-                  setSeverity(
-                    value as "low" | "medium" | "high" | "critical",
-                  )
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Baixa</SelectItem>
-                  <SelectItem value="medium">Média</SelectItem>
-                  <SelectItem value="high">Alta</SelectItem>
-                  <SelectItem value="critical">Crítica</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Projeto</Label>
-              <Select
-                value={projectId}
-                onValueChange={setProjectId}
-                disabled={!canConfigure}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os projetos</SelectItem>
-                  {projectOptions.projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.code ? `${project.code} · ` : ""}
-                      {project.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Estado inicial</Label>
-              <label className="flex h-10 items-center gap-3 rounded-md border px-3 text-sm">
-                <Switch
-                  checked={policyActive}
-                  disabled={!canConfigure}
-                  onCheckedChange={setPolicyActive}
-                />
-                {policyActive ? "Política ativa" : "Política inativa"}
-              </label>
-            </div>
-          </div>
-
-          <Button
-            onClick={handleSavePolicy}
-            disabled={
-              calendar.isSaving ||
-              !calendar.defaultCalendar ||
-              !canConfigure
-            }
-          >
-            Criar política SLA
-          </Button>
-
-          <Separator />
-          {calendar.policies.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Nenhuma política cadastrada. Prazos existentes continuam sendo
-              lidos normalmente.
-            </p>
-          ) : (
-            <div className="grid gap-3 lg:grid-cols-2">
-              {calendar.policies.map((policy) => (
-                <div
-                  key={policy.id}
-                  className="flex items-start justify-between gap-4 rounded-lg border p-4"
-                >
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium">{policy.name}</p>
-                      <Badge variant="outline">{policy.severity}</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {[
-                        policy.review_due_days
-                          ? `revisão em ${policy.review_due_days} dias úteis`
-                          : null,
-                        policy.step_due_days
-                          ? `etapa em ${policy.step_due_days} dias úteis`
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
+          {calendar.importRuns.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Histórico de importação</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {calendar.importRuns.map((run) => (
+                  <div key={run.id} className="rounded-lg border p-3 text-sm">
+                    <p className="font-medium">
+                      {run.country_code} · {run.year} ·{" "}
+                      {SOURCE_LABELS[run.provider]}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {[policy.doc_type, policy.area, policy.step_type]
-                        .filter(Boolean)
-                        .join(" · ") || "Toda a organização"}
-                      {" · "}
-                      prioridade {policy.priority}
-                      {" · "}
-                      alerta {policy.warning_before_days} dia(s) antes
+                      {run.imported_count} importado(s), {run.skipped_count}{" "}
+                      ignorado(s) · {run.status}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      {policy.active ? "Ativa" : "Inativa"}
-                    </span>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="sla">
+          <Card>
+            <CardHeader>
+              <CardTitle>Políticas SLA</CardTitle>
+              <CardDescription>
+                Prazos em dias úteis por documento, projeto ou etapa.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Nome</Label>
+                  <Input
+                    value={policyName}
+                    disabled={!canConfigure}
+                    onChange={(event) => setPolicyName(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipo documental</Label>
+                  <Select
+                    value={docType}
+                    onValueChange={setDocType}
+                    disabled={!canConfigure}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {DOC_TYPES.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Área</Label>
+                  <Input
+                    value={area}
+                    disabled={!canConfigure}
+                    onChange={(event) =>
+                      setArea(event.target.value.toUpperCase())
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipo de etapa</Label>
+                  <Select
+                    value={stepType}
+                    onValueChange={setStepType}
+                    disabled={!canConfigure}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas</SelectItem>
+                      {STEP_TYPES.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Dias para revisão</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={reviewDays}
+                    disabled={!canConfigure}
+                    onChange={(event) => setReviewDays(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Dias para etapa</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={stepDays}
+                    disabled={!canConfigure}
+                    onChange={(event) => setStepDays(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Alerta antes</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={warningDays}
+                    disabled={!canConfigure}
+                    onChange={(event) => setWarningDays(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Prioridade</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={priority}
+                    disabled={!canConfigure}
+                    onChange={(event) => setPriority(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Severidade</Label>
+                  <Select
+                    value={severity}
+                    disabled={!canConfigure}
+                    onValueChange={(value) =>
+                      setSeverity(
+                        value as "low" | "medium" | "high" | "critical",
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Baixa</SelectItem>
+                      <SelectItem value="medium">Média</SelectItem>
+                      <SelectItem value="high">Alta</SelectItem>
+                      <SelectItem value="critical">Crítica</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Projeto</Label>
+                  <Select
+                    value={projectId}
+                    onValueChange={setProjectId}
+                    disabled={!canConfigure}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {projectOptions.projects.map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.code ? `${project.code} · ` : ""}
+                          {project.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <label className="flex items-end gap-2 pb-2 text-sm">
+                  <Switch
+                    checked={policyActive}
+                    disabled={!canConfigure}
+                    onCheckedChange={setPolicyActive}
+                  />
+                  Política ativa
+                </label>
+              </div>
+              <Button
+                onClick={savePolicy}
+                disabled={!canConfigure || !calendar.defaultCalendar}
+              >
+                Criar política
+              </Button>
+              <Separator />
+              <div className="grid gap-3 lg:grid-cols-2">
+                {calendar.policies.map((policy) => (
+                  <div
+                    key={policy.id}
+                    className="flex items-start justify-between gap-3 rounded-lg border p-4"
+                  >
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{policy.name}</p>
+                        <Badge variant="outline">{policy.severity}</Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {policy.review_due_days
+                          ? `Revisão: ${policy.review_due_days} dias úteis`
+                          : ""}
+                        {policy.review_due_days && policy.step_due_days
+                          ? " · "
+                          : ""}
+                        {policy.step_due_days
+                          ? `Etapa: ${policy.step_due_days} dias úteis`
+                          : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Prioridade {policy.priority} · alerta{" "}
+                        {policy.warning_before_days} dia(s)
+                      </p>
+                    </div>
                     <Switch
                       checked={policy.active}
                       disabled={!canConfigure}
-                      onCheckedChange={async (active) => {
-                        if (await calendar.togglePolicy(policy.id, active)) {
-                          toast.success(
-                            active ? "Política ativada." : "Política desativada.",
-                          );
-                        }
-                      }}
+                      onCheckedChange={(active) =>
+                        void calendar.togglePolicy(policy.id, active)
+                      }
                     />
                   </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="availability">
+          <TeamAvailabilityPanel
+            members={team.members}
+            compact
+            availabilityState={availability}
+          />
+        </TabsContent>
+
+        <TabsContent value="diagnostics" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Diagnóstico do ambiente</CardTitle>
+              <CardDescription>
+                Contratos ativos sem executar alterações automáticas.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2">
+              {[
+                ["Ciclo 21", cycle21Label],
+                ["Ciclo 22", cycle22Label],
+                [
+                  "Calendário padrão",
+                  hasExplicitDefault ? "Configurado" : "Ausente",
+                ],
+                ["Fuso horário", timezoneValid ? timezone : "Inválido"],
+                ["Modo de cálculo", calculationMode],
+                [
+                  "Disponibilidade da equipe",
+                  availability.canUseAvailability
+                    ? "Disponível"
+                    : "Fallback ativo",
+                ],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg border p-4">
+                  <p className="text-sm text-muted-foreground">{label}</p>
+                  <p className="mt-1 font-medium">{value}</p>
                 </div>
               ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+          <Alert>
+            <Users className="h-4 w-4" />
+            <AlertTitle>Substituição informativa</AlertTitle>
+            <AlertDescription>
+              O sistema não reatribui etapas e não permite ação delegada nesta
+              fase. A P-25 deverá integrar autorização, evento e auditoria.
+            </AlertDescription>
+          </Alert>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

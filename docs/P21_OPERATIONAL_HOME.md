@@ -178,3 +178,16 @@ na Central Documental.
 Sem o ciclo 21, os indicadores permanecem disponíveis por comparação simples
 de datas e a Home informa o modo de compatibilidade sem tratar ausência de
 schema como falha crítica.
+
+## Integração P-24.2 — Risco de disponibilidade
+
+A Home resume, sem copiar a caixa da Central:
+
+- responsáveis ausentes sem substituto;
+- substituições ativas;
+- prazos próximos com responsável indisponível;
+- disponibilidade do módulo de ausências e delegações.
+
+Os indicadores são locais e determinísticos. Eles não reatribuem etapas, não
+alteram documentos e desaparecem de forma controlada quando o ciclo 22 não
+está instalado.
