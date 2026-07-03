@@ -29,6 +29,7 @@ A sequência lógica oficial é:
 21. `20_TRAMITA_transactional_document_creation`
 22. `21_TRAMITA_operational_calendar_sla`
 23. `22_TRAMITA_calendar_enterprise_hardening`
+24. `23_TRAMITA_notifications_escalation`
 
 No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 
@@ -46,6 +47,7 @@ No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 - `supabase/migrations/20260630_p22_transactional_document_creation.sql`.
 - `supabase/migrations/20260630_p24_operational_calendar_sla.sql`.
 - `supabase/migrations/20260702_p24_2_calendar_enterprise_hardening.sql`.
+- `supabase/migrations/20260702_p25_notifications_escalation.sql`.
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
@@ -220,6 +222,17 @@ O ciclo `22_TRAMITA_calendar_enterprise_hardening` deve ser aplicado depois do
 ciclo 21. Ele não altera `approval_flows`, responsáveis persistidos, `due_at`,
 documentos ou autorização das RPCs P-12.1. A substituição é exibida como
 contexto operacional; permissão delegada para agir fica reservada à P-25.
+
+## P-25 — Notificações, Escalonamento e Delegação
+
+O ciclo 23 cria inbox interna, preferências, eventos append-only, regras de
+escalonamento, outbox passiva e geração operacional on-demand. Ele também
+permite conclusão auditável por substituto apenas em etapa atribuída a usuário
+específico.
+
+Não há envio externo, reatribuição, conclusão automática ou alteração de
+`approval_flows`. O titular permanece em `assignee_user_id`; o ator real fica
+em `completed_by` e `delegated_from_user_id` na metadata.
 
 ## Hardening P-9A.1 — Grupos de Aprovação
 

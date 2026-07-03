@@ -11,8 +11,8 @@ import { useTheme, themeColors } from "@/contexts/theme-context";
 import { useLocalData } from "@/hooks/use-local-data";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useApprovalQueue } from "@/hooks/useApprovalQueue";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { Badge } from "@/components/ui/badge";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 
 interface NavigationItem {
@@ -29,6 +29,7 @@ const nav: readonly NavigationItem[] = [
   { to: "/authenticated/documentos/central", label: "Central Documental", icon: PanelsTopLeft },
   { to: "/authenticated/projetos", label: "Projetos", icon: FolderKanban },
   { to: "/authenticated/atividades", label: "Minhas Atividades", icon: Inbox, badge: "activities" },
+  { to: "/authenticated/notificacoes", label: "Notificações", icon: Bell },
   { to: "/authenticated/fluxo-de-aprovacao", label: "Fila de Aprovação", icon: GitBranch, badge: "approval" },
   { to: "/authenticated/grupos-aprovacao", label: "Grupos de Aprovação", icon: UsersRound, managerOnly: true },
   { to: "/authenticated/documentos/regras", label: "Regras Documentais", icon: ScrollText, managerOnly: true },
@@ -48,7 +49,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, profile, signOut } = useAuthContext();
   const { theme, setTheme } = useTheme();
   const { exportData, importData } = useLocalData();
-  const { notifications, unreadCount, loading: notificationsLoading, markAllRead } = useNotifications();
+  const notificationState = useNotifications();
+  const { unreadCount } = notificationState;
   const { queue } = useApprovalQueue();
 
   // Company settings
@@ -525,46 +527,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </DialogContent>
             </Dialog>
 
-            <Popover onOpenChange={(open) => { if (open) markAllRead(); }}>
-              <PopoverTrigger asChild>
-                <Button variant="secondary" size="icon" className="relative bg-white/90 text-gray-800 hover:bg-white shadow-md hover:shadow-lg transition-all" aria-label="Notificações">
-                  <Bell className="h-5 w-5" />
-                  {unreadCount > 0 && (
-                    <Badge className="absolute -right-2 -top-2 h-5 min-w-5 px-1 text-[10px]" variant="destructive">
-                      {unreadCount}
-                    </Badge>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-80">
-                <div className="space-y-3">
-                  <div>
-                    <div className="font-semibold">Notificações</div>
-                    <div className="text-xs text-muted-foreground">Últimas atualizações do workflow</div>
-                  </div>
-                  <div className="space-y-2">
-                    {notificationsLoading ? (
-                      <p className="text-sm text-muted-foreground">Carregando notificações...</p>
-                    ) : notifications.slice(0, 5).length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Nenhuma notificação recente.</p>
-                    ) : (
-                      notifications.slice(0, 5).map((notification) => (
-                        <div key={notification.id} className="rounded-md border p-2">
-                          <div className="text-sm font-medium">{notification.title}</div>
-                          {notification.body && <div className="text-xs text-muted-foreground line-clamp-2">{notification.body}</div>}
-                          <div className="text-[10px] text-muted-foreground mt-1">
-                            {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "UTC" }).format(new Date(notification.created_at))}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <Button asChild variant="secondary" className="w-full">
-                    <Link to="/authenticated/atividades">Ver tudo em Minhas Atividades</Link>
-                  </Button>
-                </div>
-              </PopoverContent>
-            </Popover>
+            <NotificationBell state={notificationState} />
           </header>
         </div>
         <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">{children}</div>

@@ -4,6 +4,7 @@ import { useApprovalQueue } from "@/hooks/useApprovalQueue";
 import { useAuditTrail } from "@/hooks/useAuditTrail";
 import { useDocuments, type Document } from "@/hooks/useDocuments";
 import { useOperationalCalendar } from "@/hooks/useOperationalCalendar";
+import { useNotifications } from "@/hooks/useNotifications";
 import { useTeamAvailability } from "@/hooks/useTeamAvailability";
 import { useDocumentTramiteInstances } from "@/hooks/useDocumentTramiteInstances";
 import { useDocumentTramiteTemplates } from "@/hooks/useDocumentTramiteTemplates";
@@ -25,6 +26,7 @@ import {
 } from "@/lib/documentTramiteExecution";
 import type { DocumentTramiteTemplate } from "@/lib/documentTramiteModel";
 import { getAbsenceTypeLabel } from "@/lib/teamAvailability";
+import { isEscalationNotification } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase";
 
 export type WorkCenterSchemaStatus = "ready" | "not_installed" | "restricted";
@@ -136,6 +138,7 @@ export function useDocumentWorkCenter() {
   const projectsState = useProjectOptions();
   const calendarState = useOperationalCalendar();
   const availabilityState = useTeamAvailability();
+  const notificationState = useNotifications();
   const [codingStatus, setCodingStatus] =
     useState<WorkCenterSchemaStatus>("ready");
   const [codingMessage, setCodingMessage] = useState<string | null>(null);
@@ -203,6 +206,22 @@ export function useDocumentWorkCenter() {
     const usersById = new Map(
       actorsState.users.map((user) => [user.id, user.full_name]),
     );
+    const notificationFields = (documentId: string, stepId?: string | null) => {
+      const related = notificationState.notifications.filter(
+        (notification) =>
+          notification.tramite_step_id === stepId ||
+          (!notification.tramite_step_id &&
+            notification.document_id === documentId),
+      );
+      return {
+        notificationCount: related.filter((notification) => !notification.read)
+          .length,
+        escalated: related.some(
+          (notification) =>
+            !notification.read && isEscalationNotification(notification),
+        ),
+      };
+    };
     const groupsById = new Map(
       actorsState.groups.map((group) => [group.id, group.name]),
     );
@@ -337,6 +356,13 @@ export function useDocumentWorkCenter() {
         ...deadline,
         assigneeUnavailable: assigneeAvailability?.unavailable ?? false,
         substitutionActive: Boolean(substituteName),
+        delegateCanAct: Boolean(
+          profile?.id &&
+          notificationState.schemaStatus === "enterprise" &&
+          profile.role !== "admin" &&
+          profile.role !== "manager" &&
+          assigneeAvailability?.substituteUserId === profile.id,
+        ),
         substituteName,
         absenceLabel: assigneeAvailability?.absence
           ? getAbsenceTypeLabel(assigneeAvailability.absence.absence_type)
@@ -346,6 +372,7 @@ export function useDocumentWorkCenter() {
         createdAt: step.started_at ?? step.created_at,
         statusLabel: normalizeWorkItemStatus(step.status, effectiveDueAt),
         actionLabel: buildWorkItemAction("tramite_step"),
+        ...notificationFields(document.id, step.id),
       });
     }
 
@@ -389,6 +416,7 @@ export function useDocumentWorkCenter() {
         createdAt: approval.created_at,
         statusLabel: normalizeWorkItemStatus("pending", approval.due_at),
         actionLabel: buildWorkItemAction("approval"),
+        ...notificationFields(document.id),
       });
     }
 
@@ -413,6 +441,7 @@ export function useDocumentWorkCenter() {
           createdAt: document.updated_at,
           statusLabel: document.correction ? "Correção necessária" : "Rascunho",
           actionLabel: buildWorkItemAction("draft"),
+          ...notificationFields(document.id),
         });
       }
 
@@ -439,6 +468,7 @@ export function useDocumentWorkCenter() {
             document.working_revision.status,
           ),
           actionLabel: buildWorkItemAction("formal_revision"),
+          ...notificationFields(document.id),
         });
       }
 
@@ -493,6 +523,7 @@ export function useDocumentWorkCenter() {
           createdAt: document.updated_at,
           statusLabel: normalizeWorkItemStatus("published", effectiveReviewAt),
           actionLabel: buildWorkItemAction("review_due"),
+          ...notificationFields(document.id),
         });
       }
 
@@ -512,6 +543,7 @@ export function useDocumentWorkCenter() {
           createdAt: document.updated_at,
           statusLabel: "Atenção",
           actionLabel: buildWorkItemAction("attention"),
+          ...notificationFields(document.id),
         });
       }
     }
@@ -562,6 +594,7 @@ export function useDocumentWorkCenter() {
         createdAt: document.updated_at,
         statusLabel: "Aguardando próximo passo",
         actionLabel: buildWorkItemAction("suggested_tramite"),
+        ...notificationFields(document.id),
       });
     }
 
@@ -677,20 +710,21 @@ export function useDocumentWorkCenter() {
           item.assigneeUnavailable &&
           Boolean(item.dueAt),
       ).length,
+      criticalUnreadNotifications: notificationState.criticalUnreadCount,
+      openEscalations: notificationState.escalationUnreadCount,
     };
   }, [
     actorsState.groupMembers,
     actorsState.groups,
     actorsState.users,
     approvalState.queue,
-    availabilityState.absencesWithoutSubstitute.length,
-    availabilityState.activeSubstitutionCount,
-    availabilityState.getAvailability,
+    availabilityState,
+    notificationState.criticalUnreadCount,
+    notificationState.escalationUnreadCount,
+    notificationState.notifications,
+    notificationState.schemaStatus,
     auditState.entries,
-    calendarState.canUseCalendar,
-    calendarState.getBusinessDaysUntil,
-    calendarState.status,
-    calendarState.suggestDeadline,
+    calendarState,
     documentsState.documents,
     profile,
     templatesState.publishedTemplates,
@@ -730,6 +764,11 @@ export function useDocumentWorkCenter() {
           availabilityState.status === "error"
         ? availabilityState.error
         : null,
+    notificationState.schemaStatus === "legacy"
+      ? "Notificações em modo legado. Aplique o ciclo 23 para severidade e escalonamento."
+      : notificationState.schemaStatus === "unavailable"
+        ? notificationState.error
+        : null,
     auditState.error
       ? "Sugestões auditadas não puderam ser consultadas; a Central usa os modelos aplicáveis atuais."
       : null,
@@ -749,6 +788,7 @@ export function useDocumentWorkCenter() {
       projectsState.refresh(),
       calendarState.refresh(),
       availabilityState.refresh(),
+      notificationState.refetch(),
     ]);
   }, [
     actorsState,
@@ -758,6 +798,7 @@ export function useDocumentWorkCenter() {
     projectsState,
     calendarState,
     availabilityState,
+    notificationState,
     templatesState,
     tramiteState,
   ]);
@@ -776,6 +817,7 @@ export function useDocumentWorkCenter() {
       projectsState.isLoading ||
       calendarState.isLoading ||
       availabilityState.isLoading ||
+      notificationState.loading ||
       codingLoading,
     error: documentsState.error,
     warnings,
@@ -787,6 +829,7 @@ export function useDocumentWorkCenter() {
     calendarStatus: calendarState.status,
     calendarAvailable: calendarState.canUseCalendar,
     availabilityStatus: availabilityState.status,
+    notificationStatus: notificationState.schemaStatus,
     projects: projectsState.projects,
     documents: documentsState.documents,
     publishedTramiteTemplatesCount: templatesState.publishedTemplates.length,

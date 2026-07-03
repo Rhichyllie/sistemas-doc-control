@@ -21,6 +21,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -74,6 +75,7 @@ export function TramiteStepActionCard({
   suggestedDeadline,
   assigneeAvailability,
   substituteName,
+  delegatedActionAvailable,
   onComplete,
   onAddEvidence,
   onOpenEvidence,
@@ -87,6 +89,7 @@ export function TramiteStepActionCard({
   suggestedDeadline?: SuggestedDeadline | null;
   assigneeAvailability?: ResolvedTeamAvailability | null;
   substituteName?: string;
+  delegatedActionAvailable?: boolean;
   onComplete: (input: {
     decision: TramiteStepDecision;
     comment: string | null;
@@ -102,12 +105,22 @@ export function TramiteStepActionCard({
     normalizeDecisionForNodeType(step.node_type),
   );
   const [comment, setComment] = useState("");
+  const [delegatedConfirmed, setDelegatedConfirmed] = useState(false);
 
   useEffect(() => {
     setDecision(normalizeDecisionForNodeType(step.node_type));
     setComment("");
+    setDelegatedConfirmed(false);
   }, [step.id, step.node_type]);
 
+  const isDelegatedActor = Boolean(
+    actor.profileId &&
+    delegatedActionAvailable &&
+    actor.delegatedForUserId &&
+    step.assignment_type === "specific_user" &&
+    actor.delegatedForUserId === step.assignee_user_id &&
+    actor.profileId !== step.assignee_user_id,
+  );
   const permission = canCompleteStepLocally(step, evidence, actor);
   const isEvidenceExemptDecision = decision === "rejected";
   const blockingReasons = permission.reasons.filter(
@@ -120,6 +133,9 @@ export function TramiteStepActionCard({
   );
   if (step.require_comment && !comment.trim()) {
     blockingReasons.push("Informe o comentário obrigatório.");
+  }
+  if (isDelegatedActor && !delegatedConfirmed) {
+    blockingReasons.push("Confirme a ação como substituto auditável.");
   }
   const stepEvidence = evidence.filter((item) => item.step_id === step.id);
   const evidenceCount = stepEvidence.length;
@@ -158,8 +174,32 @@ export function TramiteStepActionCard({
               {substituteName
                 ? `Substituto configurado: ${substituteName}.`
                 : "Nenhum substituto válido foi resolvido."}{" "}
-              A etapa mantém o responsável original. Ação delegada ainda não
-              está habilitada.
+              A etapa mantém o responsável original.
+              {!delegatedActionAvailable &&
+                " Aplique o ciclo 23 para habilitar conclusão delegada auditável."}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {isDelegatedActor && (
+          <Alert>
+            <ShieldAlert className="h-4 w-4" />
+            <AlertTitle>Ação delegada auditável</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>
+                Você está concluindo esta etapa como substituto auditável de{" "}
+                {userName ?? "outro responsável"}. A trilha registrará sua ação
+                e manterá o titular original.
+              </p>
+              <label className="flex items-center gap-2 font-medium">
+                <Checkbox
+                  checked={delegatedConfirmed}
+                  onCheckedChange={(checked) =>
+                    setDelegatedConfirmed(checked === true)
+                  }
+                />
+                Confirmo que estou agindo como substituto.
+              </label>
             </AlertDescription>
           </Alert>
         )}
@@ -250,7 +290,17 @@ export function TramiteStepActionCard({
                 Notas, links e arquivos ficam vinculados a esta etapa.
               </p>
             </div>
-            <Button type="button" variant="outline" onClick={onAddEvidence}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onAddEvidence}
+              disabled={isDelegatedActor}
+              title={
+                isDelegatedActor
+                  ? "O ciclo 23 libera conclusão delegada; evidência continua com o responsável original ou gestor."
+                  : undefined
+              }
+            >
               <Paperclip className="h-4 w-4" />
               Registrar evidência
             </Button>

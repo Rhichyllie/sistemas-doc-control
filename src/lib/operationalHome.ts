@@ -15,6 +15,7 @@ export type OperationalTarget =
   | "/authenticated/projetos"
   | "/authenticated/configuracoes/calendario"
   | "/authenticated/equipe"
+  | "/authenticated/notificacoes"
   | "/authenticated/indicadores"
   | "/authenticated/fluxo-de-aprovacao";
 
@@ -52,6 +53,7 @@ export interface OperationalCapability {
     | "tramite_execution"
     | "calendar_sla"
     | "team_availability"
+    | "notifications"
     | "work_center";
   label: string;
   description: string;
@@ -113,6 +115,10 @@ export interface OperationalHomeMetrics {
   absentWithoutSubstitute: number;
   activeSubstitutions: number;
   deadlinesWithAbsentAssignee: number;
+  criticalUnreadNotifications: number;
+  openEscalations: number;
+  notificationsInstalled: boolean;
+  notificationsAttention: boolean;
 }
 
 export function calculateOperationalHealth(
@@ -121,7 +127,9 @@ export function calculateOperationalHealth(
   if (
     metrics.criticalPending > 0 ||
     metrics.overdueTramiteSteps > 0 ||
-    metrics.overdueReviews > 0
+    metrics.overdueReviews > 0 ||
+    metrics.criticalUnreadNotifications > 0 ||
+    metrics.openEscalations > 0
   ) {
     return "critical";
   }
@@ -190,6 +198,22 @@ function healthCards(metrics: OperationalHomeMetrics): OperationalHealthCard[] {
 
 function risks(metrics: OperationalHomeMetrics): OperationalRisk[] {
   return [
+    {
+      id: "critical-notifications",
+      title: "Notificações críticas não lidas",
+      description: "Alertas internos críticos ainda aguardam leitura.",
+      count: metrics.criticalUnreadNotifications,
+      severity: "critical" as const,
+      target: "/authenticated/notificacoes" as const,
+    },
+    {
+      id: "open-escalations",
+      title: "Escalonamentos abertos",
+      description: "Escalonamentos operacionais ainda não foram lidos.",
+      count: metrics.openEscalations,
+      severity: "critical" as const,
+      target: "/authenticated/notificacoes" as const,
+    },
     {
       id: "overdue-tramite",
       title: "Etapas de trâmite atrasadas",
@@ -399,6 +423,21 @@ function capabilities(
       target: "/authenticated/equipe",
     },
     {
+      id: "notifications",
+      label: "Notificações internas",
+      description: metrics.notificationsInstalled
+        ? `${metrics.criticalUnreadNotifications} crítica(s) não lida(s).`
+        : "Ciclo de notificações ainda não instalado.",
+      status: metrics.notificationsInstalled
+        ? metrics.criticalUnreadNotifications || metrics.openEscalations
+          ? "attention"
+          : "available"
+        : metrics.notificationsAttention
+          ? "attention"
+          : "not_installed",
+      target: "/authenticated/notificacoes",
+    },
+    {
       id: "work_center",
       label: "Central operacional",
       description: "Cockpit de pendências e próximos passos disponível.",
@@ -411,6 +450,24 @@ function capabilities(
 export function buildOperationalRecommendation(
   metrics: OperationalHomeMetrics,
 ): OperationalRecommendation {
+  if (metrics.criticalUnreadNotifications > 0) {
+    return {
+      title: "Revise as notificações críticas",
+      description: `${metrics.criticalUnreadNotifications} alerta(s) crítico(s) ainda não foram lidos.`,
+      actionLabel: "Abrir Notificações",
+      target: "/authenticated/notificacoes",
+      severity: "critical",
+    };
+  }
+  if (metrics.openEscalations > 0) {
+    return {
+      title: "Trate os escalonamentos operacionais",
+      description: `${metrics.openEscalations} escalonamento(s) estão abertos.`,
+      actionLabel: "Abrir Notificações",
+      target: "/authenticated/notificacoes",
+      severity: "critical",
+    };
+  }
   if (metrics.overdueTramiteSteps > 0) {
     return {
       title: "Priorize as etapas de trâmite atrasadas",

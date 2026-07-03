@@ -204,3 +204,12 @@ específico com ausências e delegações da organização. Ela pode exibir:
 Esse cruzamento é somente leitura. A Central não muda `assignee_user_id`, não
 conclui etapas e não concede ao substituto autorização para agir. Sem o ciclo
 22, a caixa continua funcionando sem esses badges.
+
+## Integração P-25 — Notificações e escalonamentos
+
+A Central mostra contagem de notificações, escalonamento e quando o usuário
+atual pode agir como substituto auditável. Os CTAs abrem a inbox ou o detalhe
+do documento; nenhuma conclusão ocorre inline.
+
+Sem o ciclo 23, os badges são omitidos e a Central mantém todas as fontes
+anteriores.

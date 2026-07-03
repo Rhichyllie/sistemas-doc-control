@@ -150,6 +150,7 @@ export interface TramiteActorPermission {
   role: string | null;
   documentAuthorId: string | null;
   activeGroupIds?: string[];
+  delegatedForUserId?: string | null;
 }
 
 export interface TramiteStepPermissionResult {
@@ -257,7 +258,9 @@ export function canCompleteStepLocally(
       assignment === "document_owner") &&
       actor.profileId === actor.documentAuthorId) ||
     (assignment === "specific_user" &&
-      step.assignee_user_id === actor.profileId) ||
+      (step.assignee_user_id === actor.profileId ||
+        (Boolean(actor.delegatedForUserId) &&
+          actor.delegatedForUserId === step.assignee_user_id))) ||
     (assignment === "role" && step.required_role === actor.role) ||
     (assignment === "approval_group" &&
       Boolean(

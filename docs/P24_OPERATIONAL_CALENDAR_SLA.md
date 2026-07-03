@@ -635,3 +635,14 @@ order by tablename, policyname;
 A P-25 deve consumir disponibilidade e substituição com autorização explícita,
 evento `delegated_from_user_id`, notificações internas e escalonamento
 auditável, sem reatribuição silenciosa.
+
+## Integração P-25
+
+O ciclo 23 consome os cálculos e a disponibilidade da P-24.2 para gerar
+notificações e validar conclusão delegada. O calendário e as tabelas de equipe
+continuam read-only em relação às etapas: nenhuma rotina muda prazo,
+responsável ou status.
+
+O substituto pode concluir somente etapa `specific_user`, com confirmação no
+frontend e validação final no banco. A trilha registra o ator real e
+`delegated_from_user_id`.

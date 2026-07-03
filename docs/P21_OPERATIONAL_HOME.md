@@ -191,3 +191,9 @@ A Home resume, sem copiar a caixa da Central:
 Os indicadores são locais e determinísticos. Eles não reatribuem etapas, não
 alteram documentos e desaparecem de forma controlada quando o ciclo 22 não
 está instalado.
+
+## Integração P-25 — Saúde das notificações
+
+A Home resume notificações críticas não lidas e escalonamentos abertos e
+recomenda abrir a inbox. Ela não replica a lista completa nem executa ações.
+Sem ciclo 23, a capacidade aparece como não instalada ou usa o fallback legado.

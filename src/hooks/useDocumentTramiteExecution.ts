@@ -33,6 +33,8 @@ export interface TramiteExecutionRpcResult {
   instance_status?: string;
   status?: string;
   message?: string;
+  delegated?: boolean;
+  delegated_from_user_id?: string | null;
 }
 
 export function useDocumentTramiteExecution(

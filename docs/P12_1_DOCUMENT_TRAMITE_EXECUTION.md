@@ -428,3 +428,14 @@ Nesta fase, `document_tramite_actor_can_act` continua sendo a autoridade e não
 foi ampliada para substitutos. Portanto, a substituição é informativa. A
 autorização delegada para concluir etapas exige validação e auditoria próprias
 e ficou reservada à P-25. `approval_flows` permanece inalterado.
+
+## Integração P-25 — Conclusão delegada auditável
+
+O ciclo 23 implementa a evolução prevista. A autorização original continua
+válida e `resolve_effective_tramite_actor` acrescenta somente substituto
+confirmado por P-24.2 para etapa ativa com `assignment_type = specific_user`.
+
+O titular permanece em `assignee_user_id`; `completed_by` registra quem agiu.
+Etapa, eventos e auditoria recebem `delegated_from_user_id`, razão e fonte da
+delegação. Chaves reservadas enviadas pelo cliente são descartadas e
+reconstruídas pelo banco. Grupo e papel não possuem ação delegada.

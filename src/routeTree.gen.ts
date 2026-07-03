@@ -18,6 +18,7 @@ import { Route as AuthenticatedSchemaDoctorRouteImport } from './routes/authenti
 import { Route as AuthenticatedProjetosRouteImport } from './routes/authenticated/projetos'
 import { Route as AuthenticatedProjetistasRouteImport } from './routes/authenticated/projetistas'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/authenticated/projects'
+import { Route as AuthenticatedNotificacoesRouteImport } from './routes/authenticated/notificacoes'
 import { Route as AuthenticatedMeuPerfilRouteImport } from './routes/authenticated/meu-perfil'
 import { Route as AuthenticatedIndicadoresRouteImport } from './routes/authenticated/indicadores'
 import { Route as AuthenticatedGruposAprovacaoRouteImport } from './routes/authenticated/grupos-aprovacao'
@@ -84,6 +85,12 @@ const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
   path: '/projects',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedNotificacoesRoute =
+  AuthenticatedNotificacoesRouteImport.update({
+    id: '/notificacoes',
+    path: '/notificacoes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedMeuPerfilRoute = AuthenticatedMeuPerfilRouteImport.update({
   id: '/meu-perfil',
   path: '/meu-perfil',
@@ -197,6 +204,7 @@ export interface FileRoutesByFullPath {
   '/authenticated/grupos-aprovacao': typeof AuthenticatedGruposAprovacaoRoute
   '/authenticated/indicadores': typeof AuthenticatedIndicadoresRoute
   '/authenticated/meu-perfil': typeof AuthenticatedMeuPerfilRoute
+  '/authenticated/notificacoes': typeof AuthenticatedNotificacoesRoute
   '/authenticated/projects': typeof AuthenticatedProjectsRoute
   '/authenticated/projetistas': typeof AuthenticatedProjetistasRoute
   '/authenticated/projetos': typeof AuthenticatedProjetosRoute
@@ -225,6 +233,7 @@ export interface FileRoutesByTo {
   '/authenticated/grupos-aprovacao': typeof AuthenticatedGruposAprovacaoRoute
   '/authenticated/indicadores': typeof AuthenticatedIndicadoresRoute
   '/authenticated/meu-perfil': typeof AuthenticatedMeuPerfilRoute
+  '/authenticated/notificacoes': typeof AuthenticatedNotificacoesRoute
   '/authenticated/projects': typeof AuthenticatedProjectsRoute
   '/authenticated/projetistas': typeof AuthenticatedProjetistasRoute
   '/authenticated/projetos': typeof AuthenticatedProjetosRoute
@@ -254,6 +263,7 @@ export interface FileRoutesById {
   '/authenticated/grupos-aprovacao': typeof AuthenticatedGruposAprovacaoRoute
   '/authenticated/indicadores': typeof AuthenticatedIndicadoresRoute
   '/authenticated/meu-perfil': typeof AuthenticatedMeuPerfilRoute
+  '/authenticated/notificacoes': typeof AuthenticatedNotificacoesRoute
   '/authenticated/projects': typeof AuthenticatedProjectsRoute
   '/authenticated/projetistas': typeof AuthenticatedProjetistasRoute
   '/authenticated/projetos': typeof AuthenticatedProjetosRoute
@@ -284,6 +294,7 @@ export interface FileRouteTypes {
     | '/authenticated/grupos-aprovacao'
     | '/authenticated/indicadores'
     | '/authenticated/meu-perfil'
+    | '/authenticated/notificacoes'
     | '/authenticated/projects'
     | '/authenticated/projetistas'
     | '/authenticated/projetos'
@@ -312,6 +323,7 @@ export interface FileRouteTypes {
     | '/authenticated/grupos-aprovacao'
     | '/authenticated/indicadores'
     | '/authenticated/meu-perfil'
+    | '/authenticated/notificacoes'
     | '/authenticated/projects'
     | '/authenticated/projetistas'
     | '/authenticated/projetos'
@@ -340,6 +352,7 @@ export interface FileRouteTypes {
     | '/authenticated/grupos-aprovacao'
     | '/authenticated/indicadores'
     | '/authenticated/meu-perfil'
+    | '/authenticated/notificacoes'
     | '/authenticated/projects'
     | '/authenticated/projetistas'
     | '/authenticated/projetos'
@@ -424,6 +437,13 @@ declare module '@tanstack/react-router' {
       path: '/projects'
       fullPath: '/authenticated/projects'
       preLoaderRoute: typeof AuthenticatedProjectsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/authenticated/notificacoes': {
+      id: '/authenticated/notificacoes'
+      path: '/notificacoes'
+      fullPath: '/authenticated/notificacoes'
+      preLoaderRoute: typeof AuthenticatedNotificacoesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/authenticated/meu-perfil': {
@@ -589,6 +609,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedGruposAprovacaoRoute: typeof AuthenticatedGruposAprovacaoRoute
   AuthenticatedIndicadoresRoute: typeof AuthenticatedIndicadoresRoute
   AuthenticatedMeuPerfilRoute: typeof AuthenticatedMeuPerfilRoute
+  AuthenticatedNotificacoesRoute: typeof AuthenticatedNotificacoesRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
   AuthenticatedProjetistasRoute: typeof AuthenticatedProjetistasRoute
   AuthenticatedProjetosRoute: typeof AuthenticatedProjetosRoute
@@ -612,6 +633,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedGruposAprovacaoRoute: AuthenticatedGruposAprovacaoRoute,
   AuthenticatedIndicadoresRoute: AuthenticatedIndicadoresRoute,
   AuthenticatedMeuPerfilRoute: AuthenticatedMeuPerfilRoute,
+  AuthenticatedNotificacoesRoute: AuthenticatedNotificacoesRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,
   AuthenticatedProjetistasRoute: AuthenticatedProjetistasRoute,
   AuthenticatedProjetosRoute: AuthenticatedProjetosRoute,

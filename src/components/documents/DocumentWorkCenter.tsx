@@ -175,18 +175,44 @@ function WorkItemCard({ item }: { item: DocumentWorkItem }) {
                 </span>
               </div>
             )}
+            {(item.notificationCount ||
+              item.escalated ||
+              item.delegateCanAct) && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {Boolean(item.notificationCount) && (
+                  <Badge variant="outline">
+                    {item.notificationCount} notificação(ões)
+                  </Badge>
+                )}
+                {item.escalated && (
+                  <Badge variant="destructive">Escalonado</Badge>
+                )}
+                {item.delegateCanAct && (
+                  <Badge variant="secondary">
+                    Substituto pode agir com auditoria
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
         </div>
-        <Button asChild size="sm" className="shrink-0">
-          <Link
-            to="/authenticated/documents/$documentId"
-            params={{ documentId: item.documentId }}
-            hash={focusTramite}
-          >
-            {item.actionLabel}
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </Button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {Boolean(item.notificationCount) && (
+            <Button asChild size="sm" variant="outline">
+              <Link to="/authenticated/notificacoes">Ver notificações</Link>
+            </Button>
+          )}
+          <Button asChild size="sm">
+            <Link
+              to="/authenticated/documents/$documentId"
+              params={{ documentId: item.documentId }}
+              hash={focusTramite}
+            >
+              {item.actionLabel}
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -111,6 +111,10 @@ export function useOperationalHome() {
       absentWithoutSubstitute: workCenter.absentWithoutSubstitute,
       activeSubstitutions: workCenter.activeSubstitutions,
       deadlinesWithAbsentAssignee: workCenter.deadlinesWithAbsentAssignee,
+      criticalUnreadNotifications: workCenter.criticalUnreadNotifications,
+      openEscalations: workCenter.openEscalations,
+      notificationsInstalled: workCenter.notificationStatus === "enterprise",
+      notificationsAttention: workCenter.notificationStatus === "unavailable",
     };
     return {
       metrics,
@@ -131,6 +135,9 @@ export function useOperationalHome() {
     workCenter.absentWithoutSubstitute,
     workCenter.activeSubstitutions,
     workCenter.deadlinesWithAbsentAssignee,
+    workCenter.criticalUnreadNotifications,
+    workCenter.openEscalations,
+    workCenter.notificationStatus,
     workCenter.documents,
     workCenter.documentsWithoutSlaPolicy,
     workCenter.projects.length,

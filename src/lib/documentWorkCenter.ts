@@ -38,8 +38,11 @@ export interface DocumentWorkItem {
   slaPolicyName?: string | null;
   assigneeUnavailable?: boolean;
   substitutionActive?: boolean;
+  delegateCanAct?: boolean;
   substituteName?: string | null;
   absenceLabel?: string | null;
+  notificationCount?: number;
+  escalated?: boolean;
   responsibleName: string | null;
   isMine: boolean;
   createdAt: string;

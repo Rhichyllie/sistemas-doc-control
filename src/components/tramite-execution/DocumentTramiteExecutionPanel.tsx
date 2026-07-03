@@ -28,6 +28,7 @@ import { useDocumentTramiteExecution } from "@/hooks/useDocumentTramiteExecution
 import { useDocumentTramiteInstances } from "@/hooks/useDocumentTramiteInstances";
 import { useDocumentTramiteTemplates } from "@/hooks/useDocumentTramiteTemplates";
 import { useOperationalCalendar } from "@/hooks/useOperationalCalendar";
+import { useNotifications } from "@/hooks/useNotifications";
 import { useTeamAvailability } from "@/hooks/useTeamAvailability";
 import { useTramiteEvidenceUpload } from "@/hooks/useTramiteEvidenceUpload";
 import { useWorkflowActors } from "@/hooks/useWorkflowActors";
@@ -107,6 +108,7 @@ export function DocumentTramiteExecutionPanel({
   const templateState = useDocumentTramiteTemplates();
   const calendarState = useOperationalCalendar();
   const availabilityState = useTeamAvailability();
+  const notificationState = useNotifications();
   const actors = useWorkflowActors();
 
   const applicableTemplates = useMemo(
@@ -219,16 +221,36 @@ export function DocumentTramiteExecutionPanel({
     input: { decision: string; comment: string | null },
   ) {
     try {
+      const availability = step.assignee_user_id
+        ? availabilityState.getAvailability(step.assignee_user_id, {
+            projectId: document.project_id,
+            docType: document.doc_type,
+            area: document.area,
+            stepType: step.node_type,
+          })
+        : null;
+      const delegated =
+        notificationState.schemaStatus === "enterprise" &&
+        profile?.role !== "admin" &&
+        profile?.role !== "manager" &&
+        step.assignment_type === "specific_user" &&
+        availability?.substituteUserId === profile?.id &&
+        step.assignee_user_id !== profile?.id;
       const result = await execution.completeStep({
         stepId: step.id,
         decision: input.decision,
         comment: input.comment,
-        metadata: { source: "document_detail" },
+        metadata: {
+          source: "document_detail",
+          delegated_confirmation: delegated,
+        },
       });
       toast.success(
-        result.instance_status === "completed"
-          ? "Trâmite concluído."
-          : "Etapa concluída e próxima etapa atualizada.",
+        result.delegated
+          ? "Etapa concluída como substituto. A delegação foi registrada."
+          : result.instance_status === "completed"
+            ? "Trâmite concluído."
+            : "Etapa concluída e próxima etapa atualizada.",
       );
     } catch (error) {
       toast.error(
@@ -596,6 +618,14 @@ export function DocumentTramiteExecutionPanel({
                           role: profile?.role ?? null,
                           documentAuthorId: document.author_id,
                           activeGroupIds,
+                          delegatedForUserId:
+                            notificationState.schemaStatus === "enterprise" &&
+                            profile?.role !== "admin" &&
+                            profile?.role !== "manager" &&
+                            assigneeAvailability?.substituteUserId ===
+                              profile?.id
+                              ? step.assignee_user_id
+                              : null,
                         }}
                         userName={
                           step.assignee_user_id
@@ -612,6 +642,9 @@ export function DocumentTramiteExecutionPanel({
                           assigneeAvailability?.substituteUserId
                             ? userNames[assigneeAvailability.substituteUserId]
                             : undefined
+                        }
+                        delegatedActionAvailable={
+                          notificationState.schemaStatus === "enterprise"
                         }
                         isCompleting={execution.isCompleting}
                         suggestedDeadline={
