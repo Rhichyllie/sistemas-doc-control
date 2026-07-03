@@ -204,6 +204,10 @@ continuam prioritárias; cálculos para campos ausentes são sugestões
 informativas. Sem o ciclo 21, Home e Central preservam a comparação simples de
 datas.
 
+A P-24.1 não cria novo ciclo SQL. Ela corrige a hierarquia de rota, o caminho
+absoluto do menu, o destaque ativo e a apresentação administrativa sobre o
+mesmo ciclo `21_TRAMITA_operational_calendar_sla`.
+
 ## Hardening P-9A.1 — Grupos de Aprovação
 
 A P-9A.1 é um repair complementar, não um novo ciclo principal. O arquivo

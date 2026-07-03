@@ -1,4 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  Outlet,
+  useRouterState,
+} from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,14 +16,10 @@ import { Separator } from "@/components/ui/separator";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { DOC_TYPES, SECTORS } from "@/lib/constants";
 import { supabase } from "@/lib/supabase";
-import { requireRole } from "./-route-guards";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/authenticated/configuracoes")({
-  beforeLoad: async ({ location }) => {
-    await requireRole(location.href, ["admin", "manager"]);
-  },
-  component: Configuracoes,
+  component: ConfiguracoesRoute,
 });
 
 interface OrgSettings {
@@ -37,6 +38,18 @@ interface OrgDetails {
 
 const REVIEW_PERIODS = [6, 12, 24, 36] as const;
 const ALERT_DAYS = [30, 15, 7] as const;
+
+function ConfiguracoesRoute() {
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname.replace(/\/+$/, ""),
+  });
+
+  if (pathname !== "/authenticated/configuracoes") {
+    return <Outlet />;
+  }
+
+  return <Configuracoes />;
+}
 
 function Configuracoes() {
   const { profile, org } = useAuthContext();

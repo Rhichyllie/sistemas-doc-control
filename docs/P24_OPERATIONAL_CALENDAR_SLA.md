@@ -118,7 +118,7 @@ As quatro funções são somente leitura. Elas não atualizam `documents`,
 
 ## Administração
 
-A rota `/authenticated/configuracoes/calendario` está disponível para
+A rota `/authenticated/configuracoes/calendario` oferece configuração para
 administradores e gestores e permite:
 
 - configurar o calendário padrão;
@@ -129,6 +129,41 @@ administradores e gestores e permite:
 
 Usuários comuns continuam podendo ler os resultados permitidos por RLS, mas
 não recebem controles administrativos.
+
+## P-24.1 — Hardening de rota e UI
+
+A navegação administrativa foi separada explicitamente:
+
+- o menu usa o caminho absoluto
+  `/authenticated/configuracoes/calendario`;
+- `/authenticated/configuracoes` continua renderizando a página geral de
+  Configurações;
+- a rota pai renderiza `Outlet` quando uma filha está ativa, portanto
+  `/authenticated/configuracoes/calendario` renderiza somente Calendário e
+  SLA;
+- os itens **Configurações** e **Calendário e SLA** não recebem destaque ativo
+  simultâneo;
+- usuários autenticados podem abrir a página em modo de leitura quando o RLS
+  permitir;
+- somente `admin` e `manager` recebem controles de escrita habilitados.
+
+A tela diferencia visualmente **Instalado**, **Sem calendário padrão**,
+**Não instalado** e **Atenção**. Sem o ciclo 21, nenhum formulário morto é
+mostrado: a página orienta a aplicar
+`21_TRAMITA_operational_calendar_sla` e mantém o fallback por data simples.
+
+Testes de rota:
+
+1. abra `/authenticated/configuracoes` e confirme a página geral;
+2. clique **Calendário e SLA** no menu;
+3. confirme a URL `/authenticated/configuracoes/calendario`;
+4. confirme que a URL não contém
+   `/authenticated/configuracoes/authenticated/calendario`;
+5. confirme o título **Calendário e SLA**;
+6. sem ciclo 21, confirme a orientação de instalação;
+7. com ciclo 21, confirme calendário, feriados e políticas;
+8. com usuário comum, confirme leitura sem controles de escrita;
+9. com admin/manager, confirme os controles habilitados.
 
 ## Integração com a Central Documental
 

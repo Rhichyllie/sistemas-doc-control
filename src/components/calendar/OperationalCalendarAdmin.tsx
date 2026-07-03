@@ -58,6 +58,17 @@ const STEP_TYPES = [
   { value: "publication", label: "Publicação" },
 ];
 
+function CalendarPageHeader() {
+  return (
+    <div>
+      <h1 className="text-3xl font-bold tracking-tight">Calendário e SLA</h1>
+      <p className="mt-1 text-muted-foreground">
+        Configure dias úteis, feriados e políticas de prazo operacional.
+      </p>
+    </div>
+  );
+}
+
 export function OperationalCalendarAdmin() {
   const calendar = useOperationalCalendar();
   const projectOptions = useProjectOptions();
@@ -72,9 +83,11 @@ export function OperationalCalendarAdmin() {
   const [holidayDate, setHolidayDate] = useState("");
   const [holidayRepeats, setHolidayRepeats] = useState(false);
   const [policyName, setPolicyName] = useState("");
-  const [policyKind, setPolicyKind] = useState<"review" | "step">("review");
-  const [policyDays, setPolicyDays] = useState("5");
+  const [reviewDays, setReviewDays] = useState("");
+  const [stepDays, setStepDays] = useState("5");
   const [warningDays, setWarningDays] = useState("3");
+  const [priority, setPriority] = useState("100");
+  const [policyActive, setPolicyActive] = useState(true);
   const [docType, setDocType] = useState("all");
   const [area, setArea] = useState("");
   const [projectId, setProjectId] = useState("all");
@@ -99,6 +112,48 @@ export function OperationalCalendarAdmin() {
       ),
     [calendar.holidays],
   );
+  const moduleState = useMemo(() => {
+    if (calendar.status === "ready") {
+      if (!calendar.calendars.some((item) => item.is_default)) {
+        return {
+          label: "Sem calendário padrão",
+          description:
+            "Há calendário disponível, mas nenhum está marcado como padrão.",
+          variant: "secondary" as const,
+        };
+      }
+      return {
+        label: "Instalado",
+        description: "Usando calendário operacional.",
+        variant: "default" as const,
+      };
+    }
+    if (calendar.status === "empty") {
+      return {
+        label: "Sem calendário padrão",
+        description: "Usando fallback de segunda a sexta.",
+        variant: "secondary" as const,
+      };
+    }
+    if (calendar.status === "not_installed") {
+      return {
+        label: "Não instalado",
+        description:
+          "Usando comparação simples porque o ciclo 21 não está instalado.",
+        variant: "destructive" as const,
+      };
+    }
+    return {
+      label: "Atenção",
+      description:
+        calendar.status === "restricted"
+          ? "Leitura limitada por organização ou permissão."
+          : "Não foi possível confirmar o calendário operacional.",
+      variant: "outline" as const,
+    };
+  }, [calendar.calendars, calendar.status]);
+  const canConfigure =
+    calendar.canManage && ["ready", "empty"].includes(calendar.status);
 
   if (calendar.isLoading) {
     return (
@@ -111,18 +166,29 @@ export function OperationalCalendarAdmin() {
 
   if (calendar.status === "not_installed") {
     return (
-      <Alert>
-        <CalendarDays className="h-4 w-4" />
-        <AlertTitle>Ciclo 21 ainda não instalado</AlertTitle>
-        <AlertDescription>
-          Aplique manualmente a migration
-          <code className="mx-1 rounded bg-muted px-1">
-            20260630_p24_operational_calendar_sla.sql
-          </code>
-          para configurar dias úteis, feriados e políticas SLA. A aplicação
-          continua usando datas simples enquanto isso.
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-6">
+        <CalendarPageHeader />
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle>Estado do módulo</CardTitle>
+                <CardDescription>{moduleState.description}</CardDescription>
+              </div>
+              <Badge variant={moduleState.variant}>{moduleState.label}</Badge>
+            </div>
+          </CardHeader>
+        </Card>
+        <Alert>
+          <CalendarDays className="h-4 w-4" />
+          <AlertTitle>Calendário operacional indisponível</AlertTitle>
+          <AlertDescription>
+            O ciclo 21_TRAMITA_operational_calendar_sla ainda não foi aplicado.
+            Aplique o ciclo 21 no Supabase para habilitar esta tela. Enquanto
+            isso, Home e Central continuam usando comparação simples de datas.
+          </AlertDescription>
+        </Alert>
+      </div>
     );
   }
 
@@ -152,7 +218,10 @@ export function OperationalCalendarAdmin() {
   }
 
   async function handleSavePolicy() {
-    const days = Number(policyDays);
+    const normalizedReviewDays = reviewDays.trim()
+      ? Number(reviewDays)
+      : null;
+    const normalizedStepDays = stepDays.trim() ? Number(stepDays) : null;
     const warning = Number(warningDays);
     const saved = await calendar.savePolicy({
       name: policyName,
@@ -160,12 +229,14 @@ export function OperationalCalendarAdmin() {
       area: area || null,
       projectId: projectId === "all" ? null : projectId,
       stepType:
-        policyKind === "step" && stepType !== "all" ? stepType : null,
+        normalizedStepDays && stepType !== "all" ? stepType : null,
       calendarId: calendar.defaultCalendar?.id,
-      reviewDueDays: policyKind === "review" ? days : null,
-      stepDueDays: policyKind === "step" ? days : null,
+      reviewDueDays: normalizedReviewDays,
+      stepDueDays: normalizedStepDays,
       warningBeforeDays: warning,
       severity,
+      priority: Number(priority),
+      active: policyActive,
     });
     if (!saved) return;
     setPolicyName("");
@@ -174,20 +245,30 @@ export function OperationalCalendarAdmin() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Calendário e SLA
-          </h1>
-          <Badge variant={calendar.canUseCalendar ? "default" : "secondary"}>
-            {calendar.canUseCalendar ? "Calendário ativo" : "Fallback ativo"}
-          </Badge>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Configure dias úteis, feriados e prazos operacionais. Nenhum status é
-          alterado automaticamente.
-        </p>
-      </div>
+      <CalendarPageHeader />
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle>Estado do módulo</CardTitle>
+              <CardDescription>{moduleState.description}</CardDescription>
+            </div>
+            <Badge variant={moduleState.variant}>{moduleState.label}</Badge>
+          </div>
+        </CardHeader>
+      </Card>
+
+      {!calendar.canManage && (
+        <Alert>
+          <ShieldCheck className="h-4 w-4" />
+          <AlertTitle>Visualização somente leitura</AlertTitle>
+          <AlertDescription>
+            Somente administradores e gestores podem configurar calendário e
+            SLA.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {(calendar.error || calendar.schemaMessage) && (
         <Alert variant={calendar.error ? "destructive" : "default"}>
@@ -218,6 +299,7 @@ export function OperationalCalendarAdmin() {
                 <Input
                   id="calendar-name"
                   value={calendarName}
+                  disabled={!canConfigure}
                   onChange={(event) => setCalendarName(event.target.value)}
                 />
               </div>
@@ -226,6 +308,7 @@ export function OperationalCalendarAdmin() {
                 <Input
                   id="calendar-timezone"
                   value={timezone}
+                  disabled={!canConfigure}
                   onChange={(event) => setTimezone(event.target.value)}
                 />
               </div>
@@ -242,6 +325,7 @@ export function OperationalCalendarAdmin() {
                     {day.label}
                     <Switch
                       checked={workweek[day.key]}
+                      disabled={!canConfigure}
                       onCheckedChange={(checked) =>
                         setWorkweek((current) => ({
                           ...current,
@@ -262,6 +346,7 @@ export function OperationalCalendarAdmin() {
                   id="calendar-start"
                   type="time"
                   value={startTime}
+                  disabled={!canConfigure}
                   onChange={(event) => setStartTime(event.target.value)}
                 />
               </div>
@@ -271,6 +356,7 @@ export function OperationalCalendarAdmin() {
                   id="calendar-end"
                   type="time"
                   value={endTime}
+                  disabled={!canConfigure}
                   onChange={(event) => setEndTime(event.target.value)}
                 />
               </div>
@@ -278,7 +364,7 @@ export function OperationalCalendarAdmin() {
 
             <Button
               onClick={handleSaveCalendar}
-              disabled={calendar.isSaving}
+              disabled={calendar.isSaving || !canConfigure}
             >
               {calendar.isSaving && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -306,6 +392,7 @@ export function OperationalCalendarAdmin() {
                   id="holiday-name"
                   placeholder="Ex.: Feriado municipal"
                   value={holidayName}
+                  disabled={!canConfigure}
                   onChange={(event) => setHolidayName(event.target.value)}
                 />
               </div>
@@ -315,6 +402,7 @@ export function OperationalCalendarAdmin() {
                   id="holiday-date"
                   type="date"
                   value={holidayDate}
+                  disabled={!canConfigure}
                   onChange={(event) => setHolidayDate(event.target.value)}
                 />
               </div>
@@ -322,6 +410,7 @@ export function OperationalCalendarAdmin() {
             <label className="flex items-center gap-3 text-sm">
               <Switch
                 checked={holidayRepeats}
+                disabled={!canConfigure}
                 onCheckedChange={setHolidayRepeats}
               />
               Repetir anualmente
@@ -329,7 +418,11 @@ export function OperationalCalendarAdmin() {
             <Button
               variant="secondary"
               onClick={handleAddHoliday}
-              disabled={calendar.isSaving || !calendar.defaultCalendar}
+              disabled={
+                calendar.isSaving ||
+                !calendar.defaultCalendar ||
+                !canConfigure
+              }
             >
               Adicionar feriado
             </Button>
@@ -364,6 +457,7 @@ export function OperationalCalendarAdmin() {
                       size="icon"
                       variant="ghost"
                       aria-label={`Remover ${holiday.name}`}
+                      disabled={!canConfigure}
                       onClick={async () => {
                         if (await calendar.deleteHoliday(holiday.id)) {
                           toast.success("Feriado removido.");
@@ -399,39 +493,17 @@ export function OperationalCalendarAdmin() {
                 id="policy-name"
                 placeholder="Ex.: Aprovação técnica em 5 dias úteis"
                 value={policyName}
+                disabled={!canConfigure}
                 onChange={(event) => setPolicyName(event.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label>Aplicar a</Label>
-              <Select
-                value={policyKind}
-                onValueChange={(value) =>
-                  setPolicyKind(value as "review" | "step")
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="review">Revisão documental</SelectItem>
-                  <SelectItem value="step">Etapa de trâmite</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="policy-days">Prazo em dias úteis</Label>
-              <Input
-                id="policy-days"
-                type="number"
-                min={1}
-                value={policyDays}
-                onChange={(event) => setPolicyDays(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
               <Label>Tipo documental</Label>
-              <Select value={docType} onValueChange={setDocType}>
+              <Select
+                value={docType}
+                onValueChange={setDocType}
+                disabled={!canConfigure}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -451,59 +523,81 @@ export function OperationalCalendarAdmin() {
                 id="policy-area"
                 placeholder="Todas ou código da área"
                 value={area}
+                disabled={!canConfigure}
                 onChange={(event) => setArea(event.target.value.toUpperCase())}
               />
             </div>
             <div className="space-y-2">
-              <Label>Projeto</Label>
-              <Select value={projectId} onValueChange={setProjectId}>
+              <Label>Tipo de etapa</Label>
+              <Select
+                value={stepType}
+                onValueChange={setStepType}
+                disabled={!canConfigure}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos os projetos</SelectItem>
-                  {projectOptions.projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.code ? `${project.code} · ` : ""}
-                      {project.name}
+                  <SelectItem value="all">Todas as etapas</SelectItem>
+                  {STEP_TYPES.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            {policyKind === "step" ? (
-              <div className="space-y-2">
-                <Label>Tipo de etapa</Label>
-                <Select value={stepType} onValueChange={setStepType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas as etapas</SelectItem>
-                    {STEP_TYPES.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label htmlFor="warning-days">Avisar antes (dias úteis)</Label>
-                <Input
-                  id="warning-days"
-                  type="number"
-                  min={0}
-                  value={warningDays}
-                  onChange={(event) => setWarningDays(event.target.value)}
-                />
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="review-days">Dias para revisão</Label>
+              <Input
+                id="review-days"
+                type="number"
+                min={1}
+                placeholder="Opcional"
+                value={reviewDays}
+                disabled={!canConfigure}
+                onChange={(event) => setReviewDays(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="step-days">Dias para etapa</Label>
+              <Input
+                id="step-days"
+                type="number"
+                min={1}
+                placeholder="Opcional"
+                value={stepDays}
+                disabled={!canConfigure}
+                onChange={(event) => setStepDays(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="warning-days">Avisar antes (dias úteis)</Label>
+              <Input
+                id="warning-days"
+                type="number"
+                min={0}
+                value={warningDays}
+                disabled={!canConfigure}
+                onChange={(event) => setWarningDays(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="policy-priority">Prioridade</Label>
+              <Input
+                id="policy-priority"
+                type="number"
+                min={0}
+                value={priority}
+                disabled={!canConfigure}
+                onChange={(event) => setPriority(event.target.value)}
+              />
+            </div>
             <div className="space-y-2">
               <Label>Severidade</Label>
               <Select
                 value={severity}
+                disabled={!canConfigure}
                 onValueChange={(value) =>
                   setSeverity(
                     value as "low" | "medium" | "high" | "critical",
@@ -521,26 +615,47 @@ export function OperationalCalendarAdmin() {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-
-          {policyKind === "step" && (
-            <div className="max-w-xs space-y-2">
-              <Label htmlFor="step-warning-days">
-                Avisar antes (dias úteis)
-              </Label>
-              <Input
-                id="step-warning-days"
-                type="number"
-                min={0}
-                value={warningDays}
-                onChange={(event) => setWarningDays(event.target.value)}
-              />
+            <div className="space-y-2">
+              <Label>Projeto</Label>
+              <Select
+                value={projectId}
+                onValueChange={setProjectId}
+                disabled={!canConfigure}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os projetos</SelectItem>
+                  {projectOptions.projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.code ? `${project.code} · ` : ""}
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          )}
+            <div className="space-y-2">
+              <Label>Estado inicial</Label>
+              <label className="flex h-10 items-center gap-3 rounded-md border px-3 text-sm">
+                <Switch
+                  checked={policyActive}
+                  disabled={!canConfigure}
+                  onCheckedChange={setPolicyActive}
+                />
+                {policyActive ? "Política ativa" : "Política inativa"}
+              </label>
+            </div>
+          </div>
 
           <Button
             onClick={handleSavePolicy}
-            disabled={calendar.isSaving || !calendar.defaultCalendar}
+            disabled={
+              calendar.isSaving ||
+              !calendar.defaultCalendar ||
+              !canConfigure
+            }
           >
             Criar política SLA
           </Button>
@@ -564,14 +679,25 @@ export function OperationalCalendarAdmin() {
                       <Badge variant="outline">{policy.severity}</Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      {policy.review_due_days
-                        ? `Revisão em ${policy.review_due_days} dias úteis`
-                        : `Etapa em ${policy.step_due_days} dias úteis`}
+                      {[
+                        policy.review_due_days
+                          ? `revisão em ${policy.review_due_days} dias úteis`
+                          : null,
+                        policy.step_due_days
+                          ? `etapa em ${policy.step_due_days} dias úteis`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {[policy.doc_type, policy.area, policy.step_type]
                         .filter(Boolean)
                         .join(" · ") || "Toda a organização"}
+                      {" · "}
+                      prioridade {policy.priority}
+                      {" · "}
+                      alerta {policy.warning_before_days} dia(s) antes
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -580,6 +706,7 @@ export function OperationalCalendarAdmin() {
                     </span>
                     <Switch
                       checked={policy.active}
+                      disabled={!canConfigure}
                       onCheckedChange={async (active) => {
                         if (await calendar.togglePolicy(policy.id, active)) {
                           toast.success(

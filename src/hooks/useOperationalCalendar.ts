@@ -353,6 +353,7 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
       if (!ensureManagePermission() || !profile) return false;
       const reviewDays = input.reviewDueDays ?? null;
       const stepDays = input.stepDueDays ?? null;
+      const priority = input.priority ?? 100;
       if (!input.name.trim()) {
         setError("Informe o nome da política.");
         return false;
@@ -367,6 +368,10 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
         setError(
           "Informe ao menos um prazo positivo em dias úteis para revisão ou etapa.",
         );
+        return false;
+      }
+      if (!Number.isInteger(priority) || priority < 0) {
+        setError("A prioridade deve ser um número inteiro igual ou maior que zero.");
         return false;
       }
 
@@ -384,7 +389,7 @@ export function useOperationalCalendar(options: { enabled?: boolean } = {}) {
         step_due_days: stepDays,
         warning_before_days: Math.max(0, input.warningBeforeDays ?? 3),
         severity: input.severity ?? "medium",
-        priority: input.priority ?? 100,
+        priority,
         active: input.active ?? true,
       };
       const result = input.id

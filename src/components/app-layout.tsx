@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import { House, FileStack, Users, LogOut, Settings, Palette, Download, DatabaseZap, GitBranch, Bell, ClipboardList, UserCircle, Inbox, ChartNoAxesCombined, UsersRound, Stethoscope, ScrollText, Code2, FolderKanban, Workflow, PanelsTopLeft, CalendarDays } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -14,7 +15,15 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 
-const nav = [
+interface NavigationItem {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  managerOnly?: boolean;
+  badge?: "activities" | "approval";
+}
+
+const nav: readonly NavigationItem[] = [
   { to: "/authenticated/dashboard", label: "Início", icon: House },
   { to: "/authenticated/documents", label: "Documentos", icon: FileStack },
   { to: "/authenticated/documentos/central", label: "Central Documental", icon: PanelsTopLeft },
@@ -255,7 +264,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   {nav
     .filter(item => !item.managerOnly || profile?.role === "admin" || profile?.role === "manager")
     .map(item => {
-      const active = pathname.startsWith(item.to);
+      const active = item.to === "/authenticated/configuracoes"
+        ? pathname === item.to
+        : pathname === item.to || pathname.startsWith(`${item.to}/`);
       const Icon = item.icon;
       const pendingCount = item.badge === "approval"
         ? queue.length
