@@ -27,6 +27,7 @@ A sequência lógica oficial é:
 19. `18_TRAMITA_document_tramite_execution`
 20. `19_TRAMITA_document_creation_integration_controls`
 21. `20_TRAMITA_transactional_document_creation`
+22. `21_TRAMITA_operational_calendar_sla`
 
 No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 
@@ -42,6 +43,7 @@ No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 - `supabase/migrations/20260630_p12_1_document_tramite_execution.sql`.
 - `supabase/migrations/20260630_p18a_document_creation_integration_controls.sql`.
 - `supabase/migrations/20260630_p22_transactional_document_creation.sql`.
+- `supabase/migrations/20260630_p24_operational_calendar_sla.sql`.
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
@@ -188,6 +190,19 @@ A P-23 é uma integração de frontend/produto e não adiciona ciclo SQL. O cicl
 O frontend reutiliza o bucket privado `documents`, registra a referência por
 `add_document_tramite_evidence` e mantém a conclusão da etapa como ação
 separada. Não existe ciclo `21_TRAMITA_tramite_evidence_files` nesta fase.
+
+## P-24 — Calendário Operacional e SLA
+
+O ciclo 21 cria calendários por organização, feriados e políticas de prazo em
+dias úteis, além das funções read-only `is_business_day`,
+`add_business_days`, `calculate_document_due_date` e
+`calculate_tramite_step_due_date`.
+
+O ciclo não altera `approval_flows`, não substitui `due_at` ou
+`next_review_at`, não muda status e não inicia trâmites. Datas persistidas
+continuam prioritárias; cálculos para campos ausentes são sugestões
+informativas. Sem o ciclo 21, Home e Central preservam a comparação simples de
+datas.
 
 ## Hardening P-9A.1 — Grupos de Aprovação
 

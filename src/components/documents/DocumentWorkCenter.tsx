@@ -44,6 +44,7 @@ import type {
   DocumentWorkItemPriority,
   DocumentWorkItemType,
 } from "@/lib/documentWorkCenter";
+import { getDeadlineModeLabel } from "@/lib/operationalCalendar";
 
 type ScopeFilter = "mine" | "organization";
 
@@ -79,7 +80,7 @@ function priorityVariant(priority: DocumentWorkItemPriority) {
 
 function formatDate(value?: string | null) {
   if (!value) return "Sem prazo";
-  const date = new Date(value);
+  const date = new Date(value.includes("T") ? value : `${value}T12:00:00`);
   if (Number.isNaN(date.getTime())) return "Prazo inválido";
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",
@@ -134,10 +135,27 @@ function WorkItemCard({ item }: { item: DocumentWorkItem }) {
                 <Clock3 className="h-3.5 w-3.5" />
                 {formatDate(item.dueAt)}
               </span>
+              {item.dueAt && (
+                <span>{getDeadlineModeLabel(item.deadlineMode ?? "simple_date")}</span>
+              )}
               {item.responsibleName && (
                 <span>Responsável: {item.responsibleName}</span>
               )}
             </div>
+            {(item.dueAtSuggested || item.slaPolicyName) && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {item.dueAtSuggested && (
+                  <Badge variant="secondary">
+                    Prazo sugerido · não persistido
+                  </Badge>
+                )}
+                {item.slaPolicyName && (
+                  <Badge variant="outline">
+                    Política: {item.slaPolicyName}
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <Button asChild size="sm" className="shrink-0">
@@ -622,6 +640,14 @@ export function DocumentWorkCenter() {
                     {" · "}
                     {formatDate(instance.dueAt)}
                   </p>
+                  {instance.dueAt && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {getDeadlineModeLabel(instance.deadlineMode)}
+                      {instance.dueAtSuggested
+                        ? " · prazo sugerido, não persistido"
+                        : ""}
+                    </p>
+                  )}
                   <Button asChild size="sm" variant="outline" className="mt-4">
                     <Link
                       to="/authenticated/documents/$documentId"

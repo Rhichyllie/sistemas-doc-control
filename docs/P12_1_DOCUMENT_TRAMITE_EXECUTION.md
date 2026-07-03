@@ -406,3 +406,14 @@ progresso.
 
 A Central é somente leitura. Conclusão, evidência e cancelamento permanecem no
 detalhe do documento e continuam protegidos pelas RPCs do ciclo 18.
+
+## Integração P-24 — Prazo operacional
+
+A P-24 não altera as RPCs de início ou conclusão do ciclo 18. O `due_at`
+persistido continua sendo a fonte principal da etapa.
+
+Quando uma etapa ativa não possui `due_at`, o detalhe pode calcular e exibir
+uma sugestão com base no calendário e na política SLA aplicável. A sugestão é
+marcada como não persistida e não muda etapa, documento, `approval_flows` ou
+status automaticamente. Sem o ciclo 21, o painel preserva os prazos existentes
+e omite a sugestão.

@@ -3,6 +3,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { useApprovalQueue } from "@/hooks/useApprovalQueue";
 import { useAuditTrail } from "@/hooks/useAuditTrail";
 import { useDocuments, type Document } from "@/hooks/useDocuments";
+import { useOperationalCalendar } from "@/hooks/useOperationalCalendar";
 import { useDocumentTramiteInstances } from "@/hooks/useDocumentTramiteInstances";
 import { useDocumentTramiteTemplates } from "@/hooks/useDocumentTramiteTemplates";
 import { useProjectOptions } from "@/hooks/useProjectOptions";
@@ -38,6 +39,8 @@ export interface DocumentWorkCenterInstance {
   activeStepLabels: string[];
   progress: number;
   dueAt: string | null;
+  dueAtSuggested: boolean;
+  deadlineMode: "operational_calendar" | "simple_date";
   isOverdue: boolean;
   isMine: boolean;
   updatedAt: string;
@@ -129,6 +132,7 @@ export function useDocumentWorkCenter() {
   const actorsState = useWorkflowActors();
   const auditState = useAuditTrail();
   const projectsState = useProjectOptions();
+  const calendarState = useOperationalCalendar();
   const [codingStatus, setCodingStatus] =
     useState<WorkCenterSchemaStatus>("ready");
   const [codingMessage, setCodingMessage] = useState<string | null>(null);
@@ -210,6 +214,27 @@ export function useDocumentWorkCenter() {
     const isManager = profile?.role === "admin" || profile?.role === "manager";
     const workItems: DocumentWorkItem[] = [];
 
+    function deadlineFields(
+      dueAt: string | null,
+      suggested = false,
+      policyName: string | null = null,
+    ) {
+      const businessDaysRemaining = dueAt
+        ? calendarState.canUseCalendar
+          ? calendarState.getBusinessDaysUntil(dueAt.slice(0, 10))
+          : daysUntilWorkItem(dueAt)
+        : null;
+      return {
+        dueAt,
+        dueAtSuggested: suggested,
+        deadlineMode: calendarState.canUseCalendar
+          ? ("operational_calendar" as const)
+          : ("simple_date" as const),
+        businessDaysRemaining,
+        slaPolicyName: policyName,
+      };
+    }
+
     function documentFields(document: Document) {
       return {
         documentId: document.id,
@@ -256,6 +281,24 @@ export function useDocumentWorkCenter() {
     )) {
       const document = documentsById.get(step.document_id);
       if (!document) continue;
+      const suggestedDeadline = step.due_at
+        ? null
+        : calendarState.suggestDeadline(
+            (step.started_at ?? step.created_at).slice(0, 10),
+            {
+              kind: "tramite_step",
+              docType: document.doc_type,
+              area: document.area,
+              projectId: document.project_id,
+              stepType: step.node_type,
+            },
+          );
+      const effectiveDueAt = step.due_at ?? suggestedDeadline?.dueDate ?? null;
+      const deadline = deadlineFields(
+        effectiveDueAt,
+        !step.due_at && Boolean(suggestedDeadline?.dueDate),
+        suggestedDeadline?.policy?.name ?? null,
+      );
       const responsibleName = stepResponsible(step, document);
       const isMine = isStepAssignedToProfile(
         step,
@@ -269,17 +312,18 @@ export function useDocumentWorkCenter() {
         origin: "tramite",
         priority: calculateWorkItemPriority({
           type: "tramite_step",
-          dueAt: step.due_at,
+          dueAt: effectiveDueAt,
           hasResponsible: Boolean(responsibleName),
+          remainingDays: deadline.businessDaysRemaining,
         }),
         title: step.label,
         description: step.description || "Etapa ativa de trâmite documental.",
         ...documentFields(document),
-        dueAt: step.due_at,
+        ...deadline,
         responsibleName,
         isMine,
         createdAt: step.started_at ?? step.created_at,
-        statusLabel: normalizeWorkItemStatus(step.status, step.due_at),
+        statusLabel: normalizeWorkItemStatus(step.status, effectiveDueAt),
         actionLabel: buildWorkItemAction("tramite_step"),
       });
     }
@@ -311,11 +355,14 @@ export function useDocumentWorkCenter() {
           type: "approval",
           dueAt: approval.due_at,
           hasResponsible: Boolean(responsibleName),
+          remainingDays: approval.due_at
+            ? deadlineFields(approval.due_at).businessDaysRemaining
+            : null,
         }),
         title: approval.step_label,
         description: "Etapa pendente no fluxo formal de aprovação.",
         ...documentFields(document),
-        dueAt: approval.due_at,
+        ...deadlineFields(approval.due_at),
         responsibleName,
         isMine: approvalIsMine,
         createdAt: approval.created_at,
@@ -374,7 +421,31 @@ export function useDocumentWorkCenter() {
         });
       }
 
-      const reviewDays = daysUntilWorkItem(document.next_review_at);
+      const suggestedReview = document.next_review_at
+        ? null
+        : calendarState.suggestDeadline(
+            (
+              document.published_at ??
+              document.created_at
+            ).slice(0, 10),
+            {
+              kind: "document_review",
+              docType: document.doc_type,
+              area: document.area,
+              projectId: document.project_id,
+            },
+          );
+      const effectiveReviewAt =
+        document.next_review_at ?? suggestedReview?.dueDate ?? null;
+      const reviewDeadline = deadlineFields(
+        effectiveReviewAt,
+        !document.next_review_at && Boolean(suggestedReview?.dueDate),
+        suggestedReview?.policy?.name ?? null,
+      );
+      const reviewDays = reviewDeadline.businessDaysRemaining;
+      const reviewOverdue = effectiveReviewAt
+        ? (daysUntilWorkItem(effectiveReviewAt) ?? 0) < 0
+        : false;
       if (
         document.status === "published" &&
         reviewDays !== null &&
@@ -386,26 +457,27 @@ export function useDocumentWorkCenter() {
           origin: "revision",
           priority: calculateWorkItemPriority({
             type: "review_due",
-            dueAt: document.next_review_at,
+            dueAt: effectiveReviewAt,
+            remainingDays: reviewDays,
           }),
           title:
-            reviewDays < 0
+            reviewOverdue
               ? "Revisão documental atrasada"
               : "Próxima revisão documental",
           description:
-            reviewDays < 0
+            reviewOverdue
               ? "A data programada para revisão já passou."
               : reviewDays === 0
                 ? "A revisão está prevista para hoje."
-                : `A revisão está prevista para daqui a ${reviewDays} dias.`,
+                : `A revisão está prevista para daqui a ${reviewDays} dias úteis.`,
           ...documentFields(document),
-          dueAt: document.next_review_at,
+          ...reviewDeadline,
           responsibleName: document.author?.full_name ?? null,
           isMine: owned,
           createdAt: document.updated_at,
           statusLabel: normalizeWorkItemStatus(
             "published",
-            document.next_review_at,
+            effectiveReviewAt,
           ),
           actionLabel: buildWorkItemAction("review_due"),
         });
@@ -489,6 +561,24 @@ export function useDocumentWorkCenter() {
           (step) => step.status === "active",
         );
         const summary = summarizeInstance(instance, instanceSteps);
+        const suggestedDueDates = activeSteps
+          .map((step) => {
+            if (step.due_at || !document) return null;
+            return calendarState.suggestDeadline(
+              (step.started_at ?? step.created_at).slice(0, 10),
+              {
+                kind: "tramite_step",
+                docType: document.doc_type,
+                area: document.area,
+                projectId: document.project_id,
+                stepType: step.node_type,
+              },
+            ).dueDate;
+          })
+          .filter((value): value is string => Boolean(value))
+          .sort();
+        const effectiveInstanceDueAt =
+          summary.nextDueAt ?? suggestedDueDates[0] ?? null;
         const mine = activeSteps.some((step) =>
           isStepAssignedToProfile(
             step,
@@ -510,8 +600,15 @@ export function useDocumentWorkCenter() {
           instanceCode: instance.code,
           activeStepLabels: activeSteps.map((step) => step.label),
           progress: summary.progress,
-          dueAt: summary.nextDueAt,
-          isOverdue: summary.isOverdue,
+          dueAt: effectiveInstanceDueAt,
+          dueAtSuggested:
+            !summary.nextDueAt && Boolean(effectiveInstanceDueAt),
+          deadlineMode: calendarState.canUseCalendar
+            ? "operational_calendar"
+            : "simple_date",
+          isOverdue: effectiveInstanceDueAt
+            ? (daysUntilWorkItem(effectiveInstanceDueAt) ?? 0) < 0
+            : summary.isOverdue,
           isMine: mine,
           updatedAt: instance.updated_at,
         };
@@ -545,6 +642,23 @@ export function useDocumentWorkCenter() {
             new Date(left.updated_at).getTime(),
         )
         .slice(0, 8),
+      documentsWithoutSlaPolicy: ["ready", "empty"].includes(
+        calendarState.status,
+      )
+        ? accessibleRecentDocuments.filter(
+            (document) =>
+              document.status === "published" &&
+              !calendarState.suggestDeadline(
+                document.created_at.slice(0, 10),
+                {
+                  kind: "document_review",
+                  docType: document.doc_type,
+                  area: document.area,
+                  projectId: document.project_id,
+                },
+              ).policy,
+          ).length
+        : 0,
     };
   }, [
     actorsState.groupMembers,
@@ -552,6 +666,10 @@ export function useDocumentWorkCenter() {
     actorsState.users,
     approvalState.queue,
     auditState.entries,
+    calendarState.canUseCalendar,
+    calendarState.getBusinessDaysUntil,
+    calendarState.status,
+    calendarState.suggestDeadline,
     documentsState.documents,
     profile,
     templatesState.publishedTemplates,
@@ -577,6 +695,14 @@ export function useDocumentWorkCenter() {
       ? "Modelos de trâmite não estão instalados; sugestões de próximo passo foram ocultadas."
       : null,
     projectsState.compatibilityMessage,
+    calendarState.status === "not_installed"
+      ? "Calendário operacional ainda não instalado. Prazos usam comparação simples de data."
+      : calendarState.status === "restricted" ||
+          calendarState.status === "error"
+        ? calendarState.error
+        : calendarState.status === "empty"
+          ? "Nenhum calendário operacional configurado. O fallback considera segunda a sexta."
+          : null,
     auditState.error
       ? "Sugestões auditadas não puderam ser consultadas; a Central usa os modelos aplicáveis atuais."
       : null,
@@ -594,6 +720,7 @@ export function useDocumentWorkCenter() {
       actorsState.refetch(),
       auditState.refetch(),
       projectsState.refresh(),
+      calendarState.refresh(),
     ]);
   }, [
     actorsState,
@@ -601,6 +728,7 @@ export function useDocumentWorkCenter() {
     auditState,
     documentsState,
     projectsState,
+    calendarState,
     templatesState,
     tramiteState,
   ]);
@@ -617,6 +745,7 @@ export function useDocumentWorkCenter() {
       actorsState.isLoading ||
       auditState.loading ||
       projectsState.isLoading ||
+      calendarState.isLoading ||
       codingLoading,
     error: documentsState.error,
     warnings,
@@ -625,6 +754,8 @@ export function useDocumentWorkCenter() {
     approvalAvailable: !approvalState.error,
     projectsAvailable: projectsState.canUseProjects,
     projectSchemaMode: projectsState.schemaMode,
+    calendarStatus: calendarState.status,
+    calendarAvailable: calendarState.canUseCalendar,
     projects: projectsState.projects,
     documents: documentsState.documents,
     publishedTramiteTemplatesCount: templatesState.publishedTemplates.length,

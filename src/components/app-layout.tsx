@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { House, FileStack, Users, LogOut, Settings, Palette, Download, DatabaseZap, GitBranch, Bell, ClipboardList, UserCircle, Inbox, ChartNoAxesCombined, UsersRound, Stethoscope, ScrollText, Code2, FolderKanban, Workflow, PanelsTopLeft } from "lucide-react";
+import { House, FileStack, Users, LogOut, Settings, Palette, Download, DatabaseZap, GitBranch, Bell, ClipboardList, UserCircle, Inbox, ChartNoAxesCombined, UsersRound, Stethoscope, ScrollText, Code2, FolderKanban, Workflow, PanelsTopLeft, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,7 @@ const nav = [
   { to: "/authenticated/trilha-de-auditoria", label: "Trilha de Auditoria", icon: ClipboardList },
   { to: "/authenticated/schema-doctor", label: "Schema Doctor", icon: Stethoscope, managerOnly: true },
   { to: "/authenticated/equipe", label: "Equipe", icon: Users },
+  { to: "/authenticated/configuracoes/calendario", label: "Calendário e SLA", icon: CalendarDays, managerOnly: true },
   { to: "/authenticated/configuracoes", label: "Configurações", icon: Settings, managerOnly: true },
 ];
 

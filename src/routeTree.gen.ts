@@ -34,6 +34,7 @@ import { Route as AuthenticatedDocumentosRegrasRouteImport } from './routes/auth
 import { Route as AuthenticatedDocumentosNovoInteligenteRouteImport } from './routes/authenticated/documentos/novo-inteligente'
 import { Route as AuthenticatedDocumentosCodificacaoRouteImport } from './routes/authenticated/documentos/codificacao'
 import { Route as AuthenticatedDocumentosCentralRouteImport } from './routes/authenticated/documentos/central'
+import { Route as AuthenticatedConfiguracoesCalendarioRouteImport } from './routes/authenticated/configuracoes/calendario'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -174,6 +175,12 @@ const AuthenticatedDocumentosCentralRoute =
     path: '/documentos/central',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedConfiguracoesCalendarioRoute =
+  AuthenticatedConfiguracoesCalendarioRouteImport.update({
+    id: '/calendario',
+    path: '/calendario',
+    getParentRoute: () => AuthenticatedConfiguracoesRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -181,7 +188,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/login': typeof LoginRoute
   '/authenticated/atividades': typeof AuthenticatedAtividadesRoute
-  '/authenticated/configuracoes': typeof AuthenticatedConfiguracoesRoute
+  '/authenticated/configuracoes': typeof AuthenticatedConfiguracoesRouteWithChildren
   '/authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/authenticated/disciplines': typeof AuthenticatedDisciplinesRoute
   '/authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
@@ -195,6 +202,7 @@ export interface FileRoutesByFullPath {
   '/authenticated/projetos': typeof AuthenticatedProjetosRoute
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
+  '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
@@ -208,7 +216,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/login': typeof LoginRoute
   '/authenticated/atividades': typeof AuthenticatedAtividadesRoute
-  '/authenticated/configuracoes': typeof AuthenticatedConfiguracoesRoute
+  '/authenticated/configuracoes': typeof AuthenticatedConfiguracoesRouteWithChildren
   '/authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/authenticated/disciplines': typeof AuthenticatedDisciplinesRoute
   '/authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
@@ -222,6 +230,7 @@ export interface FileRoutesByTo {
   '/authenticated/projetos': typeof AuthenticatedProjetosRoute
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
+  '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
@@ -236,7 +245,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/login': typeof LoginRoute
   '/authenticated/atividades': typeof AuthenticatedAtividadesRoute
-  '/authenticated/configuracoes': typeof AuthenticatedConfiguracoesRoute
+  '/authenticated/configuracoes': typeof AuthenticatedConfiguracoesRouteWithChildren
   '/authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/authenticated/disciplines': typeof AuthenticatedDisciplinesRoute
   '/authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
@@ -250,6 +259,7 @@ export interface FileRoutesById {
   '/authenticated/projetos': typeof AuthenticatedProjetosRoute
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
+  '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
@@ -279,6 +289,7 @@ export interface FileRouteTypes {
     | '/authenticated/projetos'
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
+    | '/authenticated/configuracoes/calendario'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
@@ -306,6 +317,7 @@ export interface FileRouteTypes {
     | '/authenticated/projetos'
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
+    | '/authenticated/configuracoes/calendario'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
@@ -333,6 +345,7 @@ export interface FileRouteTypes {
     | '/authenticated/projetos'
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
+    | '/authenticated/configuracoes/calendario'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
@@ -525,8 +538,30 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDocumentosCentralRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/authenticated/configuracoes/calendario': {
+      id: '/authenticated/configuracoes/calendario'
+      path: '/calendario'
+      fullPath: '/authenticated/configuracoes/calendario'
+      preLoaderRoute: typeof AuthenticatedConfiguracoesCalendarioRouteImport
+      parentRoute: typeof AuthenticatedConfiguracoesRoute
+    }
   }
 }
+
+interface AuthenticatedConfiguracoesRouteChildren {
+  AuthenticatedConfiguracoesCalendarioRoute: typeof AuthenticatedConfiguracoesCalendarioRoute
+}
+
+const AuthenticatedConfiguracoesRouteChildren: AuthenticatedConfiguracoesRouteChildren =
+  {
+    AuthenticatedConfiguracoesCalendarioRoute:
+      AuthenticatedConfiguracoesCalendarioRoute,
+  }
+
+const AuthenticatedConfiguracoesRouteWithChildren =
+  AuthenticatedConfiguracoesRoute._addFileChildren(
+    AuthenticatedConfiguracoesRouteChildren,
+  )
 
 interface AuthenticatedDocumentsRouteChildren {
   AuthenticatedDocumentsDocumentIdRoute: typeof AuthenticatedDocumentsDocumentIdRoute
@@ -545,7 +580,7 @@ const AuthenticatedDocumentsRouteWithChildren =
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAtividadesRoute: typeof AuthenticatedAtividadesRoute
-  AuthenticatedConfiguracoesRoute: typeof AuthenticatedConfiguracoesRoute
+  AuthenticatedConfiguracoesRoute: typeof AuthenticatedConfiguracoesRouteWithChildren
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDisciplinesRoute: typeof AuthenticatedDisciplinesRoute
   AuthenticatedDocumentsRoute: typeof AuthenticatedDocumentsRouteWithChildren
@@ -568,7 +603,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAtividadesRoute: AuthenticatedAtividadesRoute,
-  AuthenticatedConfiguracoesRoute: AuthenticatedConfiguracoesRoute,
+  AuthenticatedConfiguracoesRoute: AuthenticatedConfiguracoesRouteWithChildren,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDisciplinesRoute: AuthenticatedDisciplinesRoute,
   AuthenticatedDocumentsRoute: AuthenticatedDocumentsRouteWithChildren,

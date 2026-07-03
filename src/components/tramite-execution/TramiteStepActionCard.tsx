@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
+  CalendarClock,
   ExternalLink,
   FileText,
   Link2,
@@ -32,6 +33,10 @@ import {
   type TramiteActorPermission,
   type TramiteStepDecision,
 } from "@/lib/documentTramiteExecution";
+import {
+  getDeadlineModeLabel,
+  type SuggestedDeadline,
+} from "@/lib/operationalCalendar";
 import { formatEvidenceFileSize } from "@/lib/tramiteEvidenceFiles";
 import { TramiteStepAssignmentBadge } from "./TramiteStepAssignmentBadge";
 
@@ -62,6 +67,7 @@ export function TramiteStepActionCard({
   isCompleting,
   userName,
   groupName,
+  suggestedDeadline,
   onComplete,
   onAddEvidence,
   onOpenEvidence,
@@ -72,6 +78,7 @@ export function TramiteStepActionCard({
   isCompleting: boolean;
   userName?: string;
   groupName?: string;
+  suggestedDeadline?: SuggestedDeadline | null;
   onComplete: (input: {
     decision: TramiteStepDecision;
     comment: string | null;
@@ -130,6 +137,37 @@ export function TramiteStepActionCard({
         <p className="text-xs text-muted-foreground">
           {explainStepRequirement(step)}
         </p>
+
+        {(step.due_at || suggestedDeadline?.dueDate) && (
+          <div className="flex items-start gap-2 rounded-lg border bg-muted/20 p-3">
+            <CalendarClock className="mt-0.5 h-4 w-4 text-primary" />
+            <div>
+              <p className="text-sm font-medium">
+                {step.due_at ? "Prazo da etapa" : "Prazo sugerido"}
+                {" · "}
+                {new Intl.DateTimeFormat("pt-BR", {
+                  dateStyle: "short",
+                  timeStyle: step.due_at?.includes("T")
+                    ? "short"
+                    : undefined,
+                }).format(
+                  new Date(
+                    step.due_at ??
+                      `${suggestedDeadline?.dueDate}T12:00:00`,
+                  ),
+                )}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {step.due_at
+                  ? "Prazo persistido na execução."
+                  : `${getDeadlineModeLabel(suggestedDeadline?.mode ?? "simple_date")}. Sugestão informativa; não foi gravada na etapa.`}
+                {suggestedDeadline?.policy?.name
+                  ? ` Política: ${suggestedDeadline.policy.name}.`
+                  : ""}
+              </p>
+            </div>
+          </div>
+        )}
 
         {options.length > 1 && (
           <div className="space-y-2">

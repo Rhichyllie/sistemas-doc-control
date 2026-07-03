@@ -167,3 +167,14 @@ continuam usando o fluxo compatível sem afetar a visão operacional.
 - metas operacionais configuráveis;
 - comparação por projeto/área para admin e manager;
 - atualização incremental por eventos, preservando a Home como visão resumida.
+
+## Integração P-24 — Calendário e SLA
+
+A Home inclui a capacidade **Calendário e SLA** na maturidade operacional. O
+radar resume etapas vencidas, etapas próximas do vencimento, revisões vencidas
+e documentos sem política de revisão aplicável. Os detalhes e ações continuam
+na Central Documental.
+
+Sem o ciclo 21, os indicadores permanecem disponíveis por comparação simples
+de datas e a Home informa o modo de compatibilidade sem tratar ausência de
+schema como falha crítica.

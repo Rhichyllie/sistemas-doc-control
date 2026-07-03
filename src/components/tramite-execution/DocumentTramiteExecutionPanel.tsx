@@ -27,6 +27,7 @@ import { useDocumentTramiteEvidence } from "@/hooks/useDocumentTramiteEvidence";
 import { useDocumentTramiteExecution } from "@/hooks/useDocumentTramiteExecution";
 import { useDocumentTramiteInstances } from "@/hooks/useDocumentTramiteInstances";
 import { useDocumentTramiteTemplates } from "@/hooks/useDocumentTramiteTemplates";
+import { useOperationalCalendar } from "@/hooks/useOperationalCalendar";
 import { useTramiteEvidenceUpload } from "@/hooks/useTramiteEvidenceUpload";
 import { useWorkflowActors } from "@/hooks/useWorkflowActors";
 import type { Document } from "@/hooks/useDocuments";
@@ -103,6 +104,7 @@ export function DocumentTramiteExecutionPanel({
     refresh: instancesState.refresh,
   });
   const templateState = useDocumentTramiteTemplates();
+  const calendarState = useOperationalCalendar();
   const actors = useWorkflowActors();
 
   const applicableTemplates = useMemo(
@@ -592,6 +594,20 @@ export function DocumentTramiteExecutionPanel({
                           : undefined
                       }
                       isCompleting={execution.isCompleting}
+                      suggestedDeadline={
+                        step.due_at
+                          ? null
+                          : calendarState.suggestDeadline(
+                              (step.started_at ?? step.created_at).slice(0, 10),
+                              {
+                                kind: "tramite_step",
+                                docType: document.doc_type,
+                                area: document.area,
+                                projectId: document.project_id,
+                                stepType: step.node_type,
+                              },
+                            )
+                      }
                       onComplete={(input) => handleComplete(step, input)}
                       onAddEvidence={() => setEvidenceStep(step)}
                       onOpenEvidence={handleOpenEvidence}

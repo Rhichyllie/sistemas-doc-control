@@ -13,6 +13,7 @@ export type OperationalTarget =
   | "/authenticated/documentos/regras"
   | "/authenticated/documentos/tramites"
   | "/authenticated/projetos"
+  | "/authenticated/configuracoes/calendario"
   | "/authenticated/indicadores"
   | "/authenticated/fluxo-de-aprovacao";
 
@@ -48,6 +49,7 @@ export interface OperationalCapability {
     | "policies"
     | "tramite_modeling"
     | "tramite_execution"
+    | "calendar_sla"
     | "work_center";
   label: string;
   description: string;
@@ -81,6 +83,8 @@ export interface OperationalHomeMetrics {
   withoutNextStep: number;
   overdueReviews: number;
   overdueTramiteSteps: number;
+  nearDueTramiteSteps: number;
+  documentsWithoutSlaPolicy: number;
   documentsWithoutCode: number;
   legacyCodes: number;
   suggestedNotStarted: number;
@@ -100,6 +104,8 @@ export interface OperationalHomeMetrics {
   publishedTramiteTemplates: number;
   tramiteExecutionInstalled: boolean;
   tramiteExecutionAttention: boolean;
+  calendarInstalled: boolean;
+  calendarAttention: boolean;
 }
 
 export function calculateOperationalHealth(
@@ -192,6 +198,24 @@ function risks(metrics: OperationalHomeMetrics): OperationalRisk[] {
       count: metrics.overdueReviews,
       severity: "critical" as const,
       target: "/authenticated/documentos/central" as const,
+    },
+    {
+      id: "near-due-tramite",
+      title: "Etapas próximas do vencimento",
+      description:
+        "Etapas ativas estão dentro da janela de alerta da operação.",
+      count: metrics.nearDueTramiteSteps,
+      severity: "warning" as const,
+      target: "/authenticated/documentos/central" as const,
+    },
+    {
+      id: "sla-policy-gap",
+      title: "Documentos sem política de revisão",
+      description:
+        "Documentos publicados não encontram política SLA aplicável.",
+      count: metrics.documentsWithoutSlaPolicy,
+      severity: "info" as const,
+      target: "/authenticated/configuracoes/calendario" as const,
     },
     {
       id: "stalled-approvals",
@@ -322,6 +346,19 @@ function capabilities(
       target: "/authenticated/documentos/central",
     },
     {
+      id: "calendar_sla",
+      label: "Calendário e SLA",
+      description: metrics.calendarInstalled
+        ? "Dias úteis, feriados e políticas de prazo disponíveis."
+        : "Calendário operacional ainda não instalado.",
+      status: metrics.calendarInstalled
+        ? "available"
+        : metrics.calendarAttention
+          ? "attention"
+          : "not_installed",
+      target: "/authenticated/configuracoes/calendario",
+    },
+    {
       id: "work_center",
       label: "Central operacional",
       description: "Cockpit de pendências e próximos passos disponível.",
@@ -359,6 +396,15 @@ export function buildOperationalRecommendation(
       actionLabel: "Abrir fila de aprovação",
       target: "/authenticated/fluxo-de-aprovacao",
       severity: "critical",
+    };
+  }
+  if (metrics.nearDueTramiteSteps > 0) {
+    return {
+      title: "Antecipe as etapas próximas do vencimento",
+      description: `${metrics.nearDueTramiteSteps} etapa(s) estão dentro da janela de atenção do SLA.`,
+      actionLabel: "Abrir Central Documental",
+      target: "/authenticated/documentos/central",
+      severity: "warning",
     };
   }
   if (metrics.suggestedNotStarted > 0) {

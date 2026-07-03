@@ -180,3 +180,13 @@ Não existe ciclo `20_TRAMITA_document_work_center` nesta fase.
 - indicador de política que exige projeto;
 - atualização em tempo real por eventos de banco;
 - métricas de throughput e gargalos sem alterar o workflow.
+
+## Integração P-24 — Calendário e SLA
+
+A Central preserva `due_at` e `next_review_at` quando já existem. Com o ciclo
+21 instalado e configurado, a janela de atenção usa dias úteis e feriados.
+Quando uma etapa ou revisão não possui prazo persistido, uma política SLA
+aplicável pode fornecer uma sugestão identificada como **não persistida**.
+
+Sem o ciclo 21, a Central mantém o comportamento anterior por comparação
+simples de datas. Nenhum prazo, status ou etapa é alterado pela tela.

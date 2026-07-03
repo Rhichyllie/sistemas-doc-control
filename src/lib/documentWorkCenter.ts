@@ -14,6 +14,9 @@ export type DocumentWorkItemOrigin =
   | "creation";
 
 export type DocumentWorkItemPriority = "critical" | "high" | "medium" | "low";
+export type DocumentDeadlineMode =
+  | "operational_calendar"
+  | "simple_date";
 
 export interface DocumentWorkItem {
   id: string;
@@ -31,6 +34,10 @@ export interface DocumentWorkItem {
   area: string;
   documentStatus: string;
   dueAt: string | null;
+  dueAtSuggested?: boolean;
+  deadlineMode?: DocumentDeadlineMode;
+  businessDaysRemaining?: number | null;
+  slaPolicyName?: string | null;
   responsibleName: string | null;
   isMine: boolean;
   createdAt: string;
@@ -99,6 +106,7 @@ export function calculateWorkItemPriority(input: {
   type: DocumentWorkItemType;
   dueAt?: string | null;
   hasResponsible?: boolean;
+  remainingDays?: number | null;
   now?: Date;
 }): DocumentWorkItemPriority {
   const now = input.now ?? new Date();
@@ -106,7 +114,8 @@ export function calculateWorkItemPriority(input: {
   if (input.hasResponsible === false && input.type === "tramite_step") {
     return "high";
   }
-  const remainingDays = daysUntilWorkItem(input.dueAt, now);
+  const remainingDays =
+    input.remainingDays ?? daysUntilWorkItem(input.dueAt, now);
   if (remainingDays !== null && remainingDays <= 3) return "high";
   if (
     input.type === "approval" ||

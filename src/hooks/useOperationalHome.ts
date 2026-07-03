@@ -45,6 +45,16 @@ export function useOperationalHome() {
       overdueTramiteSteps: workCenter.workItems.filter(
         (item) => item.type === "tramite_step" && item.priority === "critical",
       ).length,
+      nearDueTramiteSteps: workCenter.workItems.filter(
+        (item) =>
+          item.type === "tramite_step" &&
+          item.priority !== "critical" &&
+          item.businessDaysRemaining !== null &&
+          item.businessDaysRemaining !== undefined &&
+          item.businessDaysRemaining >= 0 &&
+          item.businessDaysRemaining <= 3,
+      ).length,
+      documentsWithoutSlaPolicy: workCenter.documentsWithoutSlaPolicy,
       documentsWithoutCode: workCenter.documents.filter(
         (document) => !document.code,
       ).length,
@@ -88,6 +98,12 @@ export function useOperationalHome() {
       tramiteExecutionAttention: ["restricted", "error"].includes(
         workCenter.tramiteStatus,
       ),
+      calendarInstalled: ["ready", "empty"].includes(
+        workCenter.calendarStatus,
+      ),
+      calendarAttention: ["restricted", "error"].includes(
+        workCenter.calendarStatus,
+      ),
     };
     return {
       metrics,
@@ -103,7 +119,9 @@ export function useOperationalHome() {
     policies.templates.length,
     workCenter.activeInstances.length,
     workCenter.codingStatus,
+    workCenter.calendarStatus,
     workCenter.documents,
+    workCenter.documentsWithoutSlaPolicy,
     workCenter.projects.length,
     workCenter.projectsAvailable,
     workCenter.projectSchemaMode,
