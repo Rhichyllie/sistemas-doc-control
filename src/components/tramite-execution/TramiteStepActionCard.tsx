@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Loader2, Paperclip, ShieldAlert } from "lucide-react";
+import {
+  CheckCircle2,
+  ExternalLink,
+  FileText,
+  Link2,
+  Loader2,
+  NotebookPen,
+  Paperclip,
+  ShieldAlert,
+} from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -22,7 +32,28 @@ import {
   type TramiteActorPermission,
   type TramiteStepDecision,
 } from "@/lib/documentTramiteExecution";
+import { formatEvidenceFileSize } from "@/lib/tramiteEvidenceFiles";
 import { TramiteStepAssignmentBadge } from "./TramiteStepAssignmentBadge";
+
+const EVIDENCE_LABELS: Record<
+  DocumentTramiteInstanceEvidence["evidence_type"],
+  string
+> = {
+  note: "Nota",
+  file: "Arquivo",
+  link: "Link",
+  external_reference: "Referência",
+};
+
+function EvidenceIcon({
+  type,
+}: {
+  type: DocumentTramiteInstanceEvidence["evidence_type"];
+}) {
+  if (type === "file") return <FileText className="h-4 w-4" />;
+  if (type === "link") return <Link2 className="h-4 w-4" />;
+  return <NotebookPen className="h-4 w-4" />;
+}
 
 export function TramiteStepActionCard({
   step,
@@ -33,6 +64,7 @@ export function TramiteStepActionCard({
   groupName,
   onComplete,
   onAddEvidence,
+  onOpenEvidence,
 }: {
   step: DocumentTramiteInstanceStep;
   evidence: DocumentTramiteInstanceEvidence[];
@@ -45,6 +77,7 @@ export function TramiteStepActionCard({
     comment: string | null;
   }) => Promise<void>;
   onAddEvidence: () => void;
+  onOpenEvidence: (evidence: DocumentTramiteInstanceEvidence) => Promise<void>;
 }) {
   const options = useMemo(
     () => getStepDecisionOptions(step.node_type),
@@ -73,9 +106,8 @@ export function TramiteStepActionCard({
   if (step.require_comment && !comment.trim()) {
     blockingReasons.push("Informe o comentário obrigatório.");
   }
-  const evidenceCount = evidence.filter(
-    (item) => item.step_id === step.id,
-  ).length;
+  const stepEvidence = evidence.filter((item) => item.step_id === step.id);
+  const evidenceCount = stepEvidence.length;
 
   return (
     <Card className="border-blue-200 shadow-sm">
@@ -145,8 +177,8 @@ export function TramiteStepActionCard({
           />
         </div>
 
-        {(step.required_evidence || step.node_type === "evidence") && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 p-3">
+        <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-sm font-medium">
                 {evidenceCount
@@ -154,7 +186,7 @@ export function TramiteStepActionCard({
                   : "Nenhuma evidência registrada"}
               </p>
               <p className="text-xs text-muted-foreground">
-                Notas e referências ficam no histórico da instância.
+                Notas, links e arquivos ficam vinculados a esta etapa.
               </p>
             </div>
             <Button type="button" variant="outline" onClick={onAddEvidence}>
@@ -162,7 +194,62 @@ export function TramiteStepActionCard({
               Registrar evidência
             </Button>
           </div>
-        )}
+          {stepEvidence.length > 0 && (
+            <div className="space-y-2">
+              {stepEvidence.map((item) => {
+                const fileSize = formatEvidenceFileSize(item.file_size);
+                const isSafeLink =
+                  item.evidence_type === "link" &&
+                  Boolean(item.note && /^https?:\/\//i.test(item.note));
+                return (
+                  <div
+                    key={item.id}
+                    className="flex flex-col justify-between gap-2 rounded-md border bg-background p-3 sm:flex-row sm:items-center"
+                  >
+                    <div className="flex min-w-0 gap-2">
+                      <EvidenceIcon type={item.evidence_type} />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline">
+                            {EVIDENCE_LABELS[item.evidence_type]}
+                          </Badge>
+                          {fileSize && (
+                            <span className="text-xs text-muted-foreground">
+                              {fileSize}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {item.file_name ||
+                            item.note ||
+                            "Evidência registrada"}
+                        </p>
+                      </div>
+                    </div>
+                    {item.evidence_type === "file" && item.file_path ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void onOpenEvidence(item)}
+                      >
+                        Abrir arquivo
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    ) : isSafeLink ? (
+                      <Button asChild size="sm" variant="ghost">
+                        <a href={item.note!} target="_blank" rel="noreferrer">
+                          Abrir link
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      </Button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {blockingReasons.length > 0 && (
           <Alert>

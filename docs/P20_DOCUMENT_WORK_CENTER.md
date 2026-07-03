@@ -16,6 +16,10 @@ Rota:
 > maturidade e riscos executivos. A Central permanece a caixa operacional com
 > os itens que precisam de navegação e ação no detalhe.
 
+> **Integração P-23:** a Central continua somente como cockpit e navegação.
+> Arquivos de evidência são enviados e registrados no detalhe do documento,
+> dentro da etapa ativa.
+
 ## Diagnóstico anterior
 
 O TRAMITA já possuía:

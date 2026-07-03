@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link2, Loader2, NotebookPen } from "lucide-react";
+import { FileUp, Link2, Loader2, NotebookPen } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -19,41 +19,58 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { DocumentTramiteInstanceStep } from "@/lib/documentTramiteExecution";
+import {
+  formatEvidenceFileSize,
+  TRAMITE_EVIDENCE_FILE_ACCEPT,
+} from "@/lib/tramiteEvidenceFiles";
+
+type EvidenceDialogType = "note" | "link" | "external_reference" | "file";
 
 export function TramiteEvidenceDialog({
   open,
   onOpenChange,
   step,
   isSaving,
+  canUploadFiles,
+  isCheckingFileSupport,
+  fileCompatibilityMessage,
   onSave,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   step: DocumentTramiteInstanceStep | null;
   isSaving: boolean;
+  canUploadFiles: boolean;
+  isCheckingFileSupport: boolean;
+  fileCompatibilityMessage?: string | null;
   onSave: (input: {
-    evidenceType: "note" | "link" | "external_reference";
+    evidenceType: EvidenceDialogType;
     note: string;
+    file: File | null;
   }) => Promise<void>;
 }) {
-  const [type, setType] = useState<"note" | "link" | "external_reference">(
-    "note",
-  );
+  const [type, setType] = useState<EvidenceDialogType>("note");
   const [note, setNote] = useState("");
+  const [file, setFile] = useState<File | null>(null);
 
   useEffect(() => {
-    if (!open) {
-      setType("note");
-      setNote("");
-    }
-  }, [open]);
+    setType(open && step?.required_file && canUploadFiles ? "file" : "note");
+    setNote("");
+    setFile(null);
+  }, [canUploadFiles, open, step?.id, step?.required_file]);
 
   const label =
     type === "note"
       ? "Nota de evidência"
       : type === "link"
         ? "Link da evidência"
-        : "Referência externa";
+        : type === "external_reference"
+          ? "Referência externa"
+          : "Descrição do arquivo (opcional)";
+  const canSubmit =
+    Boolean(step) &&
+    (type === "file" ? Boolean(file) : Boolean(note.trim())) &&
+    !isSaving;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -71,9 +88,7 @@ export function TramiteEvidenceDialog({
             <Label>Tipo</Label>
             <Select
               value={type}
-              onValueChange={(value) =>
-                setType(value as "note" | "link" | "external_reference")
-              }
+              onValueChange={(value) => setType(value as EvidenceDialogType)}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -92,9 +107,42 @@ export function TramiteEvidenceDialog({
                 <SelectItem value="external_reference">
                   Referência externa
                 </SelectItem>
+                {canUploadFiles && (
+                  <SelectItem value="file">
+                    <span className="flex items-center gap-2">
+                      <FileUp className="h-4 w-4" /> Arquivo
+                    </span>
+                  </SelectItem>
+                )}
               </SelectContent>
             </Select>
           </div>
+          {type === "file" && (
+            <div className="space-y-2">
+              <Label htmlFor="tramite-evidence-file">
+                Arquivo de evidência
+              </Label>
+              <input
+                id="tramite-evidence-file"
+                type="file"
+                accept={TRAMITE_EVIDENCE_FILE_ACCEPT}
+                className="block w-full rounded-md border bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium"
+                disabled={isSaving}
+                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              />
+              <p className="text-xs text-muted-foreground">
+                PDF, DOC, DOCX, XLS, XLSX, PNG, JPG ou DWG. Limite de 50 MB.
+              </p>
+              {file && (
+                <p className="rounded-md border bg-muted/30 p-2 text-xs">
+                  {file.name}
+                  {formatEvidenceFileSize(file.size)
+                    ? ` · ${formatEvidenceFileSize(file.size)}`
+                    : ""}
+                </p>
+              )}
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="tramite-evidence">{label}</Label>
             <Textarea
@@ -102,17 +150,25 @@ export function TramiteEvidenceDialog({
               value={note}
               onChange={(event) => setNote(event.target.value)}
               placeholder={
-                type === "note"
-                  ? "Descreva a evidência verificada."
-                  : "Informe o endereço ou identificador externo."
+                type === "file"
+                  ? "Descreva brevemente o conteúdo ou finalidade do arquivo."
+                  : type === "note"
+                    ? "Descreva a evidência verificada."
+                    : "Informe o endereço ou identificador externo."
               }
-              rows={4}
+              rows={type === "file" ? 2 : 4}
             />
           </div>
+          {!canUploadFiles && !isCheckingFileSupport && (
+            <p className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+              {fileCompatibilityMessage ??
+                "Upload de evidência ainda não instalado. Notas e links continuam disponíveis."}
+            </p>
+          )}
           {step?.required_file && (
             <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-              Esta etapa exige arquivo. O upload não faz parte da P-12.1; uma
-              nota não substitui esse requisito.
+              Esta etapa exige um arquivo de evidência. O upload registra o
+              arquivo, mas não conclui a etapa automaticamente.
             </p>
           )}
         </div>
@@ -127,11 +183,11 @@ export function TramiteEvidenceDialog({
           </Button>
           <Button
             type="button"
-            disabled={isSaving || !step || !note.trim()}
-            onClick={() => void onSave({ evidenceType: type, note })}
+            disabled={!canSubmit}
+            onClick={() => void onSave({ evidenceType: type, note, file })}
           >
             {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-            Registrar evidência
+            {type === "file" ? "Enviar e registrar" : "Registrar evidência"}
           </Button>
         </DialogFooter>
       </DialogContent>

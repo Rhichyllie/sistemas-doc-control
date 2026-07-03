@@ -1,5 +1,10 @@
 # P-12.1 — Execução Segura de Trâmites Documentais
 
+> **Integração P-23:** evidências do tipo arquivo agora podem ser enviadas ao
+> bucket privado e registradas pela RPC existente. Etapas `required_file` são
+> liberadas somente após evidência `file`; a conclusão continua explícita e
+> separada do upload.
+
 ## Objetivo
 
 A P-12.1 transforma um modelo P-12 publicado em uma instância documental

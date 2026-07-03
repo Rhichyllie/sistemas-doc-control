@@ -267,20 +267,19 @@ export function canCompleteStepLocally(
 
   if (!isAssigned) reasons.push("A etapa está atribuída a outro responsável.");
   if (
-    (step.required_evidence || step.required_file) &&
-    !evidence.some((item) => item.step_id === step.id)
-  ) {
-    reasons.push("Registre a evidência obrigatória antes de concluir.");
-  }
-  if (
     step.required_file &&
     !evidence.some(
       (item) => item.step_id === step.id && item.evidence_type === "file",
     )
   ) {
     reasons.push(
-      "Esta etapa exige arquivo. O upload será conectado em uma fase futura.",
+      "Esta etapa exige arquivo. Anexe uma evidência de arquivo antes de concluir.",
     );
+  } else if (
+    step.required_evidence &&
+    !evidence.some((item) => item.step_id === step.id)
+  ) {
+    reasons.push("Registre a evidência obrigatória antes de concluir.");
   }
 
   return { allowed: reasons.length === 0, reasons };

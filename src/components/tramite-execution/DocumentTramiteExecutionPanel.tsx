@@ -27,10 +27,12 @@ import { useDocumentTramiteEvidence } from "@/hooks/useDocumentTramiteEvidence";
 import { useDocumentTramiteExecution } from "@/hooks/useDocumentTramiteExecution";
 import { useDocumentTramiteInstances } from "@/hooks/useDocumentTramiteInstances";
 import { useDocumentTramiteTemplates } from "@/hooks/useDocumentTramiteTemplates";
+import { useTramiteEvidenceUpload } from "@/hooks/useTramiteEvidenceUpload";
 import { useWorkflowActors } from "@/hooks/useWorkflowActors";
 import type { Document } from "@/hooks/useDocuments";
 import {
   summarizeInstance,
+  type DocumentTramiteInstanceEvidence,
   type DocumentTramiteInstanceStep,
 } from "@/lib/documentTramiteExecution";
 import type { DocumentTramiteTemplate } from "@/lib/documentTramiteModel";
@@ -96,6 +98,10 @@ export function DocumentTramiteExecutionPanel({
   });
   const execution = useDocumentTramiteExecution(instancesState.refresh);
   const evidenceActions = useDocumentTramiteEvidence(instancesState.refresh);
+  const evidenceUpload = useTramiteEvidenceUpload({
+    enabled: ["ready", "empty"].includes(instancesState.schemaStatus),
+    refresh: instancesState.refresh,
+  });
   const templateState = useDocumentTramiteTemplates();
   const actors = useWorkflowActors();
 
@@ -228,24 +234,61 @@ export function DocumentTramiteExecutionPanel({
   }
 
   async function handleAddEvidence(input: {
-    evidenceType: "note" | "link" | "external_reference";
+    evidenceType: "note" | "link" | "external_reference" | "file";
     note: string;
+    file: File | null;
   }) {
     if (!evidenceStep) return;
     try {
-      await evidenceActions.addEvidence({
-        stepId: evidenceStep.id,
-        evidenceType: input.evidenceType,
-        note: input.note,
-        metadata: { source: "document_detail" },
-      });
+      if (input.evidenceType === "file") {
+        if (!input.file) {
+          throw new Error("Selecione o arquivo de evidência.");
+        }
+        const result = await evidenceUpload.uploadEvidence({
+          documentId: document.id,
+          instanceId: evidenceStep.instance_id,
+          stepId: evidenceStep.id,
+          file: input.file,
+          note: input.note,
+        });
+        result.warnings.forEach((warning) => toast.warning(warning));
+      } else {
+        await evidenceActions.addEvidence({
+          stepId: evidenceStep.id,
+          evidenceType: input.evidenceType,
+          note: input.note,
+          metadata: { source: "document_detail" },
+        });
+      }
       setEvidenceStep(null);
-      toast.success("Evidência registrada.");
+      toast.success(
+        "Evidência registrada. Agora você pode concluir a etapa quando os demais requisitos estiverem atendidos.",
+      );
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
           : "Falha ao registrar evidência.",
+      );
+    }
+  }
+
+  async function handleOpenEvidence(evidence: DocumentTramiteInstanceEvidence) {
+    if (!evidence.file_path) return;
+    try {
+      await evidenceUpload.openEvidenceFile({
+        filePath: evidence.file_path,
+        fileName: evidence.file_name,
+        storageBucket:
+          typeof evidence.metadata?.storage_bucket === "string"
+            ? evidence.metadata.storage_bucket
+            : null,
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível abrir a evidência.",
       );
     }
   }
@@ -551,6 +594,7 @@ export function DocumentTramiteExecutionPanel({
                       isCompleting={execution.isCompleting}
                       onComplete={(input) => handleComplete(step, input)}
                       onAddEvidence={() => setEvidenceStep(step)}
+                      onOpenEvidence={handleOpenEvidence}
                     />
                   ))}
 
@@ -606,7 +650,10 @@ export function DocumentTramiteExecutionPanel({
         open={Boolean(evidenceStep)}
         onOpenChange={(open) => !open && setEvidenceStep(null)}
         step={evidenceStep}
-        isSaving={evidenceActions.isAdding}
+        isSaving={evidenceActions.isAdding || evidenceUpload.isUploading}
+        canUploadFiles={evidenceUpload.canUploadFiles}
+        isCheckingFileSupport={evidenceUpload.isCheckingAvailability}
+        fileCompatibilityMessage={evidenceUpload.compatibilityMessage}
         onSave={handleAddEvidence}
       />
       <TramiteCancelDialog

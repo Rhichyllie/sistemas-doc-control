@@ -180,6 +180,15 @@ incorporado em
 período máximo de 120 meses, vínculo da versão inicial, confirmação final da
 codificação e sanitização das referências de arquivo.
 
+## P-23 — Evidências e Arquivos de Trâmite
+
+A P-23 é uma integração de frontend/produto e não adiciona ciclo SQL. O ciclo
+18 já contém os campos de arquivo, a RPC autorizada e o evento necessários.
+
+O frontend reutiliza o bucket privado `documents`, registra a referência por
+`add_document_tramite_evidence` e mantém a conclusão da etapa como ação
+separada. Não existe ciclo `21_TRAMITA_tramite_evidence_files` nesta fase.
+
 ## Hardening P-9A.1 — Grupos de Aprovação
 
 A P-9A.1 é um repair complementar, não um novo ciclo principal. O arquivo
