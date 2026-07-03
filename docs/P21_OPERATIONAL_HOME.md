@@ -209,3 +209,10 @@ críticas ou escalonamentos mudam o estado para atenção. Sem ciclo 23, o estad
 A Home não executa o health check completo nem duplica a Inbox. Administradores
 e gestores usam `/authenticated/configuracoes/diagnostico` para validar RLS,
 funções e o checklist de go-live.
+
+## Integração P-26 — Capacidade analítica
+
+A Home mostra a capacidade **Indicadores Operacionais** com os estados não
+instalado, precisa configurar, disponível ou atenção. Ela faz somente uma
+sondagem resumida e direciona para `/authenticated/indicadores`; rankings,
+filtros, SLA e gargalos permanecem no painel P-26.

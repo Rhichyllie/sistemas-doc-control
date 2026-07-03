@@ -1,12 +1,24 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useDocumentCodePatterns } from "@/hooks/useDocumentCodePatterns";
 import { useDocumentTemplatesAndRules } from "@/hooks/useDocumentTemplatesAndRules";
 import { useDocumentWorkCenter } from "@/hooks/useDocumentWorkCenter";
 import {
+  isIndicatorsPermissionError,
+  isMissingIndicatorsRpc,
+} from "@/lib/operationalIndicators";
+import {
   mapWorkCenterToHomeSummary,
   type OperationalHomeMetrics,
 } from "@/lib/operationalHome";
+import { supabase } from "@/lib/supabase";
+
+interface IndicatorsProbe {
+  installed: boolean;
+  attention: boolean;
+  hasData: boolean;
+  loading: boolean;
+}
 
 export function useOperationalHome() {
   const { profile, org } = useAuthContext();
@@ -19,6 +31,69 @@ export function useOperationalHome() {
   const policies = useDocumentTemplatesAndRules({
     includeInactive: false,
   });
+  const [indicatorsProbe, setIndicatorsProbe] = useState<IndicatorsProbe>({
+    installed: false,
+    attention: false,
+    hasData: false,
+    loading: true,
+  });
+
+  const refreshIndicatorsProbe = useCallback(async () => {
+    if (!profile?.org_id) {
+      setIndicatorsProbe({
+        installed: false,
+        attention: true,
+        hasData: false,
+        loading: false,
+      });
+      return;
+    }
+    setIndicatorsProbe((current) => ({ ...current, loading: true }));
+    const today = new Date().toISOString().slice(0, 10);
+    const { data, error } = await supabase.rpc("get_operational_indicators", {
+      p_from: today,
+      p_to: today,
+      p_scope: "mine",
+      p_project_id: null,
+      p_doc_type: null,
+      p_area: null,
+      p_responsible_user_id: null,
+      p_severity: null,
+      p_status: null,
+    });
+    if (!error) {
+      const root =
+        data && typeof data === "object" && !Array.isArray(data)
+          ? (data as Record<string, unknown>)
+          : {};
+      const summary =
+        root.summary &&
+        typeof root.summary === "object" &&
+        !Array.isArray(root.summary)
+          ? (root.summary as Record<string, unknown>)
+          : {};
+      setIndicatorsProbe({
+        installed: true,
+        attention: false,
+        hasData: Object.values(summary).some(
+          (value) => typeof value === "number" && value > 0,
+        ),
+        loading: false,
+      });
+      return;
+    }
+    setIndicatorsProbe({
+      installed: !isMissingIndicatorsRpc(error),
+      attention:
+        !isMissingIndicatorsRpc(error) || isIndicatorsPermissionError(error),
+      hasData: false,
+      loading: false,
+    });
+  }, [profile?.org_id]);
+
+  useEffect(() => {
+    void refreshIndicatorsProbe();
+  }, [refreshIndicatorsProbe]);
 
   const summary = useMemo(() => {
     const activeDocuments = workCenter.documents.filter(
@@ -115,6 +190,9 @@ export function useOperationalHome() {
       openEscalations: workCenter.openEscalations,
       notificationsInstalled: workCenter.notificationStatus === "enterprise",
       notificationsAttention: workCenter.notificationStatus === "unavailable",
+      indicatorsInstalled: indicatorsProbe.installed,
+      indicatorsAttention: indicatorsProbe.attention,
+      indicatorsHaveData: indicatorsProbe.hasData,
     };
     return {
       metrics,
@@ -147,6 +225,9 @@ export function useOperationalHome() {
     workCenter.tramiteModelingStatus,
     workCenter.tramiteStatus,
     workCenter.workItems,
+    indicatorsProbe.attention,
+    indicatorsProbe.hasData,
+    indicatorsProbe.installed,
   ]);
 
   const warnings = [
@@ -167,13 +248,18 @@ export function useOperationalHome() {
       workCenter.refresh(),
       coding.refresh(),
       policies.refresh(),
+      refreshIndicatorsProbe(),
     ]);
-  }, [coding, policies, workCenter]);
+  }, [coding, policies, refreshIndicatorsProbe, workCenter]);
 
   return {
     profile,
     org,
-    isLoading: workCenter.isLoading || coding.isLoading || policies.isLoading,
+    isLoading:
+      workCenter.isLoading ||
+      coding.isLoading ||
+      policies.isLoading ||
+      indicatorsProbe.loading,
     error: workCenter.error,
     warnings,
     refresh,

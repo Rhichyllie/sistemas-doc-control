@@ -40,6 +40,7 @@ export type OperationalReadinessRoute =
   | "/authenticated/configuracoes/calendario"
   | "/authenticated/equipe"
   | "/authenticated/notificacoes"
+  | "/authenticated/indicadores"
   | "/authenticated/documentos/central"
   | "/authenticated/trilha-de-auditoria";
 
@@ -346,6 +347,7 @@ export function buildOperationalReadiness(
   const cycle21 = cycle(report, "cycle_21_calendar");
   const cycle22 = cycle(report, "cycle_22_availability");
   const cycle23 = cycle(report, "cycle_23_notifications");
+  const cycle25 = cycle(report, "cycle_25_indicators");
   const notificationTables = [
     "internal_notifications",
     "notification_preferences",
@@ -452,6 +454,22 @@ export function buildOperationalReadiness(
       severity: "critical",
       actionLabel: "Abrir Notificações",
       actionRoute: "/authenticated/notificacoes",
+    }),
+    check({
+      id: "cycle-25",
+      section: "foundation",
+      goLiveSection: "pilot",
+      title: "Ciclo 25 — indicadores operacionais",
+      description:
+        "Camada analítica recomendada para gestão; não bloqueia o go-live operacional básico.",
+      status: installationStatus(cycle25, source),
+      severity: "info",
+      evidence:
+        rpc(report, "get_operational_indicators") === true
+          ? "RPC read-only confirmada."
+          : "RPC analítica ainda não confirmada.",
+      actionLabel: "Abrir Indicadores",
+      actionRoute: "/authenticated/indicadores",
     }),
     check({
       id: "organization-security-foundation",

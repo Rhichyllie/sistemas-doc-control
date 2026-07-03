@@ -31,6 +31,7 @@ A sequência lógica oficial é:
 23. `22_TRAMITA_calendar_enterprise_hardening`
 24. `23_TRAMITA_notifications_escalation`
 25. `24_TRAMITA_operational_readiness`
+26. `25_TRAMITA_operational_indicators`
 
 No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 
@@ -50,6 +51,7 @@ No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 - `supabase/migrations/20260702_p24_2_calendar_enterprise_hardening.sql`.
 - `supabase/migrations/20260702_p25_notifications_escalation.sql`.
 - `supabase/migrations/20260702_p25_1_operational_readiness.sql`.
+- `supabase/migrations/20260702_p26_operational_indicators.sql`.
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
@@ -246,6 +248,20 @@ O diagnóstico não cria notificações, não chama geração operacional, não 
 e-mail, não altera responsáveis, documentos, etapas ou `approval_flows`.
 Sem o ciclo 24, a tela usa fallback frontend e marca como não comprovadas as
 verificações que dependem do catálogo PostgreSQL.
+
+## P-26 — Indicadores Operacionais
+
+O ciclo 25 adiciona a RPC read-only `get_operational_indicators` e índices de
+leitura para análise de documentos, trâmites, SLA, evidências, notificações,
+escalonamentos e disponibilidade.
+
+A função limita o período a 365 dias, exige admin/manager no escopo
+organizacional e restringe usuários comuns ao escopo pessoal. Ela não gera
+notificações, não altera status, prazo ou responsável e não escreve em
+`approval_flows`.
+
+Migration:
+`supabase/migrations/20260702_p26_operational_indicators.sql`.
 
 ## Hardening P-9A.1 — Grupos de Aprovação
 

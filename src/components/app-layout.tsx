@@ -105,7 +105,7 @@ const nav: readonly NavigationItem[] = [
   },
   {
     to: "/authenticated/indicadores",
-    label: "Indicadores",
+    label: "Indicadores Operacionais",
     icon: ChartNoAxesCombined,
   },
   {

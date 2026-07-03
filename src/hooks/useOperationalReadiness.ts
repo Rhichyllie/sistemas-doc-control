@@ -11,6 +11,10 @@ import {
 } from "@/lib/operationalReadiness";
 import { supabase } from "@/lib/supabase";
 import { getSupportedTimeZones, isValidTimeZone } from "@/lib/timeZones";
+import {
+  isIndicatorsPermissionError,
+  isMissingIndicatorsRpc,
+} from "@/lib/operationalIndicators";
 
 interface Probe {
   available: boolean | null;
@@ -90,6 +94,30 @@ function allAvailable(probes: Probe[]) {
 
 function countOrNull(probe: Probe) {
   return probe.available === true ? probe.count : null;
+}
+
+function enrichWithIndicatorsProbe(
+  report: OperationalReadinessBackendReport,
+  error: unknown,
+  data: unknown,
+) {
+  const available = !error
+    ? true
+    : isMissingIndicatorsRpc(error)
+      ? false
+      : null;
+  report.cycles.cycle_25_indicators = available;
+  report.functions.get_operational_indicators = available;
+  report.configuration.operational_indicators_available = available;
+  report.security.indicators_scope_restricted =
+    isIndicatorsPermissionError(error);
+  if (!error && data && typeof data === "object" && !Array.isArray(data)) {
+    const summary = record((data as Record<string, unknown>).summary);
+    report.configuration.operational_indicators_have_data = Object.values(
+      summary,
+    ).some((value) => typeof value === "number" && value > 0);
+  }
+  return report;
 }
 
 async function loadFrontendFallback(
@@ -449,9 +477,24 @@ export function useOperationalReadiness() {
     setIsLoading(true);
     setError(null);
     setWarning(null);
-    const { data, error: rpcError } = await supabase.rpc(
-      "get_operational_readiness",
-    );
+    const today = new Date().toISOString().slice(0, 10);
+    const [
+      { data, error: rpcError },
+      { data: indicatorsData, error: indicatorsError },
+    ] = await Promise.all([
+      supabase.rpc("get_operational_readiness"),
+      supabase.rpc("get_operational_indicators", {
+        p_from: today,
+        p_to: today,
+        p_scope: "mine",
+        p_project_id: null,
+        p_doc_type: null,
+        p_area: null,
+        p_responsible_user_id: null,
+        p_severity: null,
+        p_status: null,
+      }),
+    ]);
 
     if (!rpcError) {
       const normalized = normalizeOperationalReadinessReport(data);
@@ -462,6 +505,7 @@ export function useOperationalReadiness() {
         setIsLoading(false);
         return;
       }
+      enrichWithIndicatorsProbe(normalized, indicatorsError, indicatorsData);
       setReport(normalized);
       setSource("database");
       setView(buildOperationalReadiness(normalized, "database"));
@@ -471,6 +515,11 @@ export function useOperationalReadiness() {
 
     try {
       const fallback = await loadFrontendFallback(profile.org_id, profile.role);
+      enrichWithIndicatorsProbe(
+        fallback.report,
+        indicatorsError,
+        indicatorsData,
+      );
       const rpcClassification = classifyError(rpcError);
       fallback.report.security.readiness_rpc_read_error =
         rpcClassification !== "missing";

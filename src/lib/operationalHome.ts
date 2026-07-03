@@ -54,6 +54,7 @@ export interface OperationalCapability {
     | "calendar_sla"
     | "team_availability"
     | "notifications"
+    | "operational_indicators"
     | "work_center";
   label: string;
   description: string;
@@ -119,6 +120,9 @@ export interface OperationalHomeMetrics {
   openEscalations: number;
   notificationsInstalled: boolean;
   notificationsAttention: boolean;
+  indicatorsInstalled: boolean;
+  indicatorsAttention: boolean;
+  indicatorsHaveData: boolean;
 }
 
 export function calculateOperationalHealth(
@@ -436,6 +440,25 @@ function capabilities(
           ? "attention"
           : "not_installed",
       target: "/authenticated/notificacoes",
+    },
+    {
+      id: "operational_indicators",
+      label: "Indicadores Operacionais",
+      description: metrics.indicatorsInstalled
+        ? metrics.indicatorsHaveData
+          ? "Análise de SLA e gargalos disponível."
+          : "Camada instalada; ainda sem dados no recorte."
+        : "Ciclo analítico 25 ainda não instalado.",
+      status: metrics.indicatorsInstalled
+        ? metrics.indicatorsAttention
+          ? "attention"
+          : metrics.indicatorsHaveData
+            ? "available"
+            : "configure"
+        : metrics.indicatorsAttention
+          ? "attention"
+          : "not_installed",
+      target: "/authenticated/indicadores",
     },
     {
       id: "work_center",

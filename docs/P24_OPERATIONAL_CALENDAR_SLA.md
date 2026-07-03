@@ -662,3 +662,10 @@ O health check apenas lê configuração e catálogos. Ele não recalcula
 `due_at`, não altera disponibilidade, não cria notificação e não executa
 substituição. Sem o ciclo 24 de readiness, essas verificações usam fallback
 frontend e não afirmam que RLS ou funções foram comprovadas.
+
+## Integração P-26 — Compliance e risco
+
+A P-26 usa os prazos persistidos e o calendário operacional para classificar
+itens no prazo, próximos e vencidos. Quando o calendário não está disponível,
+o painel identifica explicitamente a comparação simples. Nenhum `due_at` ou
+`next_review_at` é recalculado ou persistido pela análise.

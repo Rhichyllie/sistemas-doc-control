@@ -12,6 +12,7 @@ import {
   FolderKanban,
   GitBranch,
   Inbox,
+  LineChart,
   RefreshCw,
   Search,
   ShieldAlert,
@@ -324,6 +325,12 @@ export function DocumentWorkCenter() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link to="/authenticated/indicadores">
+              <LineChart className="mr-2 h-4 w-4" />
+              Ver indicadores deste conjunto
+            </Link>
+          </Button>
           {workCenter.canViewOrganization && (
             <Select
               value={scope}

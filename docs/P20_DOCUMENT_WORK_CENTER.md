@@ -224,3 +224,10 @@ executa `generate_operational_notifications`.
 
 O checklist também confirma que a Central permanece cockpit de navegação:
 conclusão, evidência e ação delegada continuam no detalhe do documento.
+
+## Integração P-26 — Indicadores Operacionais
+
+A Central continua sendo a caixa de trabalho. Ela oferece o link **Ver
+indicadores deste conjunto**, mas não executa a agregação analítica inline e
+não recebe gráficos ou rankings. A P-26 lê as mesmas fontes para calcular SLA,
+gargalos e concentração de risco em `/authenticated/indicadores`.

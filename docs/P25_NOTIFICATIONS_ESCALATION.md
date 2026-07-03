@@ -124,8 +124,7 @@ delegação quando:
 - o substituto não está indisponível;
 - ausência ou regra de delegação ativa é confirmada.
 
-`complete_document_tramite_step` foi substituída de forma aditiva pelo ciclo
-23. Na conclusão delegada:
+`complete_document_tramite_step` foi substituída de forma aditiva pelo ciclo 23. Na conclusão delegada:
 
 - `completed_by` recebe o usuário que realmente agiu;
 - `assignee_user_id` não muda;
@@ -338,3 +337,10 @@ Ele não executa testes nem altera dados automaticamente.
 Sem o ciclo 24, a tela continua funcional por consultas leves, mas não afirma
 que policies ou corpos de função foram comprovados. O roteiro completo e os
 checks `24_CHECK_*` estão em `docs/P25_1_OPERATIONAL_READINESS.md`.
+
+## Integração P-26 — Leitura analítica
+
+A P-26 lê notificações e eventos para medir não lidas, críticas,
+escalonamentos, gerações e supressões no período. A consulta analítica não
+chama `generate_operational_notifications`, não cria eventos e não processa a
+outbox.

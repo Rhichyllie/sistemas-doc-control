@@ -231,8 +231,7 @@ automaticamente.
 ## E-mail real
 
 A P-25.1 não envia e-mail. `notify_email` apenas permite preparar registro na
-outbox passiva. Não existe worker, cron ou chamada de provider nos ciclos 23 e
-24.
+outbox passiva. Não existe worker, cron ou chamada de provider nos ciclos 23 e 24.
 
 A Edge Function legada de aprovação permanece fora do fluxo P-25.
 
@@ -354,10 +353,23 @@ order by proname;
 - não há UI administrativa completa para regras de escalonamento;
 - evidência delegada, grupos e papéis continuam fora da delegação;
 - o fallback frontend não comprova RLS nem corpo de funções;
-- não existem indicadores históricos da P-26.
+- a P-26 não cria snapshots históricos; a prontidão valida apenas a camada
+  analítica atual.
+
+## Integração P-26 — Camada analítica recomendável
+
+O Diagnóstico Operacional passa a sondar
+`get_operational_indicators` e reconhecer o ciclo 25. A capacidade analítica é
+recomendável para gestão, mas sua ausência não bloqueia o go-live operacional
+básico validado pela P-25.1.
+
+O health check não executa geração de notificações nem altera dados ao sondar
+a RPC. A rota `/authenticated/indicadores` é apresentada como ação de
+configuração/verificação.
 
 ## Próximo passo
 
-Aplicar os ciclos 21, 22, 23 e 24 em ambiente de teste, resolver os bloqueios
-do checklist e executar um piloto controlado com titular e substituto. Somente
-depois dessa evidência deve começar a P-26.
+Aplicar os ciclos 21 a 25 em ambiente de teste, resolver os bloqueios do
+checklist e executar um piloto controlado com titular e substituto. Depois da
+validação analítica, a evolução recomendada é P-27 para relatórios e exportação
+formal de auditoria.
