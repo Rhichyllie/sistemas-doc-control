@@ -303,9 +303,18 @@ export function DocumentWorkCenter() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
         <div>
-          <Badge variant="outline" className="mb-3">
-            Operação documental
-          </Badge>
+          <div className="mb-3 flex flex-wrap gap-2">
+            <Badge variant="outline">Operação documental</Badge>
+            {workCenter.notificationStatus === "enterprise" ? (
+              <Badge variant="secondary">Notificações ativas</Badge>
+            ) : workCenter.notificationStatus === "legacy" ? (
+              <Badge variant="outline">Notificações em fallback</Badge>
+            ) : workCenter.notificationStatus === "loading" ? (
+              <Badge variant="outline">Verificando notificações</Badge>
+            ) : (
+              <Badge variant="outline">Notificações indisponíveis</Badge>
+            )}
+          </div>
           <h1 className="text-3xl font-bold tracking-tight">
             Central Documental
           </h1>

@@ -310,3 +310,31 @@ select public.generate_operational_notifications(now());
 - quiet hours e digest efetivos;
 - indicadores de entrega, leitura, tempo de resposta e escalonamento;
 - exportação de auditoria e modo auditor.
+
+## P-25.1 — Health check e prontidão operacional
+
+A P-25.1 cria o ciclo read-only
+`24_TRAMITA_operational_readiness` e a rota administrativa
+`/authenticated/configuracoes/diagnostico`.
+
+O health check diferencia:
+
+- ciclo ausente;
+- tabela/função parcial;
+- configuração vazia;
+- erro de leitura;
+- fallback frontend;
+- RLS e escrita sensível protegidas.
+
+A Inbox passa a identificar explicitamente ciclo 23 ativo ou fallback legado,
+mostra a última geração registrada e preserva o resultado detalhado da geração
+executada na sessão. Quando `errors > 0`, ela direciona para o Diagnóstico
+Operacional.
+
+O checklist de go-live valida calendário, feriados, SLA, ausência, delegação,
+modelo publicado, inbox, eventos, escalonamento e conclusão como substituto.
+Ele não executa testes nem altera dados automaticamente.
+
+Sem o ciclo 24, a tela continua funcional por consultas leves, mas não afirma
+que policies ou corpos de função foram comprovados. O roteiro completo e os
+checks `24_CHECK_*` estão em `docs/P25_1_OPERATIONAL_READINESS.md`.

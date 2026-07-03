@@ -158,7 +158,8 @@ continuam usando o fluxo compatível sem afetar a visão operacional.
   Central;
 - não há série histórica, tendência temporal ou comparação entre períodos;
 - a maturidade mede disponibilidade/configuração, não qualidade de processo;
-- não há atualização em tempo real, notificações, e-mails ou automações;
+- não há atualização em tempo real, envio de e-mails ou automações externas;
+- notificações são resumidas, nunca geradas pela Home;
 - nenhuma ação é executada diretamente pela Home.
 
 ## Próximos passos
@@ -197,3 +198,14 @@ está instalado.
 A Home resume notificações críticas não lidas e escalonamentos abertos e
 recomenda abrir a inbox. Ela não replica a lista completa nem executa ações.
 Sem ciclo 23, a capacidade aparece como não instalada ou usa o fallback legado.
+
+## Integração P-25.1 — Maturidade de notificações
+
+A capacidade da Home passa a se chamar **Notificações e escalonamento**. Com
+ciclo 23 ativo e sem críticas abertas, ela aparece disponível; notificações
+críticas ou escalonamentos mudam o estado para atenção. Sem ciclo 23, o estado
+é não instalado ou fallback.
+
+A Home não executa o health check completo nem duplica a Inbox. Administradores
+e gestores usam `/authenticated/configuracoes/diagnostico` para validar RLS,
+funções e o checklist de go-live.

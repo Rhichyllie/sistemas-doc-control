@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   Bell,
   CheckCheck,
@@ -32,11 +33,22 @@ import { useNotifications } from "@/hooks/useNotifications";
 import {
   explainNotification,
   getNotificationSeverityLabel,
+  type OperationalNotificationResult,
   type NotificationPreferences,
   type NotificationSeverity,
 } from "@/lib/notifications";
 
 type ReadFilter = "all" | "unread" | "read";
+
+function formatGenerationDate(value: string | null | undefined) {
+  if (!value) return "Nunca registrada";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Data indisponível";
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
 
 export function NotificationsInbox() {
   const { profile } = useAuthContext();
@@ -52,6 +64,8 @@ export function NotificationsInbox() {
   const [documentFilter, setDocumentFilter] = useState("");
   const [draftPreferences, setDraftPreferences] =
     useState<NotificationPreferences | null>(null);
+  const [lastGeneration, setLastGeneration] =
+    useState<OperationalNotificationResult | null>(null);
   const preferences = draftPreferences ?? state.preferences;
   const canGenerate = profile?.role === "admin" || profile?.role === "manager";
 
@@ -103,9 +117,16 @@ export function NotificationsInbox() {
   async function generate() {
     const result = await state.generateOperational();
     if (result) {
-      toast.success(
-        `${result.created} criada(s), ${result.skipped_duplicate} duplicada(s) ignorada(s).`,
-      );
+      setLastGeneration(result);
+      if (result.errors > 0) {
+        toast.warning(
+          "Alguns alertas não puderam ser gerados. Verifique o diagnóstico operacional.",
+        );
+      } else {
+        toast.success(
+          `${result.created} criada(s), ${result.skipped_duplicate} duplicada(s) ignorada(s).`,
+        );
+      }
     }
   }
 
@@ -149,14 +170,44 @@ export function NotificationsInbox() {
           </AlertDescription>
         </Alert>
       )}
+      {state.schemaStatus === "enterprise" && (
+        <Alert>
+          <Bell className="h-4 w-4" />
+          <AlertTitle>Ciclo 23 ativo</AlertTitle>
+          <AlertDescription>
+            A inbox enterprise está disponível. A geração permanece manual e
+            nenhum e-mail, WhatsApp ou SMS é enviado.
+          </AlertDescription>
+        </Alert>
+      )}
       {state.error && (
         <Alert variant="destructive">
           <AlertTitle>Notificações indisponíveis</AlertTitle>
           <AlertDescription>{state.error}</AlertDescription>
         </Alert>
       )}
+      {lastGeneration && (
+        <Alert variant={lastGeneration.errors > 0 ? "destructive" : "default"}>
+          <AlertTitle>Resultado da geração operacional</AlertTitle>
+          <AlertDescription className="space-y-3">
+            <p>
+              {lastGeneration.created} criada(s),{" "}
+              {lastGeneration.skipped_duplicate} duplicada(s) ignorada(s),{" "}
+              {lastGeneration.suppressed} suprimida(s) e {lastGeneration.errors}{" "}
+              erro(s).
+            </p>
+            {lastGeneration.errors > 0 && (
+              <Button asChild size="sm" variant="outline">
+                <Link to="/authenticated/configuracoes/diagnostico">
+                  Abrir Diagnóstico Operacional
+                </Link>
+              </Button>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">Não lidas</p>
@@ -176,6 +227,21 @@ export function NotificationsInbox() {
             <p className="text-sm text-muted-foreground">Escalonamentos</p>
             <p className="mt-1 text-2xl font-semibold">
               {state.escalationUnreadCount}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">Última geração</p>
+            <p className="mt-2 text-base font-semibold">
+              {formatGenerationDate(
+                lastGeneration?.generated_at ?? state.lastGeneratedAt,
+              )}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {lastGeneration
+                ? `${lastGeneration.created} criada(s) e ${lastGeneration.errors} erro(s) nesta sessão`
+                : "Evento notification_generated mais recente"}
             </p>
           </CardContent>
         </Card>

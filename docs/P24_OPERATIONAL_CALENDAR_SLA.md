@@ -646,3 +646,19 @@ responsável ou status.
 O substituto pode concluir somente etapa `specific_user`, com confirmação no
 frontend e validação final no banco. A trilha registra o ator real e
 `delegated_from_user_id`.
+
+## Integração P-25.1 — Validação de prontidão
+
+O Diagnóstico Operacional verifica como requisitos de piloto:
+
+- calendário padrão configurado;
+- timezone IANA reconhecido;
+- feriados cadastrados ou importados;
+- política SLA ativa;
+- ausência ou delegação de teste;
+- funções `is_user_unavailable` e `resolve_user_substitute`.
+
+O health check apenas lê configuração e catálogos. Ele não recalcula
+`due_at`, não altera disponibilidade, não cria notificação e não executa
+substituição. Sem o ciclo 24 de readiness, essas verificações usam fallback
+frontend e não afirmam que RLS ou funções foram comprovadas.

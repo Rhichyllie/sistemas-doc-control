@@ -424,7 +424,7 @@ function capabilities(
     },
     {
       id: "notifications",
-      label: "Notificações internas",
+      label: "Notificações e escalonamento",
       description: metrics.notificationsInstalled
         ? `${metrics.criticalUnreadNotifications} crítica(s) não lida(s).`
         : "Ciclo de notificações ainda não instalado.",

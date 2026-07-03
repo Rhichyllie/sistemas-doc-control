@@ -30,6 +30,7 @@ A sequência lógica oficial é:
 22. `21_TRAMITA_operational_calendar_sla`
 23. `22_TRAMITA_calendar_enterprise_hardening`
 24. `23_TRAMITA_notifications_escalation`
+25. `24_TRAMITA_operational_readiness`
 
 No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 
@@ -48,6 +49,7 @@ No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 - `supabase/migrations/20260630_p24_operational_calendar_sla.sql`.
 - `supabase/migrations/20260702_p24_2_calendar_enterprise_hardening.sql`.
 - `supabase/migrations/20260702_p25_notifications_escalation.sql`.
+- `supabase/migrations/20260702_p25_1_operational_readiness.sql`.
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
@@ -233,6 +235,17 @@ específico.
 Não há envio externo, reatribuição, conclusão automática ou alteração de
 `approval_flows`. O titular permanece em `assignee_user_id`; o ator real fica
 em `completed_by` e `delegated_from_user_id` na metadata.
+
+### P-25.1 — Diagnóstico e prontidão operacional
+
+O ciclo 24 adiciona somente a RPC read-only
+`get_operational_readiness`. Ela exige admin/manager, verifica ciclos 18, 21,
+22 e 23, policies, funções e configuração mínima por organização.
+
+O diagnóstico não cria notificações, não chama geração operacional, não envia
+e-mail, não altera responsáveis, documentos, etapas ou `approval_flows`.
+Sem o ciclo 24, a tela usa fallback frontend e marca como não comprovadas as
+verificações que dependem do catálogo PostgreSQL.
 
 ## Hardening P-9A.1 — Grupos de Aprovação
 

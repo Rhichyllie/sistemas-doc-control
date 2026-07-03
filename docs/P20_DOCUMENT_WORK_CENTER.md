@@ -168,7 +168,8 @@ Não existe ciclo `20_TRAMITA_document_work_center` nesta fase.
 - a necessidade obrigatória de projeto não é inferida sem uma política
   documental explícita;
 - conclusão de etapa, aprovação e correção continuam nas telas de detalhe;
-- não há notificações, e-mails, tarefas ou automações;
+- a Central exibe notificações, mas não as gera e não executa ações inline;
+- não há e-mails, tarefas ou automações externas;
 - não há paginação server-side da caixa nesta fase;
 - a segurança final das mutações permanece nas RPCs e RLS dos módulos de
   origem.
@@ -213,3 +214,13 @@ do documento; nenhuma conclusão ocorre inline.
 
 Sem o ciclo 23, os badges são omitidos e a Central mantém todas as fontes
 anteriores.
+
+## Integração P-25.1 — Saúde operacional
+
+A Central identifica de forma sutil quando notificações enterprise estão
+ativas, em fallback legado ou indisponíveis. Falhas do ciclo 23 direcionam o
+administrador ao Diagnóstico Operacional; abrir ou atualizar a Central não
+executa `generate_operational_notifications`.
+
+O checklist também confirma que a Central permanece cockpit de navegação:
+conclusão, evidência e ação delegada continuam no detalhe do documento.

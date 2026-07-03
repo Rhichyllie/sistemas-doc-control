@@ -37,6 +37,7 @@ export function useNotifications(options: { organizationView?: boolean } = {}) {
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastGeneratedAt, setLastGeneratedAt] = useState<string | null>(null);
 
   const fetchLegacyNotifications = useCallback(async () => {
     if (!profile?.id) return;
@@ -64,12 +65,14 @@ export function useNotifications(options: { organizationView?: boolean } = {}) {
     );
     setPreferences(DEFAULT_PREFERENCES);
     setSchemaStatus("legacy");
+    setLastGeneratedAt(null);
   }, [profile?.id]);
 
   const fetchNotifications = useCallback(async () => {
     if (!profile?.id || !profile.org_id) {
       setNotifications([]);
       setSchemaStatus("unavailable");
+      setLastGeneratedAt(null);
       setLoading(false);
       return;
     }
@@ -94,6 +97,7 @@ export function useNotifications(options: { organizationView?: boolean } = {}) {
       } else {
         setNotifications([]);
         setSchemaStatus("unavailable");
+        setLastGeneratedAt(null);
         setError(
           getErrorMessage(
             notificationResult.error,
@@ -112,14 +116,24 @@ export function useNotifications(options: { organizationView?: boolean } = {}) {
     );
     setSchemaStatus("enterprise");
 
-    const preferenceResult = await supabase
-      .from("notification_preferences")
-      .select(
-        "notify_in_app, notify_email, daily_digest, quiet_hours_start, quiet_hours_end",
-      )
-      .eq("org_id", profile.org_id)
-      .eq("user_id", profile.id)
-      .maybeSingle();
+    const [preferenceResult, generationEventResult] = await Promise.all([
+      supabase
+        .from("notification_preferences")
+        .select(
+          "notify_in_app, notify_email, daily_digest, quiet_hours_start, quiet_hours_end",
+        )
+        .eq("org_id", profile.org_id)
+        .eq("user_id", profile.id)
+        .maybeSingle(),
+      supabase
+        .from("notification_events")
+        .select("created_at")
+        .eq("org_id", profile.org_id)
+        .eq("event_type", "notification_generated")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
     if (!preferenceResult.error && preferenceResult.data) {
       setPreferences({
         notify_in_app: preferenceResult.data.notify_in_app !== false,
@@ -131,6 +145,11 @@ export function useNotifications(options: { organizationView?: boolean } = {}) {
     } else {
       setPreferences(DEFAULT_PREFERENCES);
     }
+    setLastGeneratedAt(
+      !generationEventResult.error && generationEventResult.data?.created_at
+        ? String(generationEventResult.data.created_at)
+        : null,
+    );
     setLoading(false);
   }, [
     fetchLegacyNotifications,
@@ -329,6 +348,7 @@ export function useNotifications(options: { organizationView?: boolean } = {}) {
     schemaStatus,
     organizationView,
     preferences,
+    lastGeneratedAt,
     markRead,
     markAllRead,
     dismiss,

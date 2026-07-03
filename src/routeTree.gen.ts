@@ -35,6 +35,7 @@ import { Route as AuthenticatedDocumentosRegrasRouteImport } from './routes/auth
 import { Route as AuthenticatedDocumentosNovoInteligenteRouteImport } from './routes/authenticated/documentos/novo-inteligente'
 import { Route as AuthenticatedDocumentosCodificacaoRouteImport } from './routes/authenticated/documentos/codificacao'
 import { Route as AuthenticatedDocumentosCentralRouteImport } from './routes/authenticated/documentos/central'
+import { Route as AuthenticatedConfiguracoesDiagnosticoRouteImport } from './routes/authenticated/configuracoes/diagnostico'
 import { Route as AuthenticatedConfiguracoesCalendarioRouteImport } from './routes/authenticated/configuracoes/calendario'
 
 const LoginRoute = LoginRouteImport.update({
@@ -182,6 +183,12 @@ const AuthenticatedDocumentosCentralRoute =
     path: '/documentos/central',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedConfiguracoesDiagnosticoRoute =
+  AuthenticatedConfiguracoesDiagnosticoRouteImport.update({
+    id: '/diagnostico',
+    path: '/diagnostico',
+    getParentRoute: () => AuthenticatedConfiguracoesRoute,
+  } as any)
 const AuthenticatedConfiguracoesCalendarioRoute =
   AuthenticatedConfiguracoesCalendarioRouteImport.update({
     id: '/calendario',
@@ -211,6 +218,7 @@ export interface FileRoutesByFullPath {
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
   '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
+  '/authenticated/configuracoes/diagnostico': typeof AuthenticatedConfiguracoesDiagnosticoRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
@@ -240,6 +248,7 @@ export interface FileRoutesByTo {
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
   '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
+  '/authenticated/configuracoes/diagnostico': typeof AuthenticatedConfiguracoesDiagnosticoRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
@@ -270,6 +279,7 @@ export interface FileRoutesById {
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
   '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
+  '/authenticated/configuracoes/diagnostico': typeof AuthenticatedConfiguracoesDiagnosticoRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
@@ -301,6 +311,7 @@ export interface FileRouteTypes {
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
     | '/authenticated/configuracoes/calendario'
+    | '/authenticated/configuracoes/diagnostico'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
@@ -330,6 +341,7 @@ export interface FileRouteTypes {
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
     | '/authenticated/configuracoes/calendario'
+    | '/authenticated/configuracoes/diagnostico'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
@@ -359,6 +371,7 @@ export interface FileRouteTypes {
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
     | '/authenticated/configuracoes/calendario'
+    | '/authenticated/configuracoes/diagnostico'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
@@ -558,6 +571,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDocumentosCentralRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/authenticated/configuracoes/diagnostico': {
+      id: '/authenticated/configuracoes/diagnostico'
+      path: '/diagnostico'
+      fullPath: '/authenticated/configuracoes/diagnostico'
+      preLoaderRoute: typeof AuthenticatedConfiguracoesDiagnosticoRouteImport
+      parentRoute: typeof AuthenticatedConfiguracoesRoute
+    }
     '/authenticated/configuracoes/calendario': {
       id: '/authenticated/configuracoes/calendario'
       path: '/calendario'
@@ -570,12 +590,15 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedConfiguracoesRouteChildren {
   AuthenticatedConfiguracoesCalendarioRoute: typeof AuthenticatedConfiguracoesCalendarioRoute
+  AuthenticatedConfiguracoesDiagnosticoRoute: typeof AuthenticatedConfiguracoesDiagnosticoRoute
 }
 
 const AuthenticatedConfiguracoesRouteChildren: AuthenticatedConfiguracoesRouteChildren =
   {
     AuthenticatedConfiguracoesCalendarioRoute:
       AuthenticatedConfiguracoesCalendarioRoute,
+    AuthenticatedConfiguracoesDiagnosticoRoute:
+      AuthenticatedConfiguracoesDiagnosticoRoute,
   }
 
 const AuthenticatedConfiguracoesRouteWithChildren =
