@@ -307,7 +307,6 @@ BEGIN
          AND (
            v_scope = 'org'
            OR document.author_id = v_actor_id
-           OR document.created_by = v_actor_id
          )
      ) THEN
     RAISE EXCEPTION
@@ -480,7 +479,6 @@ BEGIN
     AND (
       v_scope = 'org'
       OR document.author_id = v_actor_id
-      OR document.created_by = v_actor_id
     )
     AND (p_document_id IS NULL OR document.id = p_document_id)
     AND (p_project_id IS NULL OR document.project_id = p_project_id)
@@ -516,7 +514,6 @@ BEGIN
       AND (
         v_scope = 'org'
         OR document.author_id = v_actor_id
-        OR document.created_by = v_actor_id
       )
       AND (p_document_id IS NULL OR document.id = p_document_id)
       AND (p_project_id IS NULL OR document.project_id = p_project_id)
@@ -563,7 +560,7 @@ BEGIN
       JOIN public.documents document
         ON document.id = version.document_id
       WHERE document.org_id = $1
-        AND ($2 = 'org' OR document.author_id = $3 OR document.created_by = $3)
+        AND ($2 = 'org' OR document.author_id = $3)
         AND ($4 IS NULL OR document.id = $4)
         AND ($5 IS NULL OR document.project_id = $5)
         AND (
@@ -599,7 +596,7 @@ BEGIN
         JOIN public.documents document
           ON document.id = version.document_id
         WHERE document.org_id = $1
-          AND ($2 = 'org' OR document.author_id = $3 OR document.created_by = $3)
+          AND ($2 = 'org' OR document.author_id = $3)
           AND ($4 IS NULL OR document.id = $4)
           AND ($5 IS NULL OR document.project_id = $5)
           AND (
@@ -639,7 +636,7 @@ BEGIN
       JOIN public.documents document
         ON document.id = revision.document_id
       WHERE document.org_id = $1
-        AND ($2 = 'org' OR document.author_id = $3 OR document.created_by = $3)
+        AND ($2 = 'org' OR document.author_id = $3)
         AND ($4 IS NULL OR document.id = $4)
         AND ($5 IS NULL OR document.project_id = $5)
         AND (
@@ -675,7 +672,7 @@ BEGIN
         JOIN public.documents document
           ON document.id = revision.document_id
         WHERE document.org_id = $1
-          AND ($2 = 'org' OR document.author_id = $3 OR document.created_by = $3)
+          AND ($2 = 'org' OR document.author_id = $3)
           AND ($4 IS NULL OR document.id = $4)
           AND ($5 IS NULL OR document.project_id = $5)
           AND (
@@ -715,7 +712,7 @@ BEGIN
       JOIN public.documents document
         ON document.id = approval.document_id
       WHERE document.org_id = $1
-        AND ($2 = 'org' OR document.author_id = $3 OR document.created_by = $3)
+        AND ($2 = 'org' OR document.author_id = $3)
         AND ($4 IS NULL OR document.id = $4)
         AND ($5 IS NULL OR document.project_id = $5)
         AND (
@@ -751,7 +748,7 @@ BEGIN
         JOIN public.documents document
           ON document.id = approval.document_id
         WHERE document.org_id = $1
-          AND ($2 = 'org' OR document.author_id = $3 OR document.created_by = $3)
+          AND ($2 = 'org' OR document.author_id = $3)
           AND ($4 IS NULL OR document.id = $4)
           AND ($5 IS NULL OR document.project_id = $5)
           AND (
@@ -791,7 +788,7 @@ BEGIN
       JOIN public.documents document
         ON document.id = instance.document_id
       WHERE instance.org_id = $1
-        AND ($2 = 'org' OR document.author_id = $3 OR document.created_by = $3)
+        AND ($2 = 'org' OR document.author_id = $3)
         AND ($4 IS NULL OR document.id = $4)
         AND ($5 IS NULL OR document.project_id = $5)
         AND (
@@ -827,7 +824,7 @@ BEGIN
         JOIN public.documents document
           ON document.id = instance.document_id
         WHERE instance.org_id = $1
-          AND ($2 = 'org' OR document.author_id = $3 OR document.created_by = $3)
+          AND ($2 = 'org' OR document.author_id = $3)
           AND ($4 IS NULL OR document.id = $4)
           AND ($5 IS NULL OR document.project_id = $5)
           AND (
@@ -867,7 +864,7 @@ BEGIN
       JOIN public.documents document
         ON document.id = step.document_id
       WHERE step.org_id = $1
-        AND ($2 = 'org' OR document.author_id = $3 OR document.created_by = $3)
+        AND ($2 = 'org' OR document.author_id = $3)
         AND ($4 IS NULL OR document.id = $4)
         AND ($5 IS NULL OR document.project_id = $5)
         AND (
@@ -903,7 +900,7 @@ BEGIN
         JOIN public.documents document
           ON document.id = step.document_id
         WHERE step.org_id = $1
-          AND ($2 = 'org' OR document.author_id = $3 OR document.created_by = $3)
+          AND ($2 = 'org' OR document.author_id = $3)
           AND ($4 IS NULL OR document.id = $4)
           AND ($5 IS NULL OR document.project_id = $5)
           AND (
@@ -946,7 +943,6 @@ BEGIN
         AND (
           $2 = 'org'
           OR document.author_id = $3
-          OR document.created_by = $3
           OR event.actor_id = $3
         )
         AND ($4 IS NULL OR event.document_id = $4)
@@ -987,7 +983,6 @@ BEGIN
           AND (
             $2 = 'org'
             OR document.author_id = $3
-            OR document.created_by = $3
             OR event.actor_id = $3
           )
           AND ($4 IS NULL OR event.document_id = $4)
@@ -1042,7 +1037,6 @@ BEGIN
         AND (
           $2 = 'org'
           OR document.author_id = $3
-          OR document.created_by = $3
           OR event.actor_id = $3
         )
         AND ($4 IS NULL OR event.document_id = $4)
@@ -1082,7 +1076,6 @@ BEGIN
         AND (
           $2 = 'org'
           OR document.author_id = $3
-          OR document.created_by = $3
           OR evidence.uploaded_by = $3
         )
         AND ($4 IS NULL OR evidence.document_id = $4)
@@ -1123,7 +1116,6 @@ BEGIN
           AND (
             $2 = 'org'
             OR document.author_id = $3
-            OR document.created_by = $3
             OR evidence.uploaded_by = $3
           )
           AND ($4 IS NULL OR evidence.document_id = $4)
@@ -1182,7 +1174,6 @@ BEGIN
         AND (
           $2 = 'org'
           OR document.author_id = $3
-          OR document.created_by = $3
           OR evidence.uploaded_by = $3
         )
         AND ($4 IS NULL OR evidence.document_id = $4)
@@ -1215,7 +1206,6 @@ BEGIN
           $2 = 'org'
           OR audit.user_id = $3
           OR document.author_id = $3
-          OR document.created_by = $3
         )
         AND ($4 IS NULL OR audit.document_id = $4)
         AND ($5 IS NULL OR document.project_id = $5)
@@ -1256,7 +1246,6 @@ BEGIN
             $2 = 'org'
             OR audit.user_id = $3
             OR document.author_id = $3
-            OR document.created_by = $3
           )
           AND ($4 IS NULL OR audit.document_id = $4)
           AND ($5 IS NULL OR document.project_id = $5)
@@ -1314,7 +1303,6 @@ BEGIN
           $2 = 'org'
           OR audit.user_id = $3
           OR document.author_id = $3
-          OR document.created_by = $3
         )
         AND ($4 IS NULL OR audit.document_id = $4)
         AND ($5 IS NULL OR document.project_id = $5)
@@ -1377,7 +1365,7 @@ BEGIN
       JOIN public.documents document
         ON document.id = approval.document_id
       WHERE document.org_id = $1
-        AND ($2 = 'org' OR document.author_id = $3 OR document.created_by = $3)
+        AND ($2 = 'org' OR document.author_id = $3)
         AND ($4 IS NULL OR approval.document_id = $4)
         AND ($5 IS NULL OR document.project_id = $5)
         AND (
@@ -1900,7 +1888,6 @@ BEGIN
          AND (
            v_scope = 'org'
            OR document.author_id = v_actor_id
-           OR document.created_by = v_actor_id
          )
      ) THEN
     RAISE EXCEPTION
