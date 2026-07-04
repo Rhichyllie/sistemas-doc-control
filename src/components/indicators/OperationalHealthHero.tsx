@@ -78,6 +78,7 @@ export function OperationalHealthHero({
 
   return (
     <section
+      data-print-break-inside
       aria-labelledby="operational-health-title"
       className={`overflow-hidden rounded-2xl border ${content.shell}`}
     >

@@ -28,7 +28,7 @@ export function OperationalFlowPanel({
 }) {
   const flow = getOperationalFlow(report);
   return (
-    <Card className="h-full">
+    <Card data-print-break-inside className="h-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Workflow className="h-4 w-4 text-primary" />

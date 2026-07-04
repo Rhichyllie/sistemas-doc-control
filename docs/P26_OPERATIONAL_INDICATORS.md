@@ -365,3 +365,135 @@ status, prazo ou responsável, não conclui etapas e não altera
 - tendências continuam limitadas ao contrato da RPC P-26;
 - projetos legados podem manter rótulo resumido;
 - não há exportação formal, IA, OCR ou drill-down histórico.
+
+## P-26.2 — Executive BI Cockpit e Exportação para Reunião
+
+### Objetivo e fronteira com a P-27
+
+A P-26.2 transforma o cockpit em uma visão gerencial própria para reunião,
+compartilhamento de tela e investigação operacional. Ela continua usando a
+mesma RPC read-only `get_operational_indicators` e não cria migration.
+
+A exportação desta fase é visual e gerencial:
+
+- impressão ou PDF pelo recurso nativo do navegador;
+- resumo executivo para clipboard;
+- JSON com os dados e o contexto exibidos no painel.
+
+Relatório formal de auditoria, assinatura, dossiê, trilha probatória e
+exportação oficial permanecem reservados à P-27.
+
+### Modos de visualização
+
+- **Gestão:** filtros, saúde operacional, KPIs, gráficos, recomendações e
+  links para ação.
+- **Apresentação:** menos controles, gráficos maiores e leitura apropriada
+  para tela compartilhada ou impressão.
+- **Análise:** rankings, filtros e tabelas detalhadas para investigação.
+
+O modo selecionado fica somente no `localStorage`, na chave
+`tramita.indicators.viewMode`. Nenhuma preferência é persistida no banco.
+
+### Score de governança
+
+O **Operational Governance Score** é calculado no frontend, de 0 a 100, a
+partir de penalidades explícitas para:
+
+- distância do compliance de SLA para 100%;
+- proporção de etapas ativas vencidas;
+- evidências obrigatórias pendentes;
+- notificações críticas abertas;
+- ausências sem substituto;
+- lacunas de código, contexto, SLA e próxima revisão.
+
+O score não é persistido e não constitui certificação. A tela mostra os
+principais penalizadores e classifica o recorte como Excelente, Boa, Atenção,
+Crítica ou Dados insuficientes.
+
+### Gráficos e composição do cockpit
+
+- donut e barra empilhada de SLA, com valores absolutos;
+- comparação real entre período atual e anterior para documentos criados,
+  etapas concluídas e instâncias concluídas;
+- matriz de risco por impacto e urgência;
+- ranking de gargalos por responsável, projeto, área, tipo e etapa;
+- risco por responsável com ressalva contra avaliação individual isolada;
+- fluxo operacional;
+- intensidade visual por projeto ou área;
+- signal board de notificações e escalonamentos;
+- impacto de ausências e delegações;
+- grade de cobertura da qualidade documental.
+
+A RPC já fornece somente três comparações de períodos. Não há snapshot por
+dia, portanto a P-26.2 não cria linha temporal, sparkline histórica ou
+heatmap cruzado fictício. Projeto e área são rankings independentes, não uma
+matriz projeto x área.
+
+### Exportação para reunião
+
+**Imprimir / salvar PDF** chama `window.print()` e usa CSS específico para:
+
+- ocultar menu, banner, filtros e botões;
+- imprimir em A4 paisagem;
+- manter período, horário de geração, KPIs, gráficos e recomendações;
+- evitar cortes de cards quando o navegador respeita
+  `break-inside: avoid`;
+- usar fundo branco e contraste adequado.
+
+**Copiar resumo executivo** inclui período, saúde, score, SLA, atraso, maior
+gargalo, alertas críticos, recomendações e a limitação de leitura atual.
+
+**Exportar dados** gera
+`tramita-indicadores-YYYY-MM-DD.json` no navegador, contendo filtros, score,
+insights, métricas, rankings, recomendações e limitações. Nenhum backend novo
+é chamado.
+
+### Insights executivos
+
+As frases são determinísticas. Exemplos:
+
+- concentração do maior gargalo;
+- percentual de itens vencidos ou próximos;
+- evidências obrigatórias pendentes;
+- etapas sem cobertura de substituição;
+- comparação de throughput contra o período anterior;
+- aviso de que a leitura não substitui fechamento histórico.
+
+### Testes manuais P-26.2
+
+1. Abra `/authenticated/indicadores`.
+2. Confirme o modo Gestão.
+3. Ative o modo Apresentação.
+4. Ative o modo Análise.
+5. Recarregue e confirme a persistência local do modo.
+6. Confirme a barra de exportação.
+7. Use **Imprimir / salvar PDF** e revise a prévia A4 paisagem.
+8. Confirme que menu, banner, filtros e botões não aparecem na impressão.
+9. Use **Copiar resumo** e cole em um editor de texto.
+10. Use **Exportar dados** e valide o JSON gerado.
+11. Confirme score, classificação e penalizadores.
+12. Confirme donut e barra empilhada de SLA.
+13. Confirme comparação atual/anterior sem série temporal inventada.
+14. Confirme matriz de risco.
+15. Confirme grade de qualidade documental.
+16. Confirme risco por responsável e sua ressalva.
+17. Confirme intensidade por projeto e área.
+18. Confirme signal board de notificações.
+19. Confirme impacto de delegações.
+20. Confirme que Gestão mantém filtros e ações.
+21. Confirme que Apresentação reduz controles.
+22. Confirme que Análise mantém tabelas e rankings.
+23. Teste notebook, tablet e mobile.
+24. Confirme ausência de mutações, geração de alertas e chamadas externas.
+25. Execute `bunx tsc --noEmit` e `bun run build`.
+
+### Limitações P-26.2
+
+- PDF depende do motor de impressão do navegador;
+- o JSON é exportação gerencial, não evidência formal;
+- comparação anterior existe apenas para as três métricas retornadas pela RPC;
+- não há série diária, snapshot histórico, previsão ou tendência por
+  regressão;
+- não há matriz cruzada projeto x área;
+- abas não abertas não são forçadas para a impressão;
+- P-27 continua necessária para relatórios formais auditáveis.

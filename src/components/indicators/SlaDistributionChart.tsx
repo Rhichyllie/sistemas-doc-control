@@ -41,7 +41,7 @@ export function SlaDistributionChart({
   let offset = 0;
 
   return (
-    <Card className="h-full">
+    <Card data-print-break-inside className="h-full">
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -131,6 +131,35 @@ export function SlaDistributionChart({
                 </span>
               </div>
             ))}
+          </div>
+          <div
+            className="mt-5 flex h-3 overflow-hidden rounded-full bg-muted"
+            role="img"
+            aria-label={`Distribuição de SLA: ${distribution
+              .map((item) => `${item.label} ${item.value}`)
+              .join(", ")}`}
+          >
+            {distribution.map((item) => (
+              <div
+                key={item.id}
+                className={
+                  item.id === "on_time"
+                    ? "bg-emerald-500"
+                    : item.id === "due_soon"
+                      ? "bg-amber-500"
+                      : "bg-red-500"
+                }
+                style={{
+                  width: `${total ? (item.value / total) * 100 : 0}%`,
+                }}
+              />
+            ))}
+          </div>
+          <div className="mt-2 flex justify-between text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+            <span>{total.toLocaleString("pt-BR")} itens com prazo</span>
+            <span>
+              {report.sla.overdue?.toLocaleString("pt-BR") ?? "—"} vencidos
+            </span>
           </div>
           <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
             {report.sla.explanation}

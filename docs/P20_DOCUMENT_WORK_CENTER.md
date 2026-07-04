@@ -235,3 +235,7 @@ gargalos e concentração de risco em `/authenticated/indicadores`.
 Na P-26.1 essa separação permanece: a Central responde o que precisa ser feito
 agora; o cockpit explica padrão, concentração e desempenho sem concluir ações
 inline.
+
+Na P-26.2, exportação para reunião, score e gráficos adicionais permanecem no
+cockpit analítico. A Central continua navegando para o trabalho e não recebe
+modo de apresentação, impressão gerencial ou cálculos analíticos pesados.

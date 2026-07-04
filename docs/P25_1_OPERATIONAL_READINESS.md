@@ -371,6 +371,10 @@ O redesign P-26.1 não transforma o Diagnóstico em dashboard. Readiness continu
 comprovando ciclo, função e segurança; métricas, gráficos e gargalos ficam em
 `/authenticated/indicadores`.
 
+A P-26.2 mantém a mesma fronteira: o Diagnóstico comprova instalação,
+permissões e prontidão; não calcula Governance Score, não exporta o cockpit e
+não assume o papel de análise de performance.
+
 ## Próximo passo
 
 Aplicar os ciclos 21 a 25 em ambiente de teste, resolver os bloqueios do

@@ -38,7 +38,7 @@ export function BottleneckBarChart({
   const top = items[0];
 
   return (
-    <Card className="h-full">
+    <Card data-print-break-inside className="h-full">
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

@@ -14,7 +14,10 @@ export function MetricCardGrid({ metrics }: { metrics: OperationalKpiCard[] }) {
           </p>
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <div
+        data-print-break-inside
+        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6"
+      >
         {metrics.map((metric) => (
           <VisualMetricCard key={metric.id} metric={metric} />
         ))}

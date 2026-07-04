@@ -269,6 +269,16 @@ A P-26.1 não cria ciclo SQL nem altera a RPC P-26. É uma evolução frontend/U
 da rota `/authenticated/indicadores`, mantendo a persistência e a leitura no
 ciclo `25_TRAMITA_operational_indicators`.
 
+### P-26.2 — Executive BI Cockpit
+
+A P-26.2 não cria ciclo SQL e não altera `get_operational_indicators`. Modos
+de visualização, Governance Score, gráficos adicionais, resumo executivo,
+exportação JSON e impressão/PDF pelo navegador são recursos frontend sobre o
+ciclo `25_TRAMITA_operational_indicators`.
+
+Não há snapshot histórico, mutação operacional ou relatório formal de
+auditoria nesta fase.
+
 ## Hardening P-9A.1 — Grupos de Aprovação
 
 A P-9A.1 é um repair complementar, não um novo ciclo principal. O arquivo

@@ -30,7 +30,7 @@ export function NotificationSignalPanel({
       color: "bg-destructive",
     },
     {
-      label: "Escalonamentos",
+      label: "Escalonamentos abertos",
       value: report.notifications.openEscalations,
       width: 86,
       color: "bg-amber-500",
@@ -42,6 +42,12 @@ export function NotificationSignalPanel({
       color: "bg-sky-500",
     },
     {
+      label: "Escaladas no período",
+      value: report.notifications.escalatedInPeriod,
+      width: 70,
+      color: "bg-orange-500",
+    },
+    {
       label: "Suprimidas",
       value: report.notifications.suppressedInPeriod,
       width: 35,
@@ -51,7 +57,7 @@ export function NotificationSignalPanel({
   const maximum = Math.max(...signals.map((item) => item.value ?? 0), 1);
 
   return (
-    <Card>
+    <Card data-print-break-inside>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <BellRing className="h-4 w-4 text-primary" />
@@ -62,7 +68,7 @@ export function NotificationSignalPanel({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-3 md:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           {signals.map((signal) => (
             <div key={signal.label} className="rounded-xl border p-3">
               <p className="text-2xl font-semibold">
@@ -82,6 +88,21 @@ export function NotificationSignalPanel({
               </div>
             </div>
           ))}
+        </div>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/45 px-3 py-2 text-xs text-muted-foreground">
+          <span>
+            Última geração:{" "}
+            {report.notifications.lastGenerationAt
+              ? new Intl.DateTimeFormat("pt-BR", {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                }).format(new Date(report.notifications.lastGenerationAt))
+              : "não informada"}
+          </span>
+          <span>
+            Erros na última geração:{" "}
+            {formatCount(report.notifications.lastGenerationErrors)}
+          </span>
         </div>
         <Button asChild className="mt-4 h-auto p-0" variant="link">
           <Link to="/authenticated/notificacoes">

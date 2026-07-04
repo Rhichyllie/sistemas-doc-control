@@ -238,6 +238,64 @@ export interface QualitySignal {
   actionUrl: string;
 }
 
+export type IndicatorViewMode = "management" | "presentation" | "analysis";
+
+export interface GovernanceScoreBreakdownItem {
+  id: string;
+  label: string;
+  penalty: number;
+  maxPenalty: number;
+  explanation: string;
+}
+
+export interface OperationalGovernanceScore {
+  score: number | null;
+  classification:
+    | "Excelente"
+    | "Boa"
+    | "Atenção"
+    | "Crítica"
+    | "Dados insuficientes";
+  tone: IndicatorTone;
+  breakdown: GovernanceScoreBreakdownItem[];
+  penalizers: GovernanceScoreBreakdownItem[];
+}
+
+export interface TrendComparisonMetric {
+  id: "documents" | "steps" | "instances";
+  label: string;
+  current: number | null;
+  previous: number | null;
+  deltaPercent: number | null;
+  tone: IndicatorTone;
+  explanation: string;
+}
+
+export interface RiskMatrixSignal {
+  id: string;
+  label: string;
+  count: number;
+  impact: "high" | "low";
+  urgency: "high" | "low";
+  tone: IndicatorTone;
+}
+
+export interface QualityScoreSignal {
+  id: string;
+  label: string;
+  governedPercent: number | null;
+  occurrences: number | null;
+  tone: IndicatorTone;
+  explanation: string;
+}
+
+export interface ExecutiveInsight {
+  id: string;
+  title: string;
+  description: string;
+  tone: IndicatorTone;
+}
+
 type UnknownRecord = Record<string, unknown>;
 
 function record(value: unknown): UnknownRecord {
@@ -693,8 +751,24 @@ export function getHealthNarrative(report: OperationalIndicatorsReport) {
   if (status === "healthy") {
     return "A operação está estável: nenhum sinal crítico foi encontrado no recorte atual.";
   }
+  const singularLabels: Record<string, string> = {
+    "overdue-steps": "etapa vencida",
+    "critical-notifications": "notificação crítica",
+    "open-escalations": "escalonamento aberto",
+    "overdue-reviews": "revisão vencida",
+    "pending-evidence": "evidência pendente",
+    "unavailable-responsibles": "responsável ausente",
+    "without-sla": "item sem política SLA",
+  };
   const details = risks
-    .map((risk) => `${formatCount(risk.count)} ${risk.label.toLowerCase()}`)
+    .map(
+      (risk) =>
+        `${formatCount(risk.count)} ${
+          risk.count === 1
+            ? (singularLabels[risk.id] ?? risk.label.toLowerCase())
+            : risk.label.toLowerCase()
+        }`,
+    )
     .join(" e ");
   return status === "critical"
     ? `A operação está em risco: há ${details}.`
@@ -925,6 +999,491 @@ export function getQualitySignals(
       actionUrl: "/authenticated/documentos/central",
     },
   ];
+}
+
+function penaltyFromRatio(
+  occurrences: number | null,
+  total: number | null,
+  maxPenalty: number,
+) {
+  if (occurrences === null) return 0;
+  if (occurrences <= 0) return 0;
+  if (total === null || total <= 0) return maxPenalty;
+  return Math.min(maxPenalty, (occurrences / total) * maxPenalty);
+}
+
+export function getGovernanceScoreBreakdown(
+  report: OperationalIndicatorsReport,
+): GovernanceScoreBreakdownItem[] {
+  const compliancePenalty =
+    report.sla.complianceRate === null
+      ? 0
+      : Math.max(0, (100 - report.sla.complianceRate) * 0.3);
+  const activeDocuments =
+    report.documents.activeDocuments ?? report.summary.activeDocuments;
+  const activeSteps = report.tramites.activeSteps ?? report.summary.activeSteps;
+
+  return [
+    {
+      id: "sla",
+      label: "Compliance de SLA",
+      penalty: compliancePenalty,
+      maxPenalty: 30,
+      explanation: "Até 30 pontos conforme a distância para 100% de SLA.",
+    },
+    {
+      id: "overdue-steps",
+      label: "Etapas vencidas",
+      penalty: penaltyFromRatio(report.summary.overdueSteps, activeSteps, 20),
+      maxPenalty: 20,
+      explanation: "Até 20 pontos pela proporção de etapas ativas vencidas.",
+    },
+    {
+      id: "pending-evidence",
+      label: "Evidências pendentes",
+      penalty: penaltyFromRatio(
+        report.summary.pendingEvidenceSteps,
+        activeSteps,
+        12,
+      ),
+      maxPenalty: 12,
+      explanation:
+        "Até 12 pontos por etapas bloqueadas por evidência obrigatória.",
+    },
+    {
+      id: "critical-notifications",
+      label: "Notificações críticas",
+      penalty: Math.min(
+        15,
+        count(report.summary.criticalUnreadNotifications) * 3,
+      ),
+      maxPenalty: 15,
+      explanation: "Três pontos por alerta crítico ainda não tratado.",
+    },
+    {
+      id: "uncovered-absences",
+      label: "Ausências sem cobertura",
+      penalty: Math.min(
+        10,
+        count(report.delegations.activeStepsWithoutSubstitute) * 4,
+      ),
+      maxPenalty: 10,
+      explanation: "Até 10 pontos por etapas sem substituto disponível.",
+    },
+    {
+      id: "document-quality",
+      label: "Qualidade documental",
+      penalty:
+        penaltyFromRatio(
+          report.quality.documentsWithoutCode,
+          activeDocuments,
+          5,
+        ) +
+        penaltyFromRatio(
+          report.quality.documentsWithoutContext,
+          activeDocuments,
+          4,
+        ) +
+        penaltyFromRatio(
+          report.quality.documentsWithoutSlaPolicy,
+          activeDocuments,
+          4,
+        ) +
+        penaltyFromRatio(
+          report.quality.documentsWithoutNextReview,
+          activeDocuments,
+          3,
+        ),
+      maxPenalty: 16,
+      explanation:
+        "Até 16 pontos por lacunas de código, contexto, SLA e revisão.",
+    },
+  ].map((item) => ({
+    ...item,
+    penalty: Math.round(item.penalty * 10) / 10,
+  }));
+}
+
+export function getScoreTone(score: number | null): IndicatorTone {
+  if (score === null) return "neutral";
+  if (score >= 90) return "positive";
+  if (score >= 75) return "neutral";
+  if (score >= 55) return "attention";
+  return "critical";
+}
+
+export function getGovernanceScore(
+  report: OperationalIndicatorsReport,
+): OperationalGovernanceScore {
+  const measurableSignals = [
+    report.sla.complianceRate,
+    report.summary.overdueSteps,
+    report.summary.pendingEvidenceSteps,
+    report.summary.criticalUnreadNotifications,
+    report.delegations.activeStepsWithoutSubstitute,
+    report.quality.documentsWithoutCode,
+    report.quality.documentsWithoutContext,
+  ];
+  const breakdown = getGovernanceScoreBreakdown(report);
+
+  const knownSignals = measurableSignals.filter(
+    (value) => value !== null,
+  ).length;
+  if (
+    report.version.toLowerCase().includes("fallback") ||
+    report.sla.complianceRate === null ||
+    knownSignals < 4
+  ) {
+    return {
+      score: null,
+      classification: "Dados insuficientes",
+      tone: "neutral",
+      breakdown,
+      penalizers: [],
+    };
+  }
+
+  const totalPenalty = breakdown.reduce(
+    (total, item) => total + item.penalty,
+    0,
+  );
+  const score = Math.max(0, Math.round(100 - totalPenalty));
+  const classification =
+    score >= 90
+      ? "Excelente"
+      : score >= 75
+        ? "Boa"
+        : score >= 55
+          ? "Atenção"
+          : "Crítica";
+
+  return {
+    score,
+    classification,
+    tone: getScoreTone(score),
+    breakdown,
+    penalizers: [...breakdown]
+      .filter((item) => item.penalty > 0)
+      .sort((left, right) => right.penalty - left.penalty)
+      .slice(0, 3),
+  };
+}
+
+export function getTrendComparison(
+  report: OperationalIndicatorsReport,
+): TrendComparisonMetric[] {
+  const metrics: Array<
+    Omit<TrendComparisonMetric, "deltaPercent" | "tone"> & {
+      positiveGrowth: boolean;
+    }
+  > = [
+    {
+      id: "documents",
+      label: "Documentos criados",
+      current: report.trends.documentsCreatedCurrent,
+      previous: report.trends.documentsCreatedPrevious,
+      positiveGrowth: false,
+      explanation:
+        "Volume criado no período selecionado contra o intervalo anterior equivalente.",
+    },
+    {
+      id: "steps",
+      label: "Etapas concluídas",
+      current: report.trends.stepsCompletedCurrent,
+      previous: report.trends.stepsCompletedPrevious,
+      positiveGrowth: true,
+      explanation:
+        "Vazão de etapas comparada ao intervalo anterior equivalente.",
+    },
+    {
+      id: "instances",
+      label: "Trâmites concluídos",
+      current: report.trends.instancesCompletedCurrent,
+      previous: report.trends.instancesCompletedPrevious,
+      positiveGrowth: true,
+      explanation:
+        "Instâncias finalizadas comparadas ao intervalo anterior equivalente.",
+    },
+  ];
+
+  return metrics.map(({ positiveGrowth, ...metric }) => {
+    const deltaPercent = calculateTrend(metric.current, metric.previous);
+    return {
+      ...metric,
+      deltaPercent,
+      tone:
+        deltaPercent === null || deltaPercent === 0 || !positiveGrowth
+          ? "neutral"
+          : deltaPercent > 0
+            ? "positive"
+            : "attention",
+    };
+  });
+}
+
+export function getRiskMatrixSignals(
+  report: OperationalIndicatorsReport,
+): RiskMatrixSignal[] {
+  return [
+    {
+      id: "overdue-steps",
+      label: "Etapas vencidas",
+      count: count(report.summary.overdueSteps),
+      impact: "high",
+      urgency: "high",
+      tone: "critical",
+    },
+    {
+      id: "critical-notifications",
+      label: "Alertas críticos",
+      count: count(report.summary.criticalUnreadNotifications),
+      impact: "high",
+      urgency: "high",
+      tone: "critical",
+    },
+    {
+      id: "uncovered-absence",
+      label: "Ausências sem cobertura",
+      count: count(report.delegations.activeStepsWithoutSubstitute),
+      impact: "high",
+      urgency: "high",
+      tone: "critical",
+    },
+    {
+      id: "pending-evidence",
+      label: "Evidências pendentes",
+      count: count(report.summary.pendingEvidenceSteps),
+      impact: "high",
+      urgency: "low",
+      tone: "attention",
+    },
+    {
+      id: "without-sla",
+      label: "Documentos sem SLA",
+      count: count(report.quality.documentsWithoutSlaPolicy),
+      impact: "low",
+      urgency: "low",
+      tone: "attention",
+    },
+    {
+      id: "without-review",
+      label: "Sem próxima revisão",
+      count: count(report.quality.documentsWithoutNextReview),
+      impact: "low",
+      urgency: "low",
+      tone: "attention",
+    },
+  ].filter((signal) => signal.count > 0) as RiskMatrixSignal[];
+}
+
+export function getQualityScoreGrid(
+  report: OperationalIndicatorsReport,
+): QualityScoreSignal[] {
+  const activeDocuments =
+    report.documents.activeDocuments ?? report.summary.activeDocuments;
+  const activeSteps = report.tramites.activeSteps ?? report.summary.activeSteps;
+  const items = [
+    {
+      id: "code",
+      label: "Codificação",
+      occurrences: report.quality.documentsWithoutCode,
+      total: activeDocuments,
+      explanation: "Documentos com código controlado.",
+    },
+    {
+      id: "context",
+      label: "Contexto operacional",
+      occurrences: report.quality.documentsWithoutContext,
+      total: activeDocuments,
+      explanation: "Documentos vinculados a projeto ou contexto.",
+    },
+    {
+      id: "review",
+      label: "Revisão programada",
+      occurrences: report.quality.documentsWithoutNextReview,
+      total: activeDocuments,
+      explanation: "Documentos com próxima revisão definida.",
+    },
+    {
+      id: "sla",
+      label: "Cobertura de SLA",
+      occurrences: report.quality.documentsWithoutSlaPolicy,
+      total: activeDocuments,
+      explanation: "Documentos cobertos por política de prazo.",
+    },
+    {
+      id: "evidence",
+      label: "Evidências atendidas",
+      occurrences: report.quality.pendingEvidenceSteps,
+      total: activeSteps,
+      explanation: "Etapas sem pendência de evidência obrigatória.",
+    },
+  ];
+
+  return items.map((item) => {
+    const governedPercent =
+      item.occurrences === null || item.total === null || item.total <= 0
+        ? null
+        : Math.max(0, Math.round((1 - item.occurrences / item.total) * 100));
+    return {
+      id: item.id,
+      label: item.label,
+      governedPercent,
+      occurrences: item.occurrences,
+      tone:
+        governedPercent === null
+          ? "neutral"
+          : governedPercent >= 90
+            ? "positive"
+            : governedPercent >= 70
+              ? "attention"
+              : "critical",
+      explanation: item.explanation,
+    };
+  });
+}
+
+function topBottleneck(report: OperationalIndicatorsReport) {
+  return [
+    ...report.bottlenecks.byResponsible.map((item) => ({
+      ...item,
+      dimension: "responsável",
+    })),
+    ...report.bottlenecks.byProject.map((item) => ({
+      ...item,
+      dimension: "projeto",
+    })),
+    ...report.bottlenecks.byArea.map((item) => ({
+      ...item,
+      dimension: "área",
+    })),
+    ...report.bottlenecks.byStepType.map((item) => ({
+      ...item,
+      dimension: "tipo de etapa",
+    })),
+  ].sort((left, right) => right.count - left.count)[0];
+}
+
+export function getExecutiveInsights(
+  report: OperationalIndicatorsReport,
+): ExecutiveInsight[] {
+  const insights: ExecutiveInsight[] = [];
+  const bottleneck = topBottleneck(report);
+  const deadlineRisk =
+    report.sla.totalItemsWithDueDate &&
+    report.sla.totalItemsWithDueDate > 0 &&
+    report.sla.dueSoon !== null &&
+    report.sla.overdue !== null
+      ? Math.round(
+          ((report.sla.dueSoon + report.sla.overdue) /
+            report.sla.totalItemsWithDueDate) *
+            100,
+        )
+      : null;
+
+  if (bottleneck) {
+    insights.push({
+      id: "top-bottleneck",
+      title: `Risco concentrado em ${bottleneck.label}`,
+      description: `${bottleneck.count} ocorrência(s) no ranking por ${bottleneck.dimension}.`,
+      tone: "critical",
+    });
+  }
+  if (deadlineRisk !== null) {
+    insights.push({
+      id: "deadline-risk",
+      title: `${deadlineRisk}% dos itens exigem atenção de prazo`,
+      description: "Soma dos itens vencidos e próximos do vencimento.",
+      tone:
+        deadlineRisk >= 30
+          ? "critical"
+          : deadlineRisk > 0
+            ? "attention"
+            : "positive",
+    });
+  }
+  if (count(report.summary.pendingEvidenceSteps) > 0) {
+    insights.push({
+      id: "pending-evidence",
+      title: `${formatCount(report.summary.pendingEvidenceSteps)} evidência(s) pendente(s)`,
+      description: "Exigências obrigatórias podem estar bloqueando avanço.",
+      tone: "attention",
+    });
+  }
+  if (count(report.delegations.activeStepsWithoutSubstitute) > 0) {
+    insights.push({
+      id: "uncovered-absence",
+      title: `${formatCount(report.delegations.activeStepsWithoutSubstitute)} etapa(s) sem cobertura`,
+      description: "Há titular ausente sem substituto operacional disponível.",
+      tone: "critical",
+    });
+  }
+
+  const stepsTrend = calculateTrend(
+    report.trends.stepsCompletedCurrent,
+    report.trends.stepsCompletedPrevious,
+  );
+  if (
+    report.trends.stepsCompletedCurrent !== null &&
+    report.trends.stepsCompletedPrevious !== null
+  ) {
+    insights.push({
+      id: "throughput",
+      title: `${formatCount(report.trends.stepsCompletedCurrent)} etapas concluídas no período`,
+      description:
+        stepsTrend === null
+          ? `O período anterior teve ${formatCount(report.trends.stepsCompletedPrevious)} conclusão(ões); não há base percentual válida.`
+          : `${stepsTrend >= 0 ? "+" : ""}${stepsTrend}% contra o intervalo anterior equivalente.`,
+      tone:
+        stepsTrend === null || stepsTrend === 0
+          ? "neutral"
+          : stepsTrend > 0
+            ? "positive"
+            : "attention",
+    });
+  }
+
+  insights.push({
+    id: "snapshot-limit",
+    title: "Leitura gerencial do recorte atual",
+    description:
+      "Sem snapshots históricos, o painel não cria série temporal nem substitui fechamento formal.",
+    tone: "neutral",
+  });
+
+  return insights.slice(0, 6);
+}
+
+export function getMeetingSummary(report: OperationalIndicatorsReport) {
+  const score = getGovernanceScore(report);
+  const bottleneck = topBottleneck(report);
+  const recommendations = [...report.recommendations]
+    .sort((left, right) => {
+      const weight = { critical: 0, warning: 1, info: 2 };
+      return weight[left.severity] - weight[right.severity];
+    })
+    .slice(0, 3);
+
+  return [
+    "TRAMITA — Indicadores Operacionais",
+    `Período: ${report.period.from} a ${report.period.to}`,
+    `Saúde operacional: ${getHealthNarrative(report)}`,
+    `Governance Score: ${score.score === null ? "dados insuficientes" : `${score.score}/100 — ${score.classification}`}`,
+    `SLA: ${formatPercent(report.sla.complianceRate)} de compliance; ${formatCount(report.summary.overdueSteps)} etapa(s) vencida(s).`,
+    `Maior gargalo: ${
+      bottleneck
+        ? `${bottleneck.label} (${bottleneck.count}, por ${bottleneck.dimension})`
+        : "não identificado no recorte"
+    }.`,
+    `Notificações críticas: ${formatCount(report.summary.criticalUnreadNotifications)}.`,
+    "Recomendações:",
+    ...(recommendations.length
+      ? recommendations.map(
+          (item, index) => `${index + 1}. ${item.title} — ${item.explanation}`,
+        )
+      : ["1. Manter acompanhamento do recorte operacional."]),
+    "Limitação: esta é uma leitura visual gerencial; não substitui relatório formal de auditoria nem série histórica por snapshot.",
+  ].join("\n");
 }
 
 export function getIndicatorsSourceMessage(

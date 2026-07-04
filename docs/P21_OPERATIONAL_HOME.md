@@ -222,3 +222,10 @@ filtros, SLA e gargalos permanecem no painel P-26.
 O redesign do cockpit não replica gráficos ou rankings na Home. A Home
 continua respondendo “como está a operação?” com poucos sinais e direciona a
 análise detalhada para Indicadores Operacionais.
+
+### Separação preservada na P-26.2
+
+Os modos Gestão, Apresentação e Análise, o Governance Score e as exportações
+gerenciais vivem somente em `/authenticated/indicadores`. A Home continua
+mostrando poucos sinais executivos e o próximo movimento recomendado; ela não
+incorpora gráficos BI nem controles de impressão.

@@ -25,7 +25,7 @@ export function DelegationImpactPanel({
     : 100;
 
   return (
-    <Card>
+    <Card data-print-break-inside>
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
