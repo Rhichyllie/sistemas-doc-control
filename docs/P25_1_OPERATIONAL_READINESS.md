@@ -367,6 +367,10 @@ O health check não executa geração de notificações nem altera dados ao sond
 a RPC. A rota `/authenticated/indicadores` é apresentada como ação de
 configuração/verificação.
 
+O redesign P-26.1 não transforma o Diagnóstico em dashboard. Readiness continua
+comprovando ciclo, função e segurança; métricas, gráficos e gargalos ficam em
+`/authenticated/indicadores`.
+
 ## Próximo passo
 
 Aplicar os ciclos 21 a 25 em ambiente de teste, resolver os bloqueios do

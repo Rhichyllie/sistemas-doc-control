@@ -231,3 +231,7 @@ A Central continua sendo a caixa de trabalho. Ela oferece o link **Ver
 indicadores deste conjunto**, mas não executa a agregação analítica inline e
 não recebe gráficos ou rankings. A P-26 lê as mesmas fontes para calcular SLA,
 gargalos e concentração de risco em `/authenticated/indicadores`.
+
+Na P-26.1 essa separação permanece: a Central responde o que precisa ser feito
+agora; o cockpit explica padrão, concentração e desempenho sem concluir ações
+inline.

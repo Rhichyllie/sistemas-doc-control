@@ -262,3 +262,106 @@ snapshot analítico incremental e política de retenção.
 
 Roadmap futuro: **P-29.1 — Intelligent Document Intake**, para leitura,
 extração de campos e lotes. Essa capacidade não faz parte da P-26.
+
+## P-26.1 — Redesign Enterprise do Cockpit de Indicadores
+
+### Por que foi necessário
+
+A primeira interface da P-26 comprovou o contrato analítico, mas apresentava
+muitos cards com o mesmo peso, filtros sempre abertos e blocos densos. O
+usuário precisava interpretar números isolados antes de descobrir a saúde
+geral e a próxima ação.
+
+### Nova arquitetura visual
+
+A tela foi reorganizada em quatro níveis:
+
+1. header executivo com período, fonte, Central e Diagnóstico;
+2. hero de saúde com estado geral, narrativa determinística, três riscos, top
+   gargalo e próxima ação;
+3. seis KPIs prioritários acima da dobra;
+4. abas secundárias para SLA, gargalos, notificações, delegações e qualidade.
+
+Home, Central, Diagnóstico e Indicadores continuam separados. A Home resume, a
+Central navega para o trabalho, o Diagnóstico valida implantação e o cockpit
+analisa desempenho.
+
+### KPIs acima da dobra
+
+- compliance de SLA;
+- etapas vencidas;
+- tempo médio de ciclo;
+- evidências pendentes;
+- notificações críticas;
+- ausências impactando etapas.
+
+Cada KPI informa contexto, cálculo em tooltip e ação quando aplicável.
+
+### Gráficos criados
+
+- donut SVG acessível para distribuição de SLA;
+- barras horizontais para gargalos por responsável, projeto, área, tipo e
+  etapa;
+- fluxo operacional em blocos para instâncias, etapas, atraso, vazão e falhas;
+- sinal compacto de notificações;
+- cobertura comparativa de delegações.
+
+Os gráficos usam SVG e CSS existentes; nenhuma biblioteca adicional foi
+instalada.
+
+### Tabelas e recomendações
+
+As tabelas de gargalo, evidência e etapas paradas agora mostram impacto,
+exigência/idade e ação. Em telas pequenas, as linhas viram cards.
+
+As recomendações são ordenadas por severidade, exibem até três ações
+prioritárias e recolhem ações adicionais.
+
+### Filtros e estados
+
+Os períodos 7/30/90 dias ficam visíveis como chips. Filtros contextuais ficam
+em área avançada recolhível e os valores ativos aparecem como badges.
+
+Existem estados específicos para ciclo 25 ausente, fallback limitado, período
+sem movimento, escopo pessoal e erro da RPC. Uma operação saudável recebe
+narrativa positiva; não é apresentada como tela vazia.
+
+### Responsividade e acessibilidade
+
+- KPIs refluem de seis colunas para uma;
+- abas e seletores possuem rolagem horizontal controlada;
+- tabelas viram cards no mobile;
+- gráficos têm rótulos e `aria-label`, sem depender apenas de cor;
+- ações e explicações permanecem legíveis em notebook, tablet e celular.
+
+### Contrato preservado
+
+A P-26.1 não cria migration e não altera
+`get_operational_indicators`. Ela é uma evolução exclusivamente frontend/UX
+sobre o ciclo `25_TRAMITA_operational_indicators`.
+
+Nenhuma ação mutante foi adicionada: o cockpit não gera notificações, não muda
+status, prazo ou responsável, não conclui etapas e não altera
+`approval_flows`.
+
+### Testes manuais P-26.1
+
+1. Abra `/authenticated/indicadores`.
+2. Confirme hero, seis KPIs, top gargalo e próxima ação.
+3. Confirme donut de SLA, ranking e fluxo operacional.
+4. Navegue pelas seis abas.
+5. Teste período 7/30/90 dias.
+6. Abra filtros avançados e depois limpe os filtros.
+7. Teste ciclo 25 ausente, fallback, sem dados e erro.
+8. Valide desktop, notebook, tablet e mobile.
+9. Confirme que Home, Central e Diagnóstico mantêm seus papéis.
+10. Confirme que nenhuma mutação ou geração foi introduzida.
+11. Execute `bunx tsc --noEmit`.
+12. Execute `bun run build`.
+
+### Limitações
+
+- o redesign não adiciona snapshots históricos;
+- tendências continuam limitadas ao contrato da RPC P-26;
+- projetos legados podem manter rótulo resumido;
+- não há exportação formal, IA, OCR ou drill-down histórico.

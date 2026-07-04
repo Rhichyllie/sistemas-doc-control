@@ -263,6 +263,12 @@ notificações, não altera status, prazo ou responsável e não escreve em
 Migration:
 `supabase/migrations/20260702_p26_operational_indicators.sql`.
 
+### P-26.1 — Redesign do cockpit
+
+A P-26.1 não cria ciclo SQL nem altera a RPC P-26. É uma evolução frontend/UX
+da rota `/authenticated/indicadores`, mantendo a persistência e a leitura no
+ciclo `25_TRAMITA_operational_indicators`.
+
 ## Hardening P-9A.1 — Grupos de Aprovação
 
 A P-9A.1 é um repair complementar, não um novo ciclo principal. O arquivo

@@ -216,3 +216,9 @@ A Home mostra a capacidade **Indicadores Operacionais** com os estados não
 instalado, precisa configurar, disponível ou atenção. Ela faz somente uma
 sondagem resumida e direciona para `/authenticated/indicadores`; rankings,
 filtros, SLA e gargalos permanecem no painel P-26.
+
+### Separação preservada na P-26.1
+
+O redesign do cockpit não replica gráficos ou rankings na Home. A Home
+continua respondendo “como está a operação?” com poucos sinais e direciona a
+análise detalhada para Indicadores Operacionais.

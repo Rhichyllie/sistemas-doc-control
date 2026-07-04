@@ -170,6 +170,74 @@ export interface OperationalIndicatorsReport {
   limitations: string[];
 }
 
+export type IndicatorTone = "neutral" | "positive" | "attention" | "critical";
+export type OperationalHealthStatus =
+  | "healthy"
+  | "attention"
+  | "critical"
+  | "insufficient";
+export type BottleneckDimension =
+  | "responsible"
+  | "project"
+  | "area"
+  | "doc_type"
+  | "step_type";
+
+export interface OperationalRiskSignal {
+  id: string;
+  label: string;
+  explanation: string;
+  count: number;
+  tone: IndicatorTone;
+  actionUrl: string;
+}
+
+export interface OperationalKpiCard {
+  id:
+    | "sla"
+    | "overdue_steps"
+    | "cycle_time"
+    | "pending_evidence"
+    | "critical_notifications"
+    | "unavailable_responsibles";
+  label: string;
+  value: string;
+  rawValue: number | null;
+  context: string;
+  calculation: string;
+  tone: IndicatorTone;
+  actionUrl?: string;
+}
+
+export interface SlaDistributionItem {
+  id: "on_time" | "due_soon" | "overdue";
+  label: string;
+  value: number;
+  tone: IndicatorTone;
+}
+
+export interface OperationalFlowItem {
+  id:
+    | "active_instances"
+    | "active_steps"
+    | "overdue_steps"
+    | "completed_steps"
+    | "failed_instances";
+  label: string;
+  value: number | null;
+  tone: IndicatorTone;
+  description: string;
+}
+
+export interface QualitySignal {
+  id: string;
+  label: string;
+  value: number | null;
+  explanation: string;
+  tone: IndicatorTone;
+  actionUrl: string;
+}
+
 type UnknownRecord = Record<string, unknown>;
 
 function record(value: unknown): UnknownRecord {
@@ -465,6 +533,398 @@ export function formatCycleTime(hours: number | null) {
   return `${(hours / 24).toLocaleString("pt-BR", {
     maximumFractionDigits: 1,
   })} dias`;
+}
+
+export function formatDurationHours(hours: number | null) {
+  return formatCycleTime(hours);
+}
+
+export function formatPercent(value: number | null) {
+  return value === null
+    ? "—"
+    : `${value.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+}
+
+export function formatCount(value: number | null) {
+  return value === null ? "—" : value.toLocaleString("pt-BR");
+}
+
+export function getSeverityTone(
+  severity: string | null | undefined,
+): IndicatorTone {
+  if (severity === "critical" || severity === "danger") return "critical";
+  if (severity === "warning" || severity === "high") return "attention";
+  if (severity === "success" || severity === "healthy") return "positive";
+  return "neutral";
+}
+
+function count(value: number | null) {
+  return value ?? 0;
+}
+
+export function hasOperationalIndicatorData(
+  report: OperationalIndicatorsReport,
+) {
+  return [
+    report.summary.activeDocuments,
+    report.summary.activeTramiteInstances,
+    report.summary.activeSteps,
+    report.documents.createdInPeriod,
+    report.tramites.completedStepsInPeriod,
+    report.notifications.createdInPeriod,
+  ].some((value) => value !== null && value > 0);
+}
+
+export function getTopRisks(
+  report: OperationalIndicatorsReport,
+  limit = 3,
+): OperationalRiskSignal[] {
+  const signals: OperationalRiskSignal[] = [
+    {
+      id: "overdue-steps",
+      label: "Etapas vencidas",
+      explanation: "Trabalho ativo ultrapassou o prazo persistido.",
+      count: count(report.summary.overdueSteps),
+      tone: "critical",
+      actionUrl: "/authenticated/documentos/central",
+    },
+    {
+      id: "critical-notifications",
+      label: "Notificações críticas",
+      explanation: "Alertas críticos continuam sem leitura.",
+      count: count(report.summary.criticalUnreadNotifications),
+      tone: "critical",
+      actionUrl: "/authenticated/notificacoes",
+    },
+    {
+      id: "open-escalations",
+      label: "Escalonamentos abertos",
+      explanation: "Escalonamentos aguardam tratamento operacional.",
+      count: count(report.summary.openEscalations),
+      tone: "critical",
+      actionUrl: "/authenticated/notificacoes",
+    },
+    {
+      id: "overdue-reviews",
+      label: "Revisões vencidas",
+      explanation: "Documentos publicados ultrapassaram a revisão.",
+      count: count(report.summary.overdueReviews),
+      tone: "critical",
+      actionUrl: "/authenticated/documentos/central",
+    },
+    {
+      id: "pending-evidence",
+      label: "Evidências pendentes",
+      explanation: "Etapas aguardam evidência obrigatória.",
+      count: count(report.summary.pendingEvidenceSteps),
+      tone: "attention",
+      actionUrl: "/authenticated/documentos/central",
+    },
+    {
+      id: "unavailable-responsibles",
+      label: "Responsáveis ausentes",
+      explanation: "Ausências estão impactando etapas ativas.",
+      count: count(report.summary.unavailableResponsiblesWithActiveSteps),
+      tone: "attention",
+      actionUrl: "/authenticated/equipe",
+    },
+    {
+      id: "without-sla",
+      label: "Sem política SLA",
+      explanation: "Documentos não encontram política de prazo.",
+      count: count(report.sla.withoutSlaPolicy),
+      tone: "attention",
+      actionUrl: "/authenticated/configuracoes/calendario",
+    },
+  ];
+  const weight: Record<IndicatorTone, number> = {
+    critical: 0,
+    attention: 1,
+    neutral: 2,
+    positive: 3,
+  };
+  return signals
+    .filter((signal) => signal.count > 0)
+    .sort(
+      (left, right) =>
+        weight[left.tone] - weight[right.tone] || right.count - left.count,
+    )
+    .slice(0, limit);
+}
+
+export function getHealthStatus(
+  report: OperationalIndicatorsReport,
+): OperationalHealthStatus {
+  const knownSignals = [
+    report.summary.activeDocuments,
+    report.summary.overdueSteps,
+    report.summary.criticalUnreadNotifications,
+    report.summary.openEscalations,
+    report.sla.complianceRate,
+  ];
+  if (knownSignals.every((value) => value === null)) return "insufficient";
+  if (
+    count(report.summary.overdueSteps) > 0 ||
+    count(report.summary.criticalUnreadNotifications) > 0 ||
+    count(report.summary.openEscalations) > 0 ||
+    count(report.summary.overdueReviews) > 0 ||
+    (report.sla.complianceRate !== null && report.sla.complianceRate < 70)
+  ) {
+    return "critical";
+  }
+  if (
+    count(report.summary.dueSoonSteps) > 0 ||
+    count(report.summary.pendingEvidenceSteps) > 0 ||
+    count(report.summary.unavailableResponsiblesWithActiveSteps) > 0 ||
+    count(report.sla.withoutSlaPolicy) > 0 ||
+    (report.sla.complianceRate !== null && report.sla.complianceRate < 90)
+  ) {
+    return "attention";
+  }
+  return "healthy";
+}
+
+export function getHealthNarrative(report: OperationalIndicatorsReport) {
+  const status = getHealthStatus(report);
+  const risks = getTopRisks(report, 2);
+  if (status === "insufficient") {
+    return "Ainda não há dados suficientes para classificar a saúde operacional.";
+  }
+  if (status === "healthy") {
+    return "A operação está estável: nenhum sinal crítico foi encontrado no recorte atual.";
+  }
+  const details = risks
+    .map((risk) => `${formatCount(risk.count)} ${risk.label.toLowerCase()}`)
+    .join(" e ");
+  return status === "critical"
+    ? `A operação está em risco: há ${details}.`
+    : `A operação exige atenção: há ${details}.`;
+}
+
+export function getKpiCards(
+  report: OperationalIndicatorsReport,
+): OperationalKpiCard[] {
+  const compliance = report.sla.complianceRate;
+  const overdue = report.summary.overdueSteps;
+  const evidence = report.summary.pendingEvidenceSteps;
+  const notifications = report.summary.criticalUnreadNotifications;
+  const unavailable = report.summary.unavailableResponsiblesWithActiveSteps;
+  return [
+    {
+      id: "sla",
+      label: "Compliance de SLA",
+      value: formatPercent(compliance),
+      rawValue: compliance,
+      context: `${formatCount(report.sla.onTime)} no prazo de ${formatCount(report.sla.totalItemsWithDueDate)} com vencimento`,
+      calculation:
+        "Itens no prazo divididos pelo total com data de vencimento.",
+      tone:
+        compliance === null
+          ? "neutral"
+          : compliance < 70
+            ? "critical"
+            : compliance < 90
+              ? "attention"
+              : "positive",
+      actionUrl: "/authenticated/configuracoes/calendario",
+    },
+    {
+      id: "overdue_steps",
+      label: "Etapas vencidas",
+      value: formatCount(overdue),
+      rawValue: overdue,
+      context: `${formatCount(report.summary.activeSteps)} etapas ativas`,
+      calculation: "Etapas ativas com due_at anterior ao momento da leitura.",
+      tone: count(overdue) > 0 ? "critical" : "positive",
+      actionUrl: "/authenticated/documentos/central",
+    },
+    {
+      id: "cycle_time",
+      label: "Tempo médio de ciclo",
+      value: formatDurationHours(report.tramites.averageInstanceCycleHours),
+      rawValue: report.tramites.averageInstanceCycleHours,
+      context: `${formatCount(report.tramites.completedInstancesInPeriod)} instâncias concluídas`,
+      calculation: "Média entre início e conclusão das instâncias no período.",
+      tone: "neutral",
+    },
+    {
+      id: "pending_evidence",
+      label: "Evidências pendentes",
+      value: formatCount(evidence),
+      rawValue: evidence,
+      context: "Exigências ainda não atendidas",
+      calculation:
+        "Etapas ativas que exigem evidência ou arquivo sem registro válido.",
+      tone: count(evidence) > 0 ? "attention" : "positive",
+      actionUrl: "/authenticated/documentos/central",
+    },
+    {
+      id: "critical_notifications",
+      label: "Notificações críticas",
+      value: formatCount(notifications),
+      rawValue: notifications,
+      context: `${formatCount(report.summary.openEscalations)} escalonamentos abertos`,
+      calculation: "Notificações danger/critical não lidas e não dispensadas.",
+      tone: count(notifications) > 0 ? "critical" : "positive",
+      actionUrl: "/authenticated/notificacoes",
+    },
+    {
+      id: "unavailable_responsibles",
+      label: "Ausências com impacto",
+      value: formatCount(unavailable),
+      rawValue: unavailable,
+      context: `${formatCount(report.delegations.activeStepsWithoutSubstitute)} sem substituto`,
+      calculation: "Titulares indisponíveis que mantêm etapas ativas.",
+      tone: count(unavailable) > 0 ? "attention" : "positive",
+      actionUrl: "/authenticated/equipe",
+    },
+  ];
+}
+
+export function getSlaDistribution(
+  report: OperationalIndicatorsReport,
+): SlaDistributionItem[] {
+  return [
+    {
+      id: "on_time",
+      label: "No prazo",
+      value: count(report.sla.onTime),
+      tone: "positive",
+    },
+    {
+      id: "due_soon",
+      label: "Próximo",
+      value: count(report.sla.dueSoon),
+      tone: "attention",
+    },
+    {
+      id: "overdue",
+      label: "Vencido",
+      value: count(report.sla.overdue),
+      tone: "critical",
+    },
+  ];
+}
+
+export function getBottleneckSeries(
+  report: OperationalIndicatorsReport,
+  dimension: BottleneckDimension,
+) {
+  const source: Record<BottleneckDimension, OperationalBottleneck[]> = {
+    responsible: report.bottlenecks.byResponsible,
+    project: report.bottlenecks.byProject,
+    area: report.bottlenecks.byArea,
+    doc_type: report.bottlenecks.byDocType,
+    step_type: report.bottlenecks.byStepType,
+  };
+  return source[dimension].slice(0, 8);
+}
+
+export function getOperationalFlow(
+  report: OperationalIndicatorsReport,
+): OperationalFlowItem[] {
+  return [
+    {
+      id: "active_instances",
+      label: "Instâncias ativas",
+      value: report.tramites.activeInstances,
+      tone: "neutral",
+      description: "Trâmites em execução.",
+    },
+    {
+      id: "active_steps",
+      label: "Etapas ativas",
+      value: report.tramites.activeSteps,
+      tone: "neutral",
+      description: "Trabalho aberto agora.",
+    },
+    {
+      id: "overdue_steps",
+      label: "Etapas vencidas",
+      value: report.tramites.overdueSteps,
+      tone: count(report.tramites.overdueSteps) > 0 ? "critical" : "positive",
+      description: "Fora do prazo persistido.",
+    },
+    {
+      id: "completed_steps",
+      label: "Concluídas",
+      value: report.tramites.completedStepsInPeriod,
+      tone: "positive",
+      description: "Vazão no período.",
+    },
+    {
+      id: "failed_instances",
+      label: "Falhas",
+      value: report.tramites.failedInstancesInPeriod,
+      tone:
+        count(report.tramites.failedInstancesInPeriod) > 0
+          ? "critical"
+          : "positive",
+      description: "Instâncias falhadas no período.",
+    },
+  ];
+}
+
+export function getQualitySignals(
+  report: OperationalIndicatorsReport,
+): QualitySignal[] {
+  return [
+    {
+      id: "without-code",
+      label: "Documentos sem código",
+      value: report.quality.documentsWithoutCode,
+      explanation: "Reduz rastreabilidade e padronização.",
+      tone:
+        count(report.quality.documentsWithoutCode) > 0
+          ? "attention"
+          : "positive",
+      actionUrl: "/authenticated/documentos/codificacao",
+    },
+    {
+      id: "without-context",
+      label: "Sem projeto ou contexto",
+      value: report.quality.documentsWithoutContext,
+      explanation: "Dificulta análise por operação.",
+      tone:
+        count(report.quality.documentsWithoutContext) > 0
+          ? "attention"
+          : "positive",
+      actionUrl: "/authenticated/projetos",
+    },
+    {
+      id: "without-review",
+      label: "Sem próxima revisão",
+      value: report.quality.documentsWithoutNextReview,
+      explanation: "Documento publicado sem horizonte de revisão.",
+      tone:
+        count(report.quality.documentsWithoutNextReview) > 0
+          ? "attention"
+          : "positive",
+      actionUrl: "/authenticated/documentos/central",
+    },
+    {
+      id: "without-sla",
+      label: "Sem política SLA",
+      value: report.quality.documentsWithoutSlaPolicy,
+      explanation: "Prazo não encontra política aplicável.",
+      tone:
+        count(report.quality.documentsWithoutSlaPolicy) > 0
+          ? "attention"
+          : "positive",
+      actionUrl: "/authenticated/configuracoes/calendario",
+    },
+    {
+      id: "suggested-not-started",
+      label: "Trâmite sugerido não iniciado",
+      value: report.quality.documentsWithSuggestedTramiteNotStarted,
+      explanation: "Próximo passo documental ainda não confirmado.",
+      tone:
+        count(report.quality.documentsWithSuggestedTramiteNotStarted) > 0
+          ? "attention"
+          : "positive",
+      actionUrl: "/authenticated/documentos/central",
+    },
+  ];
 }
 
 export function getIndicatorsSourceMessage(
