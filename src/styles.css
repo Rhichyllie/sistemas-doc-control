@@ -136,3 +136,95 @@
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   }
 }
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  @page audit-report {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  [data-app-sidebar],
+  [data-app-banner],
+  [data-print-hidden] {
+    display: none !important;
+  }
+
+  [data-app-main] {
+    overflow: visible !important;
+  }
+
+  [data-app-content] {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  [data-print-only] {
+    display: block !important;
+  }
+
+  [data-indicator-cockpit] {
+    max-width: none !important;
+    gap: 12px !important;
+  }
+
+  [data-indicator-cockpit] a,
+  [data-indicator-cockpit] button {
+    text-decoration: none !important;
+  }
+
+  [data-print-break-inside] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  [data-audit-report-root] {
+    page: audit-report;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  [data-audit-print-section] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  [data-audit-report-root] table {
+    font-size: 9px !important;
+  }
+
+  [data-audit-report-root] th,
+  [data-audit-report-root] td {
+    padding: 4px 6px !important;
+  }
+
+  [data-audit-report-root] code {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  [data-print-page-break-before] {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  [data-indicator-cockpit] .shadow-sm,
+  [data-indicator-cockpit] .shadow-md,
+  [data-indicator-cockpit] .shadow-lg {
+    box-shadow: none !important;
+  }
+}

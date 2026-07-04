@@ -229,3 +229,8 @@ Os modos Gestão, Apresentação e Análise, o Governance Score e as exportaçõ
 gerenciais vivem somente em `/authenticated/indicadores`. A Home continua
 mostrando poucos sinais executivos e o próximo movimento recomendado; ela não
 incorpora gráficos BI nem controles de impressão.
+
+## Integração P-27 — Auditoria formal
+
+A Home não vira relatório nem inclui timeline probatória. Relatórios formais,
+hash e histórico append-only ficam na rota dedicada de auditoria.

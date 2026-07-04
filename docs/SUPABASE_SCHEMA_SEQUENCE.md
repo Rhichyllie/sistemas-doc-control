@@ -32,6 +32,7 @@ A sequência lógica oficial é:
 24. `23_TRAMITA_notifications_escalation`
 25. `24_TRAMITA_operational_readiness`
 26. `25_TRAMITA_operational_indicators`
+27. `26_TRAMITA_audit_reports_export`
 
 No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 
@@ -52,6 +53,7 @@ No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 - `supabase/migrations/20260702_p25_notifications_escalation.sql`.
 - `supabase/migrations/20260702_p25_1_operational_readiness.sql`.
 - `supabase/migrations/20260702_p26_operational_indicators.sql`.
+- `supabase/migrations/20260704_p27_audit_reports_export.sql`.
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
@@ -278,6 +280,20 @@ ciclo `25_TRAMITA_operational_indicators`.
 
 Não há snapshot histórico, mutação operacional ou relatório formal de
 auditoria nesta fase.
+
+## P-27 — Relatórios e Exportação Formal de Auditoria
+
+O ciclo 26 cria `audit_report_exports`, a RPC read-only
+`get_audit_report_package` e a RPC append-only
+`register_audit_report_export`.
+
+O pacote declara fontes, limitações, contagens e compatibilidade entre
+`document_versions` canônico e `document_revisions` legado. A única escrita é
+o registro da exportação; documentos, aprovações, trâmites, prazos,
+notificações e arquivos não são alterados.
+
+Migration:
+`supabase/migrations/20260704_p27_audit_reports_export.sql`.
 
 ## Hardening P-9A.1 — Grupos de Aprovação
 

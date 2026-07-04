@@ -497,3 +497,10 @@ As frases são determinísticas. Exemplos:
 - não há matriz cruzada projeto x área;
 - abas não abertas não são forçadas para a impressão;
 - P-27 continua necessária para relatórios formais auditáveis.
+
+## Integração P-27 — Relatórios formais
+
+A P-26.2 permanece gerencial. A P-27 adiciona a rota
+`/authenticated/auditoria/relatorios`, manifesto, cobertura, timeline, hash
+SHA-256 e histórico append-only. O cockpit não passa a registrar exportações
+formais e não assume função probatória.

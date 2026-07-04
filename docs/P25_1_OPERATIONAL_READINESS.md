@@ -375,6 +375,11 @@ A P-26.2 mantém a mesma fronteira: o Diagnóstico comprova instalação,
 permissões e prontidão; não calcula Governance Score, não exporta o cockpit e
 não assume o papel de análise de performance.
 
+A P-27 preserva essa separação. O Diagnóstico pode futuramente reconhecer o
+ciclo 26, mas não gera relatório, não calcula hash e não registra exportação.
+Essas responsabilidades pertencem a
+`/authenticated/auditoria/relatorios`.
+
 ## Próximo passo
 
 Aplicar os ciclos 21 a 25 em ambiente de teste, resolver os bloqueios do

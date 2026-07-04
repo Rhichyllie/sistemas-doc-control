@@ -239,3 +239,10 @@ inline.
 Na P-26.2, exportação para reunião, score e gráficos adicionais permanecem no
 cockpit analítico. A Central continua navegando para o trabalho e não recebe
 modo de apresentação, impressão gerencial ou cálculos analíticos pesados.
+
+## Integração P-27 — Relatórios de Auditoria
+
+A Central continua sendo a caixa operacional e não gera pacote formal inline.
+Quando necessário, o usuário abre `/authenticated/auditoria/relatorios` para
+definir período, escopo e filtros. Nenhuma ação da Central registra exportação
+ou altera o pacote.

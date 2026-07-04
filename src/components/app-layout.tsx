@@ -26,6 +26,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Activity,
+  FileCheck2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -112,6 +113,11 @@ const nav: readonly NavigationItem[] = [
     to: "/authenticated/trilha-de-auditoria",
     label: "Trilha de Auditoria",
     icon: ClipboardList,
+  },
+  {
+    to: "/authenticated/auditoria/relatorios",
+    label: "Relatórios de Auditoria",
+    icon: FileCheck2,
   },
   {
     to: "/authenticated/schema-doctor",
@@ -242,6 +248,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex bg-background">
       <aside
+        data-app-sidebar
         className={`${
           sidebarCollapsed ? "w-20" : "w-20 md:w-64"
         } sticky top-0 flex h-screen shrink-0 flex-col overflow-hidden text-sidebar-foreground transition-[width] duration-200`}
@@ -612,8 +619,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-auto">
+      <main data-app-main className="min-w-0 flex-1 overflow-auto">
         <div
+          data-app-banner
           className="w-full relative h-48"
           style={{
             backgroundImage: "url('/Banner_DOC.png')",
@@ -835,7 +843,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <NotificationBell state={notificationState} />
           </header>
         </div>
-        <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">{children}</div>
+        <div data-app-content className="p-6 lg:p-8 max-w-[1600px] mx-auto">
+          {children}
+        </div>
       </main>
     </div>
   );
