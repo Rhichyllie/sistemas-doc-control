@@ -13,6 +13,10 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "repo:doctor": "node scripts/repo-doctor.mjs",
+    "validate:structure": "node scripts/validate-structure.mjs",
+    "verify": "bun run typecheck && bun run validate:structure && bun run build",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
     "electron:build": "npm run build && electron-builder",
     "electron:build:win": "npm run build && electron-builder --win --publish never"

@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dist-ssr/
+build/
+out/
+.output/
+release/
+coverage/
+logs/
+*.log
+*.tsbuildinfo
+src/routeTree.gen.ts
+.tanstack/

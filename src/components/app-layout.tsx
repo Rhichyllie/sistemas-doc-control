@@ -1,34 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import {
-  House,
   FileStack,
-  Users,
   LogOut,
   Settings,
   Palette,
   Download,
   DatabaseZap,
-  GitBranch,
-  Bell,
-  ClipboardList,
   UserCircle,
-  Inbox,
-  ChartNoAxesCombined,
-  UsersRound,
-  Stethoscope,
-  ScrollText,
-  Code2,
-  FolderKanban,
-  Workflow,
-  PanelsTopLeft,
-  CalendarDays,
   PanelLeftClose,
   PanelLeftOpen,
-  Activity,
-  FileCheck2,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,103 +30,9 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { useApprovalQueue } from "@/hooks/useApprovalQueue";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { Badge } from "@/components/ui/badge";
+import { navigationItems } from "@/app/navigation/navigation-items";
+import { canViewNavigationItem } from "@/app/navigation/navigation-permissions";
 import { toast } from "sonner";
-
-interface NavigationItem {
-  to: string;
-  label: string;
-  icon: LucideIcon;
-  managerOnly?: boolean;
-  badge?: "activities" | "approval";
-}
-
-const nav: readonly NavigationItem[] = [
-  { to: "/authenticated/dashboard", label: "Início", icon: House },
-  { to: "/authenticated/documents", label: "Documentos", icon: FileStack },
-  {
-    to: "/authenticated/documentos/central",
-    label: "Central Documental",
-    icon: PanelsTopLeft,
-  },
-  { to: "/authenticated/projetos", label: "Projetos", icon: FolderKanban },
-  {
-    to: "/authenticated/atividades",
-    label: "Minhas Atividades",
-    icon: Inbox,
-    badge: "activities",
-  },
-  { to: "/authenticated/notificacoes", label: "Notificações", icon: Bell },
-  {
-    to: "/authenticated/fluxo-de-aprovacao",
-    label: "Fila de Aprovação",
-    icon: GitBranch,
-    badge: "approval",
-  },
-  {
-    to: "/authenticated/grupos-aprovacao",
-    label: "Grupos de Aprovação",
-    icon: UsersRound,
-    managerOnly: true,
-  },
-  {
-    to: "/authenticated/documentos/regras",
-    label: "Regras Documentais",
-    icon: ScrollText,
-    managerOnly: true,
-  },
-  {
-    to: "/authenticated/documentos/codificacao",
-    label: "Codificação Documental",
-    icon: Code2,
-    managerOnly: true,
-  },
-  {
-    to: "/authenticated/documentos/tramites",
-    label: "Trâmites Documentais",
-    icon: Workflow,
-    managerOnly: true,
-  },
-  {
-    to: "/authenticated/indicadores",
-    label: "Indicadores Operacionais",
-    icon: ChartNoAxesCombined,
-  },
-  {
-    to: "/authenticated/trilha-de-auditoria",
-    label: "Trilha de Auditoria",
-    icon: ClipboardList,
-  },
-  {
-    to: "/authenticated/auditoria/relatorios",
-    label: "Relatórios de Auditoria",
-    icon: FileCheck2,
-  },
-  {
-    to: "/authenticated/schema-doctor",
-    label: "Schema Doctor",
-    icon: Stethoscope,
-    managerOnly: true,
-  },
-  {
-    to: "/authenticated/configuracoes/diagnostico",
-    label: "Diagnóstico Operacional",
-    icon: Activity,
-    managerOnly: true,
-  },
-  { to: "/authenticated/equipe", label: "Equipe", icon: Users },
-  {
-    to: "/authenticated/configuracoes/calendario",
-    label: "Calendário e SLA",
-    icon: CalendarDays,
-    managerOnly: true,
-  },
-  {
-    to: "/authenticated/configuracoes",
-    label: "Configurações",
-    icon: Settings,
-    managerOnly: true,
-  },
-];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -497,13 +385,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <nav
           className={`${sidebarCollapsed ? "px-2" : "px-2 md:px-3"} flex-1 space-y-1 overflow-y-auto py-3`}
         >
-          {nav
-            .filter(
-              (item) =>
-                !item.managerOnly ||
-                profile?.role === "admin" ||
-                profile?.role === "manager",
-            )
+          {navigationItems
+            .filter((item) => canViewNavigationItem(item, profile))
             .map((item) => {
               const active =
                 item.to === "/authenticated/configuracoes"
