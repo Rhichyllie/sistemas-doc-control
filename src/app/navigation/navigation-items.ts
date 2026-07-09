@@ -15,6 +15,7 @@ import {
   ScrollText,
   Settings,
   ShieldAlert,
+  ScanText,
   Stethoscope,
   Users,
   UsersRound,
@@ -74,6 +75,12 @@ export const navigationItems: readonly NavigationItem[] = [
     to: "/authenticated/documentos/tramites",
     label: "Trâmites Documentais",
     icon: Workflow,
+    managerOnly: true,
+  },
+  {
+    to: "/authenticated/documentos/leitura",
+    label: "Leitura Documental",
+    icon: ScanText,
     managerOnly: true,
   },
   {

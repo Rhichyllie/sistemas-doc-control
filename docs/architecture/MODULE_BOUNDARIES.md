@@ -45,6 +45,18 @@ As fronteiras abaixo impedem que telas diferentes respondam à mesma pergunta ou
   notificações, prazos ou responsáveis.
 - Não substitui Relatórios de Auditoria; prepara investigação antes do piloto.
 
+## OCR e Leitura Documental
+
+- Registra solicitações de leitura técnica, páginas extraídas, método, origem,
+  confiança, warnings, erros e limitações.
+- Armazena somente texto observado, extraído ou informado manualmente com
+  método explícito.
+- Não resume, interpreta, corrige, classifica, infere campos ou preenche
+  metadados operacionais.
+- OCR falho, indisponível ou sem texto não invalida o documento e não altera
+  status, prazos, responsáveis, versões, aprovações, trâmites ou evidências.
+- Prepara base para busca e inteligência futuras sem executar IA na P-29.
+
 ## Documentos
 
 - Governa entidade documental, arquivos, versões, revisões, código e contexto.

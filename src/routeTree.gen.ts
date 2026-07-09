@@ -33,6 +33,7 @@ import { Route as AuthenticatedDocumentsDocumentIdRouteImport } from './routes/a
 import { Route as AuthenticatedDocumentosTramitesRouteImport } from './routes/authenticated/documentos/tramites'
 import { Route as AuthenticatedDocumentosRegrasRouteImport } from './routes/authenticated/documentos/regras'
 import { Route as AuthenticatedDocumentosNovoInteligenteRouteImport } from './routes/authenticated/documentos/novo-inteligente'
+import { Route as AuthenticatedDocumentosLeituraRouteImport } from './routes/authenticated/documentos/leitura'
 import { Route as AuthenticatedDocumentosCodificacaoRouteImport } from './routes/authenticated/documentos/codificacao'
 import { Route as AuthenticatedDocumentosCentralRouteImport } from './routes/authenticated/documentos/central'
 import { Route as AuthenticatedConfiguracoesDiagnosticoRouteImport } from './routes/authenticated/configuracoes/diagnostico'
@@ -173,6 +174,12 @@ const AuthenticatedDocumentosNovoInteligenteRoute =
     path: '/documentos/novo-inteligente',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedDocumentosLeituraRoute =
+  AuthenticatedDocumentosLeituraRouteImport.update({
+    id: '/documentos/leitura',
+    path: '/documentos/leitura',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDocumentosCodificacaoRoute =
   AuthenticatedDocumentosCodificacaoRouteImport.update({
     id: '/documentos/codificacao',
@@ -237,6 +244,7 @@ export interface FileRoutesByFullPath {
   '/authenticated/configuracoes/diagnostico': typeof AuthenticatedConfiguracoesDiagnosticoRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
+  '/authenticated/documentos/leitura': typeof AuthenticatedDocumentosLeituraRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
   '/authenticated/documentos/tramites': typeof AuthenticatedDocumentosTramitesRoute
@@ -269,6 +277,7 @@ export interface FileRoutesByTo {
   '/authenticated/configuracoes/diagnostico': typeof AuthenticatedConfiguracoesDiagnosticoRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
+  '/authenticated/documentos/leitura': typeof AuthenticatedDocumentosLeituraRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
   '/authenticated/documentos/tramites': typeof AuthenticatedDocumentosTramitesRoute
@@ -302,6 +311,7 @@ export interface FileRoutesById {
   '/authenticated/configuracoes/diagnostico': typeof AuthenticatedConfiguracoesDiagnosticoRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
+  '/authenticated/documentos/leitura': typeof AuthenticatedDocumentosLeituraRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
   '/authenticated/documentos/tramites': typeof AuthenticatedDocumentosTramitesRoute
@@ -336,6 +346,7 @@ export interface FileRouteTypes {
     | '/authenticated/configuracoes/diagnostico'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
+    | '/authenticated/documentos/leitura'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
     | '/authenticated/documentos/tramites'
@@ -368,6 +379,7 @@ export interface FileRouteTypes {
     | '/authenticated/configuracoes/diagnostico'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
+    | '/authenticated/documentos/leitura'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
     | '/authenticated/documentos/tramites'
@@ -400,6 +412,7 @@ export interface FileRouteTypes {
     | '/authenticated/configuracoes/diagnostico'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
+    | '/authenticated/documentos/leitura'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
     | '/authenticated/documentos/tramites'
@@ -583,6 +596,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDocumentosNovoInteligenteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/authenticated/documentos/leitura': {
+      id: '/authenticated/documentos/leitura'
+      path: '/documentos/leitura'
+      fullPath: '/authenticated/documentos/leitura'
+      preLoaderRoute: typeof AuthenticatedDocumentosLeituraRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/authenticated/documentos/codificacao': {
       id: '/authenticated/documentos/codificacao'
       path: '/documentos/codificacao'
@@ -682,6 +702,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAuditoriaRelatoriosRoute: typeof AuthenticatedAuditoriaRelatoriosRoute
   AuthenticatedDocumentosCentralRoute: typeof AuthenticatedDocumentosCentralRoute
   AuthenticatedDocumentosCodificacaoRoute: typeof AuthenticatedDocumentosCodificacaoRoute
+  AuthenticatedDocumentosLeituraRoute: typeof AuthenticatedDocumentosLeituraRoute
   AuthenticatedDocumentosNovoInteligenteRoute: typeof AuthenticatedDocumentosNovoInteligenteRoute
   AuthenticatedDocumentosRegrasRoute: typeof AuthenticatedDocumentosRegrasRoute
   AuthenticatedDocumentosTramitesRoute: typeof AuthenticatedDocumentosTramitesRoute
@@ -709,6 +730,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDocumentosCentralRoute: AuthenticatedDocumentosCentralRoute,
   AuthenticatedDocumentosCodificacaoRoute:
     AuthenticatedDocumentosCodificacaoRoute,
+  AuthenticatedDocumentosLeituraRoute: AuthenticatedDocumentosLeituraRoute,
   AuthenticatedDocumentosNovoInteligenteRoute:
     AuthenticatedDocumentosNovoInteligenteRoute,
   AuthenticatedDocumentosRegrasRoute: AuthenticatedDocumentosRegrasRoute,

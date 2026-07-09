@@ -33,6 +33,8 @@ A sequência lógica oficial é:
 25. `24_TRAMITA_operational_readiness`
 26. `25_TRAMITA_operational_indicators`
 27. `26_TRAMITA_audit_reports_export`
+28. `27_TRAMITA_audit_exceptions_reconciliation`
+29. `29_TRAMITA_document_ocr_base`
 
 No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 
@@ -54,6 +56,8 @@ No repositório, os ciclos enterprise versionados mais recentes correspondem a:
 - `supabase/migrations/20260702_p25_1_operational_readiness.sql`.
 - `supabase/migrations/20260702_p26_operational_indicators.sql`.
 - `supabase/migrations/20260704_p27_audit_reports_export.sql`.
+- `supabase/migrations/20260709_p27_1_audit_exceptions_reconciliation.sql`.
+- `supabase/migrations/20260709_p29_document_ocr_base.sql`.
 
 O ciclo 13 instala apenas a RPC de diagnóstico e a permissão controlada de execução. O Schema Doctor não aplica SQL corretivo, não cria os itens que diagnostica e não altera dados do ambiente.
 
@@ -316,6 +320,30 @@ Migration:
 
 Nome no Supabase SQL Editor:
 `27_TRAMITA_audit_exceptions_reconciliation`.
+
+## P-29 — OCR e Leitura Documental Base
+
+O ciclo 29 cria a base técnica de leitura/OCR sem IA e sem interpretação
+semântica. Ele adiciona:
+
+- `document_ocr_jobs`;
+- `document_ocr_pages`;
+- RPC `create_document_ocr_job`;
+- RPC `get_document_ocr_overview`;
+- RPC `get_document_ocr_job`;
+- RPC `store_document_ocr_result`;
+- RPC `get_document_ocr_text`.
+
+A P-29 armazena somente texto observado, extraído ou informado manualmente
+com método explícito. OCR externo fica como placeholder indisponível até fase
+futura. O ciclo não altera documentos, versões, revisões, aprovações,
+trâmites, evidências, notificações, prazos, responsáveis ou `approval_flows`.
+
+Migration:
+`supabase/migrations/20260709_p29_document_ocr_base.sql`.
+
+Nome no Supabase SQL Editor:
+`29_TRAMITA_document_ocr_base`.
 
 ## Hardening P-9A.1 — Grupos de Aprovação
 

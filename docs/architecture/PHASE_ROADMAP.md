@@ -14,6 +14,7 @@ Este documento resume as fases operacionais mais recentes e mantém a próxima f
 | P-26.2 | Entregue | Cockpit executivo e exportação gerencial. |
 | P-27 | Entregue | Relatórios formais de auditoria e histórico append-only. |
 | P-27.1 | Entregue | Central de Exceções e Reconciliação sem mutação operacional. |
+| P-29 | Entregue | OCR e leitura documental base, sem IA e sem interpretação. |
 
 ## Sequência estrutural antes da P-27.1
 
@@ -25,3 +26,6 @@ Este documento resume as fases operacionais mais recentes e mantém a próxima f
 
 P-27.1 cria controle de exceções; correção automática de dados continua fora
 do escopo.
+
+P-29 cria a base de texto observado por página. Busca, extração inteligente,
+OCR externo real e IA documental continuam reservados para fases futuras.
