@@ -13,7 +13,7 @@ Este documento resume as fases operacionais mais recentes e mantém a próxima f
 | P-26.1 | Entregue | Redesign enterprise do cockpit. |
 | P-26.2 | Entregue | Cockpit executivo e exportação gerencial. |
 | P-27 | Entregue | Relatórios formais de auditoria e histórico append-only. |
-| P-27.1 | Futura | Central de Exceções e Reconciliação. |
+| P-27.1 | Entregue | Central de Exceções e Reconciliação sem mutação operacional. |
 
 ## Sequência estrutural antes da P-27.1
 
@@ -21,6 +21,7 @@ Este documento resume as fases operacionais mais recentes e mantém a próxima f
 - R1 extrai a navegação do shell sem mudança visual.
 - R2 reduz responsabilidades do `AppLayout`.
 - R3 e R4 organizam domínios e contratos de forma gradual.
-- R5 prepara o contrato da P-27.1 antes de qualquer implementação.
+- R5 prepara exceções, reconciliação e hardening de piloto.
 
-P-27.1 não é implementada durante R0/R1.
+P-27.1 cria controle de exceções; correção automática de dados continua fora
+do escopo.

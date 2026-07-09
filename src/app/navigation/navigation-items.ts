@@ -14,6 +14,7 @@ import {
   PanelsTopLeft,
   ScrollText,
   Settings,
+  ShieldAlert,
   Stethoscope,
   Users,
   UsersRound,
@@ -89,6 +90,12 @@ export const navigationItems: readonly NavigationItem[] = [
     to: "/authenticated/auditoria/relatorios",
     label: "Relatórios de Auditoria",
     icon: FileCheck2,
+  },
+  {
+    to: "/authenticated/auditoria/excecoes",
+    label: "Central de Exceções",
+    icon: ShieldAlert,
+    managerOnly: true,
   },
   {
     to: "/authenticated/schema-doctor",

@@ -295,6 +295,28 @@ notificações e arquivos não são alterados.
 Migration:
 `supabase/migrations/20260704_p27_audit_reports_export.sql`.
 
+## P-27.1 — Central de Exceções e Reconciliação
+
+O ciclo 27 cria a camada de exceções e reconciliação sem alterar entidades
+operacionais. Ele adiciona:
+
+- `audit_reconciliation_runs`;
+- `audit_reconciliation_exceptions`;
+- RPC read-only `get_audit_reconciliation_overview`;
+- RPC de execução controlada `run_audit_reconciliation`;
+- RPC `update_audit_exception_status`;
+- RPC read-only `get_audit_exception_detail`.
+
+A única escrita ocorre nas tabelas próprias da P-27.1. O ciclo não altera
+documentos, versões, aprovações, trâmites, evidências, notificações, prazos,
+responsáveis ou `approval_flows`.
+
+Migration:
+`supabase/migrations/20260709_p27_1_audit_exceptions_reconciliation.sql`.
+
+Nome no Supabase SQL Editor:
+`27_TRAMITA_audit_exceptions_reconciliation`.
+
 ## Hardening P-9A.1 — Grupos de Aprovação
 
 A P-9A.1 é um repair complementar, não um novo ciclo principal. O arquivo

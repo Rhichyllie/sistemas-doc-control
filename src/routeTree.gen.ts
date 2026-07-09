@@ -38,6 +38,7 @@ import { Route as AuthenticatedDocumentosCentralRouteImport } from './routes/aut
 import { Route as AuthenticatedConfiguracoesDiagnosticoRouteImport } from './routes/authenticated/configuracoes/diagnostico'
 import { Route as AuthenticatedConfiguracoesCalendarioRouteImport } from './routes/authenticated/configuracoes/calendario'
 import { Route as AuthenticatedAuditoriaRelatoriosRouteImport } from './routes/authenticated/auditoria/relatorios'
+import { Route as AuthenticatedAuditoriaExcecoesRouteImport } from './routes/authenticated/auditoria/excecoes'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -202,6 +203,12 @@ const AuthenticatedAuditoriaRelatoriosRoute =
     path: '/auditoria/relatorios',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAuditoriaExcecoesRoute =
+  AuthenticatedAuditoriaExcecoesRouteImport.update({
+    id: '/auditoria/excecoes',
+    path: '/auditoria/excecoes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -224,6 +231,7 @@ export interface FileRoutesByFullPath {
   '/authenticated/projetos': typeof AuthenticatedProjetosRoute
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
+  '/authenticated/auditoria/excecoes': typeof AuthenticatedAuditoriaExcecoesRoute
   '/authenticated/auditoria/relatorios': typeof AuthenticatedAuditoriaRelatoriosRoute
   '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
   '/authenticated/configuracoes/diagnostico': typeof AuthenticatedConfiguracoesDiagnosticoRoute
@@ -255,6 +263,7 @@ export interface FileRoutesByTo {
   '/authenticated/projetos': typeof AuthenticatedProjetosRoute
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
+  '/authenticated/auditoria/excecoes': typeof AuthenticatedAuditoriaExcecoesRoute
   '/authenticated/auditoria/relatorios': typeof AuthenticatedAuditoriaRelatoriosRoute
   '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
   '/authenticated/configuracoes/diagnostico': typeof AuthenticatedConfiguracoesDiagnosticoRoute
@@ -287,6 +296,7 @@ export interface FileRoutesById {
   '/authenticated/projetos': typeof AuthenticatedProjetosRoute
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
+  '/authenticated/auditoria/excecoes': typeof AuthenticatedAuditoriaExcecoesRoute
   '/authenticated/auditoria/relatorios': typeof AuthenticatedAuditoriaRelatoriosRoute
   '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
   '/authenticated/configuracoes/diagnostico': typeof AuthenticatedConfiguracoesDiagnosticoRoute
@@ -320,6 +330,7 @@ export interface FileRouteTypes {
     | '/authenticated/projetos'
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
+    | '/authenticated/auditoria/excecoes'
     | '/authenticated/auditoria/relatorios'
     | '/authenticated/configuracoes/calendario'
     | '/authenticated/configuracoes/diagnostico'
@@ -351,6 +362,7 @@ export interface FileRouteTypes {
     | '/authenticated/projetos'
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
+    | '/authenticated/auditoria/excecoes'
     | '/authenticated/auditoria/relatorios'
     | '/authenticated/configuracoes/calendario'
     | '/authenticated/configuracoes/diagnostico'
@@ -382,6 +394,7 @@ export interface FileRouteTypes {
     | '/authenticated/projetos'
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
+    | '/authenticated/auditoria/excecoes'
     | '/authenticated/auditoria/relatorios'
     | '/authenticated/configuracoes/calendario'
     | '/authenticated/configuracoes/diagnostico'
@@ -605,6 +618,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAuditoriaRelatoriosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/authenticated/auditoria/excecoes': {
+      id: '/authenticated/auditoria/excecoes'
+      path: '/auditoria/excecoes'
+      fullPath: '/authenticated/auditoria/excecoes'
+      preLoaderRoute: typeof AuthenticatedAuditoriaExcecoesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -658,6 +678,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProjetosRoute: typeof AuthenticatedProjetosRoute
   AuthenticatedSchemaDoctorRoute: typeof AuthenticatedSchemaDoctorRoute
   AuthenticatedTrilhaDeAuditoriaRoute: typeof AuthenticatedTrilhaDeAuditoriaRoute
+  AuthenticatedAuditoriaExcecoesRoute: typeof AuthenticatedAuditoriaExcecoesRoute
   AuthenticatedAuditoriaRelatoriosRoute: typeof AuthenticatedAuditoriaRelatoriosRoute
   AuthenticatedDocumentosCentralRoute: typeof AuthenticatedDocumentosCentralRoute
   AuthenticatedDocumentosCodificacaoRoute: typeof AuthenticatedDocumentosCodificacaoRoute
@@ -683,6 +704,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedProjetosRoute: AuthenticatedProjetosRoute,
   AuthenticatedSchemaDoctorRoute: AuthenticatedSchemaDoctorRoute,
   AuthenticatedTrilhaDeAuditoriaRoute: AuthenticatedTrilhaDeAuditoriaRoute,
+  AuthenticatedAuditoriaExcecoesRoute: AuthenticatedAuditoriaExcecoesRoute,
   AuthenticatedAuditoriaRelatoriosRoute: AuthenticatedAuditoriaRelatoriosRoute,
   AuthenticatedDocumentosCentralRoute: AuthenticatedDocumentosCentralRoute,
   AuthenticatedDocumentosCodificacaoRoute:
