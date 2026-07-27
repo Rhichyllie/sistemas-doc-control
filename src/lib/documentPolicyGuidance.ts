@@ -88,6 +88,10 @@ const FIELD_GUIDANCE: Record<
     reason: "Vincula o documento ao contexto de execução correto.",
     action: "Selecione o projeto relacionado.",
   },
+  discipline_id: {
+    reason: "Especifica a disciplina técnica e alinha responsabilidades.",
+    action: "Selecione a disciplina ou deixe em branco quando não aplicável.",
+  },
   next_review_at: {
     reason: "Define quando a validade documental deve ser reavaliada.",
     action: "Defina a próxima revisão.",

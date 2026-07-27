@@ -467,7 +467,7 @@ export function DocumentCodePatternBuilder({
                     ))}
                   </div>
                 </SortableContext>
-                <DragOverlay dropAnimation={defaultDropAnimationSideEffects}>
+                <DragOverlay dropAnimation={null}>
                   {activeId ? (
                     <div>
                       {(() => {

@@ -1,14 +1,23 @@
 import { useMemo, useState } from "react";
 import {
+  CheckCircle2,
+  Eye,
   FileText,
+  Filter,
   GitBranch,
   Layers3,
   Loader2,
+  Network,
+  Pencil,
   Plus,
   RefreshCw,
+  Search,
   ShieldAlert,
+  ShieldCheck,
   Trash2,
+  Users2,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { DocumentTramiteModeler } from "@/components/tramites/DocumentTramiteModeler";
 import { DocumentTramiteTemplateCard } from "@/components/tramites/DocumentTramiteTemplateCard";
@@ -51,6 +60,7 @@ import {
   createTramiteEdge,
   createTramiteNode,
   generateTramiteCode,
+  type DocumentTramiteTemplate,
   type DocumentTramiteTemplateScope,
   type DocumentTramiteTemplateStatus,
 } from "@/lib/documentTramiteModel";
@@ -165,6 +175,7 @@ export function DocumentTramiteAdmin() {
   const actors = useWorkflowActors();
   const operationalCalendar = useOperationalCalendar();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [query, setQuery] = useState("");
@@ -226,8 +237,10 @@ export function DocumentTramiteAdmin() {
     selectedDocument?.received_at,
   ]);
 
-  const selectedTemplate =
+  const previewTemplate =
     catalog.templates.find((template) => template.id === selectedId) ?? null;
+  const editingTemplate =
+    catalog.templates.find((template) => template.id === editingId) ?? null;
   const filtered = useMemo(
     () =>
       catalog.templates.filter((template) => {
@@ -255,12 +268,39 @@ export function DocumentTramiteAdmin() {
     ],
   );
 
-  if (selectedTemplate) {
+  const kpiStats = useMemo(() => {
+    let totalStages = 0;
+    const userIds = new Set<string>();
+    const groupIds = new Set<string>();
+    for (const template of catalog.templates) {
+      const graph = template.current_version?.graph;
+      if (!graph) continue;
+      for (const node of graph.nodes) {
+        if (node.node_type === "start" || node.node_type === "end") continue;
+        totalStages += 1;
+        if (node.assignee_user_id) userIds.add(node.assignee_user_id);
+        if (node.assignee_group_id) groupIds.add(node.assignee_group_id);
+      }
+    }
+    const uniqueActors =
+      userIds.size + groupIds.size > 0
+        ? userIds.size + groupIds.size
+        : actors.users.length + actors.groups.filter((g) => g.is_active).length;
+    return {
+      totalTemplates: catalog.templates.length,
+      published: catalog.templates.filter((t) => t.status === "published").length,
+      drafts: catalog.templates.filter((t) => t.status === "draft").length,
+      totalStages,
+      uniqueActors,
+    };
+  }, [catalog.templates, actors.users, actors.groups]);
+
+  if (editingTemplate) {
     return (
       <DocumentTramiteModeler
-        template={selectedTemplate}
+        template={editingTemplate}
         catalog={catalog}
-        onBack={() => setSelectedId(null)}
+        onBack={() => setEditingId(null)}
       />
     );
   }
@@ -444,24 +484,17 @@ export function DocumentTramiteAdmin() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
-          <Badge variant="outline" className="mb-3">
+          <Badge variant="outline" className="mb-3 bg-slate-50 text-slate-600 border-slate-200">
             Governança de trâmites
           </Badge>
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-primary/10 p-3">
-              <GitBranch className="h-7 w-7 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">
-                Fluxo de aprovação
-              </h1>
-              <p className="mt-1 max-w-3xl text-muted-foreground">
-                Modele o caminho que um documento percorre até estar válido.
-              </p>
-            </div>
-          </div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            Fluxo de aprovação
+          </h1>
+          <p className="mt-1 max-w-3xl text-sm text-slate-500">
+            Modele o caminho que um documento percorre até estar válido.
+          </p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -469,6 +502,7 @@ export function DocumentTramiteAdmin() {
             variant="outline"
             disabled={catalog.isLoading}
             onClick={() => void catalog.refresh()}
+            className="border-slate-200 text-slate-700 hover:bg-slate-50"
           >
             <RefreshCw
               className={`h-4 w-4 ${catalog.isLoading ? "animate-spin" : ""}`}
@@ -482,6 +516,11 @@ export function DocumentTramiteAdmin() {
               !catalog.canManage ||
               !["ready", "empty"].includes(catalog.schemaStatus)
             }
+            className="text-white shadow-sm"
+            style={{
+              backgroundImage:
+              "linear-gradient(135deg, #0f766e 0%, #14b8a6 100%)",
+            }}
           >
             <Plus className="h-4 w-4" />
             Novo trâmite
@@ -489,37 +528,41 @@ export function DocumentTramiteAdmin() {
         </div>
       </div>
 
-      <Card className="border-primary/15 bg-primary/[0.025]">
-        <CardContent className="grid gap-4 p-5 md:grid-cols-3">
-          <div className="flex gap-3">
-            <Layers3 className="h-5 w-5 shrink-0 text-primary" />
-            <div>
-              <p className="font-medium">Modelo versionado</p>
-              <p className="text-sm text-muted-foreground">
-                Rascunhos podem evoluir sem alterar modelos já publicados.
-              </p>
-            </div>
+      <div className="grid gap-px overflow-hidden rounded-2xl border border-slate-200 bg-white md:grid md:grid-cols-3 md:divide-x md:divide-slate-200">
+        <div className="flex gap-3 p-5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+            <Layers3 className="h-5 w-5" />
           </div>
-          <div className="flex gap-3">
-            <GitBranch className="h-5 w-5 shrink-0 text-primary" />
-            <div>
-              <p className="font-medium">Caminho documental</p>
-              <p className="text-sm text-muted-foreground">
-                Responsáveis, prazos, evidências, correções e publicação.
-              </p>
-            </div>
+          <div>
+            <p className="font-medium text-slate-900">Modelo versionado</p>
+            <p className="mt-0.5 text-sm text-slate-500">
+              Rascunhos podem evoluir sem alterar modelos já publicados.
+            </p>
           </div>
-          <div className="flex gap-3">
-            <ShieldAlert className="h-5 w-5 shrink-0 text-primary" />
-            <div>
-              <p className="font-medium">Execução segura</p>
-              <p className="text-sm text-muted-foreground">
-                Esta fase modela e simula; não cria tarefas reais.
-              </p>
-            </div>
+        </div>
+        <div className="flex gap-3 p-5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+            <GitBranch className="h-5 w-5" />
           </div>
-        </CardContent>
-      </Card>
+          <div>
+            <p className="font-medium text-slate-900">Caminho documental</p>
+            <p className="mt-0.5 text-sm text-slate-500">
+              Responsáveis, prazos, evidências, correções e publicação.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-3 p-5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="font-medium text-slate-900">Execução segura</p>
+            <p className="mt-0.5 text-sm text-slate-500">
+              Esta fase modela e simula; não cria tarefas reais.
+            </p>
+          </div>
+        </div>
+      </div>
 
       {!["ready", "empty"].includes(catalog.schemaStatus) && (
         <Alert
@@ -545,107 +588,165 @@ export function DocumentTramiteAdmin() {
         </Alert>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        {[
-          ["Modelos", catalog.templates.length],
-          [
-            "Publicados",
-            catalog.templates.filter((item) => item.status === "published")
-              .length,
-          ],
-          [
-            "Rascunhos",
-            catalog.templates.filter((item) => item.status === "draft").length,
-          ],
-        ].map(([label, value]) => (
-          <Card key={String(label)}>
-            <CardContent className="p-5">
-              <p className="text-sm text-muted-foreground">{label}</p>
-              <p className="mt-1 text-2xl font-semibold">{value}</p>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600">
+              <FileText className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-500">Modelos</p>
+              <p className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
+                {kpiStats.totalTemplates}
+              </p>
+            </div>
+          </div>
+          <p className="mt-2 pl-14 text-xs text-slate-500">Total de modelos</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-500">Publicados</p>
+              <p className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
+                {kpiStats.published}
+              </p>
+            </div>
+          </div>
+          <p className="mt-2 pl-14 text-xs text-slate-500">Em produção</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+              <Pencil className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-500">Rascunhos</p>
+              <p className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
+                {kpiStats.drafts}
+              </p>
+            </div>
+          </div>
+          <p className="mt-2 pl-14 text-xs text-slate-500">Em edição</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+              <Network className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-500">Etapas</p>
+              <p className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
+                {kpiStats.totalStages}
+              </p>
+            </div>
+          </div>
+          <p className="mt-2 pl-14 text-xs text-slate-500">Total de etapas</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:col-span-2 lg:col-span-1 xl:col-span-1">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-600">
+              <Users2 className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-500">Responsáveis</p>
+              <p className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
+                {kpiStats.uniqueActors}
+              </p>
+            </div>
+          </div>
+          <p className="mt-2 pl-14 text-xs text-slate-500">Usuários e grupos</p>
+        </div>
       </div>
 
-      <Card>
-        <CardContent className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-6">
+      <div className="flex flex-wrap items-stretch gap-2 rounded-2xl border border-slate-200 bg-white p-3">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input
-            className="md:col-span-2 xl:col-span-1"
+            className="pl-9"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar por nome, código ou descrição"
+            placeholder="Buscar por nome, código ou descrição..."
           />
-          <Select
-            value={status}
-            onValueChange={(value) => setStatus(value as typeof status)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os status</SelectItem>
-              <SelectItem value="draft">Rascunhos</SelectItem>
-              <SelectItem value="published">Publicados</SelectItem>
-              <SelectItem value="archived">Arquivados</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select
-            value={scope}
-            onValueChange={(value) => setScope(value as typeof scope)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os escopos</SelectItem>
-              <SelectItem value="organization">Organização</SelectItem>
-              <SelectItem value="project">Projeto</SelectItem>
-              <SelectItem value="area">Área</SelectItem>
-              <SelectItem value="type">Tipo</SelectItem>
-              <SelectItem value="area_type">Área + tipo</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={docTypeFilter} onValueChange={setDocTypeFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Tipo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os tipos</SelectItem>
-              {DOC_TYPES.map((type) => (
-                <SelectItem key={type.value} value={type.value}>
-                  {type.value}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={areaFilter} onValueChange={setAreaFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Área" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as áreas</SelectItem>
-              {AREAS.map((area) => (
-                <SelectItem key={area} value={area}>
-                  {area}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={projectFilter} onValueChange={setProjectFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Projeto" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os projetos</SelectItem>
-              {projects.projects.map((project) => (
-                <SelectItem key={project.id} value={project.id}>
-                  {project.code}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
+        </div>
+        <Select
+          value={status}
+          onValueChange={(value) => setStatus(value as typeof status)}
+        >
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os status</SelectItem>
+            <SelectItem value="draft">Rascunhos</SelectItem>
+            <SelectItem value="published">Publicados</SelectItem>
+            <SelectItem value="archived">Arquivados</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={scope}
+          onValueChange={(value) => setScope(value as typeof scope)}
+        >
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Escopo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os escopos</SelectItem>
+            <SelectItem value="organization">Organização</SelectItem>
+            <SelectItem value="project">Projeto</SelectItem>
+            <SelectItem value="area">Área</SelectItem>
+            <SelectItem value="type">Tipo</SelectItem>
+            <SelectItem value="area_type">Área + tipo</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={docTypeFilter} onValueChange={setDocTypeFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Tipos" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os tipos</SelectItem>
+            {DOC_TYPES.map((type) => (
+              <SelectItem key={type.value} value={type.value}>
+                {type.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={areaFilter} onValueChange={setAreaFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Áreas" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as áreas</SelectItem>
+            {AREAS.map((area) => (
+              <SelectItem key={area} value={area}>{area}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={projectFilter} onValueChange={setProjectFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Projetos" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os projetos</SelectItem>
+            {projects.projects.map((project) => (
+              <SelectItem key={project.id} value={project.id}>
+                {project.code}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          type="button"
+          variant="outline"
+          className="border-slate-200 text-slate-700 hover:bg-slate-50"
+        >
+          <Filter className="h-4 w-4" />
+          Filtros
+        </Button>
+      </div>
 
       {catalog.isLoading ? (
         <Card>
@@ -677,25 +778,72 @@ export function DocumentTramiteAdmin() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
-          {filtered.map((template) => (
-            <DocumentTramiteTemplateCard
-              key={template.id}
-              template={template}
-              onEdit={() => setSelectedId(template.id)}
-              onDuplicate={() =>
-                void catalog.duplicateTemplate(template).then((id) => {
-                  if (id) toast.success("Modelo duplicado como rascunho.");
-                })
-              }
-              onPublish={() => void publishFromCard(template.id)}
-              onArchive={() =>
-                void catalog.archiveTemplate(template.id).then((success) => {
-                  if (success) toast.success("Modelo arquivado.");
-                })
-              }
-            />
-          ))}
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 lg:col-span-2 md:grid-cols-2">
+            {filtered.map((template) => {
+              const isSelected = selectedId === template.id;
+              return (
+                <div
+                  key={template.id}
+                  className={cn(
+                    "w-full",
+                    isSelected && "md:col-span-2 col-span-full",
+                  )}
+                >
+                  <DocumentTramiteTemplateCard
+                    template={template}
+                    selectedId={selectedId}
+                    onSelect={() => setSelectedId(template.id)}
+                    onEdit={() => setEditingId(template.id)}
+                    onDuplicate={() =>
+                      void catalog.duplicateTemplate(template).then((id) => {
+                        if (id) toast.success("Modelo duplicado como rascunho.");
+                      })
+                    }
+                    onPublish={() => void publishFromCard(template.id)}
+                    onArchive={() =>
+                      void catalog.archiveTemplate(template.id).then((success) => {
+                        if (success) toast.success("Modelo arquivado.");
+                      })
+                    }
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          <aside className="lg:col-span-1">
+            <div className="sticky top-4 space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">
+                  Preview do fluxo
+                </h2>
+                {!previewTemplate && (
+                  <p className="mt-1 text-sm text-slate-500">
+                    Selecione um modelo para visualizar os detalhes.
+                  </p>
+                )}
+              </div>
+
+              {previewTemplate ? (
+                <FlowPreview template={previewTemplate} />
+              ) : (
+                <EmptyFlowPreview />
+              )}
+
+              {previewTemplate && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start gap-2 border-slate-200 text-slate-700 hover:bg-slate-50"
+                  onClick={() => setEditingId(previewTemplate.id)}
+                >
+                  <Eye className="h-4 w-4" />
+                  Ver detalhes do fluxo
+                </Button>
+              )}
+            </div>
+          </aside>
         </div>
       )}
 
@@ -1083,5 +1231,95 @@ export function DocumentTramiteAdmin() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function EmptyFlowPreview() {
+  const demoSteps = [
+    { label: "Recebimento", responsible: "Área solicitante", color: "bg-sky-500", ring: "ring-sky-200" },
+    { label: "Análise", responsible: "Engenharia", color: "bg-teal-500", ring: "ring-teal-200" },
+    { label: "Revisão", responsible: "Coordenação", color: "bg-emerald-500", ring: "ring-emerald-200" },
+    { label: "Aprovação", responsible: "Gerência", color: "bg-blue-600", ring: "ring-blue-200" },
+    { label: "Publicação", responsible: "Document Control", color: "bg-indigo-500", ring: "ring-indigo-200" },
+  ];
+  return (
+    <ol className="relative ml-2 space-y-4 border-l border-slate-200 pl-6">
+      {demoSteps.map((step, index) => (
+        <li key={step.label} className="relative">
+          <span
+            className={cn(
+              "absolute -left-[34px] flex h-8 w-8 items-center justify-center rounded-full ring-4",
+              step.color,
+              step.ring,
+              index === 0 ? "bg-sky-600" : ""
+            )}
+          />
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 hover:bg-slate-50 transition-colors">
+            <p className="text-sm font-medium text-slate-900">{step.label}</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Responsável: {step.responsible}
+            </p>
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function FlowPreview({
+  template,
+}: {
+  template: DocumentTramiteTemplate;
+}) {
+  const nodes = template.current_version?.graph.nodes ?? [];
+  const steps = nodes.filter(
+    (node) => node.node_type !== "start" && node.node_type !== "end",
+  );
+  if (steps.length === 0) {
+    return (
+      <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">
+        Este modelo ainda não tem etapas configuradas.
+      </p>
+    );
+  }
+  const palette = [
+    { color: "bg-sky-600", ring: "ring-sky-200" },
+    { color: "bg-teal-600", ring: "ring-teal-200" },
+    { color: "bg-emerald-600", ring: "ring-emerald-200" },
+    { color: "bg-blue-600", ring: "ring-blue-200" },
+    { color: "bg-indigo-600", ring: "ring-indigo-200" },
+    { color: "bg-violet-600", ring: "ring-violet-200" },
+  ];
+  return (
+    <ol className="relative ml-2 space-y-4 border-l border-slate-200 pl-6">
+      {steps.map((node, index) => {
+        const style = palette[index % palette.length];
+        const responsible = node.instructions?.trim() ||
+          (node.assignee_user_id
+            ? "Usuário específico"
+            : node.assignee_group_id
+              ? "Grupo de aprovação"
+              : node.required_role
+                ? `Papel: ${node.required_role}`
+                : "Não atribuído");
+        return (
+          <li key={node.id} className="relative">
+            <span
+              className={cn(
+                "absolute -left-[34px] flex h-8 w-8 items-center justify-center rounded-full ring-4 ring-offset-0",
+                style.color,
+                style.ring,
+              )}
+            />
+            <div className="rounded-xl border border-slate-200 bg-white p-3 hover:border-slate-300 transition-colors">
+              <p className="text-sm font-medium text-slate-900">{node.label}</p>
+              <p className="mt-0.5 text-xs text-slate-500 line-clamp-2">
+                Responsável: {responsible}
+              </p>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

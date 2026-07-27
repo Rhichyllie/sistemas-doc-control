@@ -12,6 +12,7 @@ export const DOCUMENT_RULE_FIELD_KEYS = [
   "description",
   "file",
   "project_id",
+  "discipline_id",
   "next_review_at",
   "confidentiality",
   "external_reference",
@@ -28,6 +29,7 @@ export const DOCUMENT_RULE_FIELD_LABELS: Record<DocumentRuleField, string> = {
   description: "Descrição",
   file: "Arquivo",
   project_id: "Projeto",
+  discipline_id: "Disciplina",
   next_review_at: "Próxima revisão",
   confidentiality: "Confidencialidade",
   external_reference: "Referência externa",
@@ -79,6 +81,7 @@ export interface DocumentRuleInput {
   doc_type?: string | null;
   area?: string | null;
   project_id?: string | null;
+  discipline_id?: string | null;
   description?: string | null;
   file?: File | null;
   hasFile?: boolean;
