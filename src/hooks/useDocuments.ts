@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useLibraryScope } from '@/contexts/library-context'
 import { supabase } from '@/lib/supabase'
 import { useAuthContext } from '@/contexts/AuthContext'
 import {
@@ -22,6 +23,7 @@ import { isWorkflowFoundationUnavailable } from '@/lib/workflowCompatibility'
 export interface Document {
   id: string
   org_id: string
+  library_id?: string | null
   code: string | null
   title: string
   project_id: string | null
@@ -187,6 +189,7 @@ function isOptionalProjectError(error: { code?: string; message?: string }) {
 
 export function useDocuments(filters: DocumentFilters = {}) {
   const { profile } = useAuthContext()
+  const { libraryId } = useLibraryScope()
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -219,6 +222,8 @@ export function useDocuments(filters: DocumentFilters = {}) {
           .eq('org_id', currentProfile.org_id)
           .order('created_at', { ascending: false })
 
+        if (libraryId) query = query.eq('library_id', libraryId)
+
         if (filters.status) query = query.eq('status', filters.status)
         if (filters.doc_type) query = query.eq('doc_type', filters.doc_type)
         if (filters.area) query = query.eq('area', filters.area)
@@ -238,6 +243,11 @@ export function useDocuments(filters: DocumentFilters = {}) {
       if (queryError) {
         if (isMissingDocumentsSchema(queryError) && currentProfile.org_id) {
           let localDocuments = loadLocalDocuments(currentProfile.org_id)
+          if (libraryId) {
+            localDocuments = localDocuments.filter(
+              (document) => document.library_id === libraryId,
+            )
+          }
           if (filters.status) localDocuments = localDocuments.filter((document) => document.status === filters.status)
           if (filters.doc_type) localDocuments = localDocuments.filter((document) => document.doc_type === filters.doc_type)
           if (filters.area) localDocuments = localDocuments.filter((document) => document.area === filters.area)
@@ -351,7 +361,7 @@ export function useDocuments(filters: DocumentFilters = {}) {
     } finally {
       setLoading(false)
     }
-  }, [profile, filters.status, filters.doc_type, filters.area, filters.search])
+  }, [profile, libraryId, filters.status, filters.doc_type, filters.area, filters.search])
 
   useEffect(() => {
     fetchDocuments()

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useLibraryScope } from "@/contexts/library-context";
 import { supabase } from "@/lib/supabase";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { getErrorMessage } from "@/lib/errorUtils";
@@ -166,6 +167,7 @@ function isMissingDocumentsSchema(error: unknown) {
 
 export function useCreateDocument() {
   const { profile } = useAuthContext();
+  const { libraryId } = useLibraryScope();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const creatingRef = useRef(false);
@@ -175,6 +177,10 @@ export function useCreateDocument() {
   ): Promise<CreateDocumentResult | null> {
     if (!profile) {
       setError("Usuário não autenticado");
+      return null;
+    }
+    if (!libraryId) {
+      setError("Selecione uma biblioteca antes de criar o documento.");
       return null;
     }
     const currentProfile = profile;
@@ -283,7 +289,8 @@ export function useCreateDocument() {
         .from("documents")
         .update(payload)
         .eq("id", documentId)
-        .eq("org_id", currentProfile.org_id);
+        .eq("org_id", currentProfile.org_id)
+        .eq("library_id", libraryId);
 
       if (registerFieldError && !isOptionalRegisterFieldError(registerFieldError)) {
         return `Documento criado, mas os campos operacionais do cadastro não puderam ser sincronizados: ${getErrorMessage(registerFieldError, "erro não identificado")}`;
@@ -349,6 +356,7 @@ export function useCreateDocument() {
         },
         creation_mode: creationMode,
         source: creationSource,
+        library_id: libraryId,
         completeness_score: input.creationContext?.completenessScore ?? null,
         risk_level: input.creationContext?.riskLevel ?? null,
         project_id: input.project_id ?? null,
@@ -385,6 +393,7 @@ export function useCreateDocument() {
           p_description: input.description?.trim() || null,
           p_doc_type: input.doc_type,
           p_area: input.area,
+          p_library_id: libraryId,
           p_project_id: input.project_id || null,
           p_revision: revision,
           p_review_period_months: input.review_period_months ?? 24,
@@ -463,6 +472,7 @@ export function useCreateDocument() {
         .insert(
           normalizeDocumentCreationPayload({
             org_id: profile.org_id,
+            library_id: libraryId,
             title: input.title,
             doc_type: input.doc_type,
             area: input.area,
@@ -501,6 +511,7 @@ export function useCreateDocument() {
         const nextDocument: Document = {
           id: nextId,
           org_id: profile.org_id,
+          library_id: libraryId,
           code: localCode,
           title: input.title.trim(),
           project_id: input.project_id || null,

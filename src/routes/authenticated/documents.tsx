@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate, Outlet, useLocation } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { LibraryRouteRedirect } from "@/components/libraries/LibraryRouteRedirect";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -60,7 +61,11 @@ import { DOCUMENT_FILE_ACCEPT, validateDocumentFile } from "@/lib/documentCreati
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/authenticated/documents")({ component: DocumentsPage });
+export const Route = createFileRoute("/authenticated/documents")({ component: DocumentsRedirectPage });
+
+function DocumentsRedirectPage() {
+  return <LibraryRouteRedirect target="/authenticated/documents" />;
+}
 
 const AREAS = ["SGI", "ENG", "OPS", "MNT", "SST", "MA", "QUA", "ADM"] as const;
 const REVIEW_PERIODS = [6, 12, 24, 36] as const;
@@ -236,7 +241,7 @@ function isValidExternalLink(value: string) {
   }
 }
 
-function DocumentsPage() {
+export function DocumentsPage() {
   const location = useLocation();
 
   if (location.pathname !== "/authenticated/documents") {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { useLibraryScope } from "@/contexts/library-context";
 import { getErrorMessage } from "@/lib/errorUtils";
 import { supabase } from "@/lib/supabase";
 import {
@@ -33,6 +34,7 @@ const LOCAL_PROJECTS_STORAGE_PREFIX = "tramita.projects.local.";
 const ENTERPRISE_COLUMNS = `
   id,
   org_id,
+  library_id,
   code,
   name,
   description,
@@ -141,6 +143,7 @@ export function useProjects(options: UseProjectsOptions = {}) {
     loadPeople = true,
   } = options;
   const { profile } = useAuthContext();
+  const { libraryId } = useLibraryScope();
   const [projects, setProjects] = useState<ProjectOperationalContext[]>([]);
   const [users, setUsers] = useState<ProjectResponsibleOption[]>([]);
   const [isLoading, setIsLoading] = useState(enabled);
@@ -169,7 +172,8 @@ export function useProjects(options: UseProjectsOptions = {}) {
     const enterpriseResult = await supabase
       .from("projects")
       .select(ENTERPRISE_COLUMNS)
-      .or(`org_id.eq.${profile.org_id},org_id.is.null`)
+      .eq("org_id", profile.org_id)
+      .match(libraryId ? { library_id: libraryId } : {})
       .order("name", { ascending: true });
 
     let rows: unknown[] = [];
@@ -199,6 +203,9 @@ export function useProjects(options: UseProjectsOptions = {}) {
 
     if (mode === "missing") {
       rows = loadLocalProjects(profile.org_id);
+      if (libraryId) {
+        rows = rows.filter((project) => project.library_id === libraryId);
+      }
     }
 
     const projectIds = rows
@@ -210,10 +217,12 @@ export function useProjects(options: UseProjectsOptions = {}) {
       .filter(Boolean);
     const counts = new Map<string, number>();
     if (loadDocumentCounts && projectIds.length > 0) {
-      const countResult = await supabase
+      let countQuery = supabase
         .from("documents")
         .select("project_id")
         .in("project_id", projectIds);
+      if (libraryId) countQuery = countQuery.eq("library_id", libraryId);
+      const countResult = await countQuery;
       if (!countResult.error) {
         for (const item of countResult.data ?? []) {
           if (!item.project_id) continue;
@@ -269,6 +278,7 @@ export function useProjects(options: UseProjectsOptions = {}) {
   }, [
     enabled,
     includeInactive,
+    libraryId,
     loadDocumentCounts,
     loadPeople,
     profile?.id,
@@ -312,6 +322,7 @@ export function useProjects(options: UseProjectsOptions = {}) {
         const nextProject: ProjectOperationalContext = {
           id: nextId,
           org_id: profile.org_id,
+          library_id: libraryId,
           code:
             validation.normalizedCode ||
             `PROJ${nextId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,
@@ -359,6 +370,7 @@ export function useProjects(options: UseProjectsOptions = {}) {
                 .from("projects")
                 .update({
                   org_id: profile.org_id,
+                  library_id: libraryId,
                   code: validation.normalizedCode,
                   name: input.name.trim(),
                   description: input.description?.trim() || null,
@@ -378,13 +390,15 @@ export function useProjects(options: UseProjectsOptions = {}) {
                   updated_at: new Date().toISOString(),
                 })
                 .eq("id", id)
-                .or(`org_id.eq.${profile.org_id},org_id.is.null`)
+                .eq("org_id", profile.org_id)
+                .match(libraryId ? { library_id: libraryId } : {})
                 .select("id")
                 .maybeSingle()
             : await supabase
                 .from("projects")
                 .insert({
                   org_id: profile.org_id,
+                  library_id: libraryId,
                   code: validation.normalizedCode,
                   name: input.name.trim(),
                   description: input.description?.trim() || null,
@@ -453,7 +467,7 @@ export function useProjects(options: UseProjectsOptions = {}) {
       await refresh();
       return true;
     },
-    [canManage, profile?.id, profile?.org_id, refresh, schemaMode],
+    [canManage, libraryId, profile?.id, profile?.org_id, refresh, schemaMode, users],
   );
 
   const updateOperationalState = useCallback(
@@ -502,7 +516,8 @@ export function useProjects(options: UseProjectsOptions = {}) {
               .from("projects")
               .delete()
               .eq("id", project.id)
-              .or(`org_id.eq.${profile.org_id},org_id.is.null`)
+              .eq("org_id", profile.org_id)
+              .match(libraryId ? { library_id: libraryId } : {})
           : await supabase.from("projects").delete().eq("id", project.id);
       setIsSaving(false);
 
@@ -516,7 +531,7 @@ export function useProjects(options: UseProjectsOptions = {}) {
       await refresh();
       return true;
     },
-    [canManage, profile?.id, profile?.org_id, refresh, schemaMode],
+    [canManage, libraryId, profile?.id, profile?.org_id, refresh, schemaMode],
   );
 
   const compatibilityMessage = schemaMessage(schemaMode);

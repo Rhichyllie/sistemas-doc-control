@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useLibraryScope } from '@/contexts/library-context'
 import { supabase } from '@/lib/supabase'
 import { useAuthContext } from '@/contexts/AuthContext'
 import type { WorkflowAssignmentType } from '@/lib/workflowCompatibility'
@@ -64,6 +65,7 @@ export interface DocumentDetail extends Document {
 
 export function useDocument(documentId: string | undefined) {
   const { profile } = useAuthContext()
+  const { libraryId } = useLibraryScope()
   const [document, setDocument] = useState<DocumentDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -87,6 +89,7 @@ export function useDocument(documentId: string | undefined) {
         `)
         .eq('id', documentId)
         .eq('org_id', profile.org_id)
+        .match(libraryId ? { library_id: libraryId } : {})
         .single()
 
       if (docError) {
@@ -101,7 +104,9 @@ export function useDocument(documentId: string | undefined) {
 
         if (isMissingDocumentsTable) {
           const localDocument = loadLocalDocuments(profile.org_id).find(
-            (item) => item.id === documentId,
+            (item) =>
+              item.id === documentId &&
+              (!libraryId || item.library_id === libraryId),
           )
           if (!localDocument) {
             throw new Error('Documento não encontrado neste navegador.')
@@ -183,7 +188,7 @@ export function useDocument(documentId: string | undefined) {
     } finally {
       setLoading(false)
     }
-  }, [profile, documentId])
+  }, [profile, libraryId, documentId])
 
   useEffect(() => {
     fetchDocument()

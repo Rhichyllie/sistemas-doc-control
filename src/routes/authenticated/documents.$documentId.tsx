@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { LibraryRouteRedirect } from "@/components/libraries/LibraryRouteRedirect";
 import { WorkflowStepRoutingFields } from "@/components/workflow/WorkflowStepRoutingFields";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -64,8 +65,18 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/authenticated/documents/$documentId")({
-  component: DocumentDetailPage,
+  component: LegacyDocumentDetailRedirectPage,
 });
+
+function LegacyDocumentDetailRedirectPage() {
+  const { documentId } = Route.useParams();
+  return (
+    <LibraryRouteRedirect
+      target="/authenticated/documents/$documentId"
+      documentId={documentId}
+    />
+  );
+}
 
 const DEFAULT_WORKFLOW_STEPS: WorkflowStepInput[] = [
   {
@@ -243,7 +254,7 @@ function workflowStepsForCorrection(
   });
 }
 
-function DocumentDetailPage() {
+export function DocumentDetailPage() {
   const { documentId } = Route.useParams();
   const { profile } = useAuthContext();
   const { document, loading, error, refetch } = useDocument(documentId);

@@ -77,6 +77,7 @@ export interface DocumentTramiteGraph {
 export interface DocumentTramiteTemplate {
   id: string;
   org_id: string;
+  library_id?: string | null;
   code: string;
   name: string;
   description: string | null;

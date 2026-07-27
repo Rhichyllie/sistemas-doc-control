@@ -54,13 +54,13 @@ export async function requireAuthenticated(locationHref: string) {
 export async function requireRole(locationHref: string, roles: UserProfile['role'][]) {
   const { profile } = await requireAuthenticated(locationHref)
   if (!roles.includes(profile.role)) {
-    throw redirect({ to: '/authenticated/dashboard' })
+    throw redirect({ to: '/authenticated/organizacao' })
   }
 }
 
 export async function requirePermission(locationHref: string, permission: Permission) {
   const { profile } = await requireAuthenticated(locationHref)
   if (!can(profile.role, permission)) {
-    throw redirect({ to: '/authenticated/dashboard' })
+    throw redirect({ to: '/authenticated/organizacao' })
   }
 }

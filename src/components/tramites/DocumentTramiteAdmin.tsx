@@ -1,21 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  CheckCircle2,
   Eye,
-  FileText,
   Filter,
   GitBranch,
   Layers3,
   Loader2,
-  Network,
-  Pencil,
   Plus,
   RefreshCw,
   Search,
   ShieldAlert,
   ShieldCheck,
   Trash2,
-  Users2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -48,7 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useDocuments } from "@/hooks/useDocuments";
+import { useDocuments, type Document } from "@/hooks/useDocuments";
 import { useDocumentTramiteTemplates } from "@/hooks/useDocumentTramiteTemplates";
 import { useLocalData } from "@/hooks/use-local-data";
 import { useOperationalCalendar } from "@/hooks/useOperationalCalendar";
@@ -97,6 +92,102 @@ function formatDate(value: string | null | undefined) {
 
 function getRevisionLabel(value: string | null | undefined, revision: number) {
   return value?.trim() || String(revision).padStart(2, "0");
+}
+
+interface PreviewDocumentSummary {
+  id: string;
+  title: string;
+  code: string | null;
+  project_id: string | null;
+  project_name: string | null;
+  discipline_id: string | null;
+  discipline_name: string | null;
+  register_revision: string | null;
+  register_status: string | null;
+  received_at: string | null;
+  analysis_deadline: string | null;
+  analysis_days: number | null;
+  doc_type: string | null;
+  area: string | null;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readMetadataString(
+  value: Record<string, unknown>,
+  key: string,
+): string | null {
+  const field = value[key];
+  return typeof field === "string" && field.trim().length > 0 ? field : null;
+}
+
+function mapDocumentToPreviewSummary(
+  document: Document,
+  disciplines: Array<{ id: string; name: string }>,
+  projects: Array<{ id: string; name: string }>,
+): PreviewDocumentSummary {
+  return {
+    id: document.id,
+    title: document.title,
+    code: document.code,
+    project_id: document.project_id ?? null,
+    project_name:
+      document.project?.name ??
+      projects.find((project) => project.id === document.project_id)?.name ??
+      null,
+    discipline_id: document.discipline_id ?? null,
+    discipline_name:
+      disciplines.find((discipline) => discipline.id === document.discipline_id)
+        ?.name ?? null,
+    register_revision: getRevisionLabel(
+      document.register_revision,
+      document.revision,
+    ),
+    register_status: document.register_status ?? document.status ?? null,
+    received_at: document.received_at ?? null,
+    analysis_deadline: document.analysis_deadline ?? null,
+    analysis_days: document.analysis_days ?? null,
+    doc_type: document.doc_type ?? null,
+    area: document.area ?? null,
+  };
+}
+
+function getSourceDocumentSummary(
+  template: DocumentTramiteTemplate,
+  documents: Document[],
+  disciplines: Array<{ id: string; name: string }>,
+  projects: Array<{ id: string; name: string }>,
+): PreviewDocumentSummary | null {
+  if (!isObjectRecord(template.metadata)) return null;
+  const source = template.metadata.source_document;
+  if (!isObjectRecord(source)) return null;
+
+  const sourceId = readMetadataString(source, "id");
+  if (sourceId) {
+    const liveDocument = documents.find((document) => document.id === sourceId);
+    if (liveDocument) {
+      return mapDocumentToPreviewSummary(liveDocument, disciplines, projects);
+    }
+  }
+
+  return {
+    id: sourceId ?? `source-${template.id}`,
+    title: readMetadataString(source, "title") ?? template.name,
+    code: readMetadataString(source, "code"),
+    project_id: readMetadataString(source, "project_id"),
+    project_name: readMetadataString(source, "project_name"),
+    discipline_id: readMetadataString(source, "discipline_id"),
+    discipline_name: readMetadataString(source, "discipline_name"),
+    register_revision: readMetadataString(source, "register_revision"),
+    register_status: readMetadataString(source, "register_status"),
+    received_at: readMetadataString(source, "received_at"),
+    analysis_deadline: readMetadataString(source, "analysis_deadline"),
+    analysis_days: null,
+    doc_type: template.doc_type ?? null,
+    area: template.area ?? null,
+  };
 }
 
 function createStageIdentifier() {
@@ -188,6 +279,7 @@ export function DocumentTramiteAdmin() {
   const [docTypeFilter, setDocTypeFilter] = useState("all");
   const [areaFilter, setAreaFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
+  const [previewDocumentId, setPreviewDocumentId] = useState<string>("");
   const selectedDocument =
     documentsState.documents.find((document) => document.id === form.documentId) ??
     null;
@@ -241,6 +333,43 @@ export function DocumentTramiteAdmin() {
     catalog.templates.find((template) => template.id === selectedId) ?? null;
   const editingTemplate =
     catalog.templates.find((template) => template.id === editingId) ?? null;
+  const previewDocuments = useMemo(() => {
+    if (!previewTemplate) return [] as PreviewDocumentSummary[];
+
+    const summaries = new Map<string, PreviewDocumentSummary>();
+    const sourceDocument = getSourceDocumentSummary(
+      previewTemplate,
+      documentsState.documents,
+      disciplines,
+      projects.projects,
+    );
+
+    if (sourceDocument) {
+      summaries.set(sourceDocument.id, sourceDocument);
+    }
+
+    for (const document of documentsState.documents) {
+      if (previewTemplate.project_id && document.project_id !== previewTemplate.project_id) {
+        continue;
+      }
+      if (previewTemplate.doc_type && document.doc_type !== previewTemplate.doc_type) {
+        continue;
+      }
+      if (previewTemplate.area && document.area !== previewTemplate.area) {
+        continue;
+      }
+      summaries.set(
+        document.id,
+        mapDocumentToPreviewSummary(document, disciplines, projects.projects),
+      );
+    }
+
+    return Array.from(summaries.values());
+  }, [previewTemplate, documentsState.documents, disciplines, projects.projects]);
+  const selectedPreviewDocument =
+    previewDocuments.find((document) => document.id === previewDocumentId) ??
+    previewDocuments[0] ??
+    null;
   const filtered = useMemo(
     () =>
       catalog.templates.filter((template) => {
@@ -268,32 +397,20 @@ export function DocumentTramiteAdmin() {
     ],
   );
 
-  const kpiStats = useMemo(() => {
-    let totalStages = 0;
-    const userIds = new Set<string>();
-    const groupIds = new Set<string>();
-    for (const template of catalog.templates) {
-      const graph = template.current_version?.graph;
-      if (!graph) continue;
-      for (const node of graph.nodes) {
-        if (node.node_type === "start" || node.node_type === "end") continue;
-        totalStages += 1;
-        if (node.assignee_user_id) userIds.add(node.assignee_user_id);
-        if (node.assignee_group_id) groupIds.add(node.assignee_group_id);
-      }
+  useEffect(() => {
+    if (!previewTemplate || previewDocuments.length === 0) {
+      if (previewDocumentId) setPreviewDocumentId("");
+      return;
     }
-    const uniqueActors =
-      userIds.size + groupIds.size > 0
-        ? userIds.size + groupIds.size
-        : actors.users.length + actors.groups.filter((g) => g.is_active).length;
-    return {
-      totalTemplates: catalog.templates.length,
-      published: catalog.templates.filter((t) => t.status === "published").length,
-      drafts: catalog.templates.filter((t) => t.status === "draft").length,
-      totalStages,
-      uniqueActors,
-    };
-  }, [catalog.templates, actors.users, actors.groups]);
+
+    const hasCurrentSelection = previewDocuments.some(
+      (document) => document.id === previewDocumentId,
+    );
+
+    if (!hasCurrentSelection) {
+      setPreviewDocumentId(previewDocuments[0].id);
+    }
+  }, [previewTemplate, previewDocuments, previewDocumentId]);
 
   if (editingTemplate) {
     return (
@@ -588,79 +705,6 @@ export function DocumentTramiteAdmin() {
         </Alert>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600">
-              <FileText className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500">Modelos</p>
-              <p className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
-                {kpiStats.totalTemplates}
-              </p>
-            </div>
-          </div>
-          <p className="mt-2 pl-14 text-xs text-slate-500">Total de modelos</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500">Publicados</p>
-              <p className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
-                {kpiStats.published}
-              </p>
-            </div>
-          </div>
-          <p className="mt-2 pl-14 text-xs text-slate-500">Em produção</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
-              <Pencil className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500">Rascunhos</p>
-              <p className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
-                {kpiStats.drafts}
-              </p>
-            </div>
-          </div>
-          <p className="mt-2 pl-14 text-xs text-slate-500">Em edição</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
-              <Network className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500">Etapas</p>
-              <p className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
-                {kpiStats.totalStages}
-              </p>
-            </div>
-          </div>
-          <p className="mt-2 pl-14 text-xs text-slate-500">Total de etapas</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:col-span-2 lg:col-span-1 xl:col-span-1">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-600">
-              <Users2 className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500">Responsáveis</p>
-              <p className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
-                {kpiStats.uniqueActors}
-              </p>
-            </div>
-          </div>
-          <p className="mt-2 pl-14 text-xs text-slate-500">Usuários e grupos</p>
-        </div>
-      </div>
-
       <div className="flex flex-wrap items-stretch gap-2 rounded-2xl border border-slate-200 bg-white p-3">
         <div className="relative flex-1 min-w-[220px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -824,6 +868,99 @@ export function DocumentTramiteAdmin() {
                   </p>
                 )}
               </div>
+
+              {previewTemplate && (
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Documento no fluxo
+                    </Label>
+                    <Select
+                      value={previewDocumentId || "none"}
+                      onValueChange={(value) =>
+                        setPreviewDocumentId(value === "none" ? "" : value)
+                      }
+                    >
+                      <SelectTrigger className="border-slate-200 bg-white">
+                        <SelectValue placeholder="Selecione o documento" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {previewDocuments.length > 0 ? (
+                          previewDocuments.map((document) => (
+                            <SelectItem key={document.id} value={document.id}>
+                              {document.code ? `${document.code} · ` : ""}
+                              {document.title}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="none">
+                            Nenhum documento vinculado
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedPreviewDocument ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                          Documento selecionado
+                        </p>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {selectedPreviewDocument.code ?? "Sem código"}
+                        </p>
+                        <p className="text-sm text-slate-600">
+                          {selectedPreviewDocument.title}
+                        </p>
+                      </div>
+
+                      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                        <PreviewInfoItem
+                          label="Revisão"
+                          value={selectedPreviewDocument.register_revision ?? "—"}
+                        />
+                        <PreviewInfoItem
+                          label="Status"
+                          value={selectedPreviewDocument.register_status ?? "—"}
+                        />
+                        <PreviewInfoItem
+                          label="Projeto"
+                          value={selectedPreviewDocument.project_name ?? "Sem projeto"}
+                        />
+                        <PreviewInfoItem
+                          label="Disciplina"
+                          value={selectedPreviewDocument.discipline_name ?? "—"}
+                        />
+                        <PreviewInfoItem
+                          label="Recebido em"
+                          value={formatDate(selectedPreviewDocument.received_at)}
+                        />
+                        <PreviewInfoItem
+                          label="Prazo"
+                          value={formatDate(selectedPreviewDocument.analysis_deadline)}
+                        />
+                        <PreviewInfoItem
+                          label="Dias de análise"
+                          value={
+                            selectedPreviewDocument.analysis_days !== null
+                              ? String(selectedPreviewDocument.analysis_days)
+                              : "Não definido"
+                          }
+                        />
+                        <PreviewInfoItem
+                          label="Tipo / Área"
+                          value={`${selectedPreviewDocument.doc_type ?? "—"} · ${selectedPreviewDocument.area ?? "—"}`}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
+                      Nenhum documento compatível encontrado para este fluxo.
+                    </div>
+                  )}
+                </div>
+              )}
 
               {previewTemplate ? (
                 <FlowPreview template={previewTemplate} />
@@ -1321,5 +1458,22 @@ function FlowPreview({
         );
       })}
     </ol>
+  );
+}
+
+function PreviewInfoItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-medium text-slate-800">{value}</p>
+    </div>
   );
 }

@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
+import { LibraryRouteRedirect } from '@/components/libraries/LibraryRouteRedirect'
 import { AlertTriangle, CheckCircle2, Clock3, Filter, GitBranch } from 'lucide-react'
 import { requireAuthenticated } from './-route-guards'
 import { EmptyState } from '@/components/operational/EmptyState'
@@ -22,8 +23,12 @@ export const Route = createFileRoute('/authenticated/fluxo-de-aprovacao')({
   beforeLoad: async ({ location }) => {
     await requireAuthenticated(location.href)
   },
-  component: ApprovalFlowPage,
+  component: ApprovalFlowRedirectPage,
 })
+
+function ApprovalFlowRedirectPage() {
+  return <LibraryRouteRedirect target="/authenticated/fluxo-de-aprovacao" />
+}
 
 type DeadlineFilter = 'all' | 'overdue' | 'on_time' | 'no_due'
 
@@ -63,7 +68,7 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value))
 }
 
-function ApprovalFlowPage() {
+export function ApprovalFlowPage() {
   const { profile } = useAuthContext()
   const {
     queue,

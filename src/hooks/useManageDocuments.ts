@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { useLibraryScope } from "@/contexts/library-context";
 import { loadLocalDocuments, saveLocalDocuments } from "@/hooks/useDocuments";
 import { getErrorMessage } from "@/lib/errorUtils";
 import { supabase } from "@/lib/supabase";
@@ -67,6 +68,7 @@ function isOptionalRegisterFieldError(error: unknown) {
 
 export function useManageDocuments() {
   const { profile } = useAuthContext();
+  const { libraryId } = useLibraryScope();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,6 +78,10 @@ export function useManageDocuments() {
   ): Promise<{ warning?: string } | null> {
     if (!profile) {
       setError("Usuário não autenticado.");
+      return null;
+    }
+    if (!libraryId) {
+      setError("Selecione uma biblioteca antes de atualizar o documento.");
       return null;
     }
 
@@ -100,12 +106,13 @@ export function useManageDocuments() {
         .from("documents")
         .update(basePayload)
         .eq("id", documentId)
-        .eq("org_id", profile.org_id);
+        .eq("org_id", profile.org_id)
+        .eq("library_id", libraryId);
 
       if (updateError && isMissingDocumentsSchema(updateError)) {
         const localDocuments = loadLocalDocuments(profile.org_id);
         const nextDocuments = localDocuments.map((document) =>
-          document.id === documentId
+          document.id === documentId && document.library_id === libraryId
             ? {
                 ...document,
                 ...basePayload,
@@ -145,7 +152,8 @@ export function useManageDocuments() {
         .from("documents")
         .update(optionalPayload)
         .eq("id", documentId)
-        .eq("org_id", profile.org_id);
+        .eq("org_id", profile.org_id)
+        .eq("library_id", libraryId);
 
       if (optionalError && !isOptionalRegisterFieldError(optionalError)) {
         throw optionalError;
@@ -172,6 +180,10 @@ export function useManageDocuments() {
       setError("Usuário não autenticado.");
       return null;
     }
+    if (!libraryId) {
+      setError("Selecione uma biblioteca antes de excluir o documento.");
+      return null;
+    }
 
     setLoading(true);
     setError(null);
@@ -181,11 +193,13 @@ export function useManageDocuments() {
         .from("documents")
         .delete()
         .eq("id", documentId)
-        .eq("org_id", profile.org_id);
+        .eq("org_id", profile.org_id)
+        .eq("library_id", libraryId);
 
       if (deleteError && isMissingDocumentsSchema(deleteError)) {
         const nextDocuments = loadLocalDocuments(profile.org_id).filter(
-          (document) => document.id !== documentId,
+          (document) =>
+            document.id !== documentId || document.library_id !== libraryId,
         );
         saveLocalDocuments(profile.org_id, nextDocuments);
         return {

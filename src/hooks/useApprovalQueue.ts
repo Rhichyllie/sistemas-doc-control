@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuthContext } from '@/contexts/AuthContext'
+import { useLibraryScope } from '@/contexts/library-context'
 import { useWorkflowActors } from '@/hooks/useWorkflowActors'
 import { supabase } from '@/lib/supabase'
 import { getErrorMessage } from '@/lib/errorUtils'
@@ -46,6 +47,7 @@ interface NamedRelation {
 
 interface QueueDocumentRow {
   id: string
+  library_id?: string | null
   code: string | null
   title: string
   project_id?: string | null
@@ -124,6 +126,7 @@ const ENTERPRISE_SELECT = `
   assignee_group:approval_groups!approval_flows_assignee_group_id_fkey (name),
   documents (
     id,
+    library_id,
     code,
     title,
     project_id,
@@ -154,6 +157,7 @@ const ENTERPRISE_WITHOUT_PROJECT_SELECT = `
   assignee_group:approval_groups!approval_flows_assignee_group_id_fkey (name),
   documents (
     id,
+    library_id,
     code,
     title,
     doc_type,
@@ -176,6 +180,7 @@ const LEGACY_SLA_SELECT = `
   assignee:profiles!approval_flows_assignee_id_fkey (full_name),
   documents (
     id,
+    library_id,
     code,
     title,
     project_id,
@@ -198,6 +203,7 @@ const LEGACY_BASE_SELECT = `
   assignee:profiles!approval_flows_assignee_id_fkey (full_name),
   documents (
     id,
+    library_id,
     code,
     title,
     doc_type,
@@ -210,6 +216,7 @@ const LEGACY_BASE_SELECT = `
 
 export function useApprovalQueue() {
   const { profile } = useAuthContext()
+  const { libraryId } = useLibraryScope()
   const {
     users,
     groups,
@@ -251,12 +258,14 @@ export function useApprovalQueue() {
 
     try {
       async function runQuery(select: string) {
-        return supabase
+        let query = supabase
           .from('approval_flows')
           .select(select)
           .eq('org_id', currentProfile.org_id)
           .eq('status', 'pending')
           .order('step', { ascending: true })
+        if (libraryId) query = query.eq('documents.library_id', libraryId)
+        return query
       }
 
       let mode: QueueQueryMode = 'enterprise'
@@ -380,7 +389,7 @@ export function useApprovalQueue() {
     } finally {
       setLoading(false)
     }
-  }, [actorsLoading, groupMembers, groups, profile, users])
+  }, [actorsLoading, groupMembers, groups, libraryId, profile, users])
 
   useEffect(() => {
     fetchQueue()

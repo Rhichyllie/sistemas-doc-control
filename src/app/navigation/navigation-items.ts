@@ -21,6 +21,7 @@ import {
   LineChart,
   ShieldCheck,
   Bell,
+  Building2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -42,9 +43,10 @@ export const navigationSections: readonly NavigationSection[] = [
   {
     label: "PAINEL",
     items: [
+      { to: "/authenticated/organizacao", label: "Bibliotecas", icon: Building2 },
       { to: "/authenticated/dashboard", label: "Início", icon: House },
       { to: "/authenticated/documents", label: "Documentos", icon: FileText },
-      { to: "/authenticated/configuracoes/projetos", label: "Projetos", icon: FolderKanban },
+      { to: "/authenticated/projetos", label: "Projetos", icon: FolderKanban },
       { to: "/authenticated/documentos/tramites", label: "Modelos de tramitação", icon: GitBranch, managerOnly: true },
       {
         to: "/authenticated/fluxo-de-aprovacao",
@@ -62,6 +64,12 @@ export const navigationSections: readonly NavigationSection[] = [
   {
     label: "CONFIGURAÇÃO",
     items: [
+      {
+        to: "/authenticated/configuracoes",
+        label: "Geral",
+        icon: Settings,
+        managerOnly: true,
+      },
       { to: "/authenticated/documentos/codificacao", label: "Codificação", icon: Hash, managerOnly: true },
       { to: "/authenticated/documentos/regras", label: "Regras documentais", icon: LayoutList, managerOnly: true },
       {

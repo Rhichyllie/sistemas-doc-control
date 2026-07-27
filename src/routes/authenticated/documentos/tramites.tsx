@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { LibraryRouteRedirect } from "@/components/libraries/LibraryRouteRedirect";
 import { DocumentTramiteAdmin } from "@/components/tramites/DocumentTramiteAdmin";
 import {
   Card,
@@ -9,8 +10,12 @@ import {
 import { useAuthContext } from "@/contexts/AuthContext";
 
 export const Route = createFileRoute("/authenticated/documentos/tramites")({
-  component: DocumentTramitePage,
+  component: DocumentTramiteRedirectPage,
 });
+
+function DocumentTramiteRedirectPage() {
+  return <LibraryRouteRedirect target="/authenticated/documentos/tramites" />;
+}
 
 function DocumentTramitePage() {
   const { profile } = useAuthContext();

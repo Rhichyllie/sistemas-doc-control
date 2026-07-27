@@ -22,6 +22,7 @@ export type ProjectType = (typeof PROJECT_TYPES)[number];
 export interface ProjectOperationalContext {
   id: string;
   org_id: string | null;
+  library_id?: string | null;
   code: string;
   has_explicit_code: boolean;
   name: string;
@@ -48,6 +49,7 @@ export interface ProjectOperationalContext {
 export interface ProjectInput {
   name: string;
   code?: string | null;
+  library_id?: string | null;
   description?: string | null;
   client_name?: string | null;
   contract_number?: string | null;
@@ -258,6 +260,7 @@ export function normalizeProjectRecord(
   return {
     id: value.id,
     org_id: typeof value.org_id === "string" ? value.org_id : null,
+    library_id: typeof value.library_id === "string" ? value.library_id : null,
     code: explicitCode || fallbackProjectCode(value.id),
     has_explicit_code: Boolean(explicitCode),
     name:

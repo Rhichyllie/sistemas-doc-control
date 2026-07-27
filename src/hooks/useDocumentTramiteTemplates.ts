@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { useLibraryScope } from "@/contexts/library-context";
 import { getErrorMessage } from "@/lib/errorUtils";
 import { supabase } from "@/lib/supabase";
 import {
@@ -148,6 +149,8 @@ function normalizeTemplate(
   return {
     id: value.id,
     org_id: String(value.org_id ?? ""),
+    library_id:
+      typeof value.library_id === "string" ? value.library_id : null,
     code: String(value.code ?? ""),
     name: String(value.name ?? "Trâmite sem nome"),
     description:
@@ -233,6 +236,7 @@ function saveLocalTramiteStore(
 
 export function useDocumentTramiteTemplates() {
   const { profile } = useAuthContext();
+  const { libraryId } = useLibraryScope();
   const [templates, setTemplates] = useState<DocumentTramiteTemplate[]>([]);
   const [versions, setVersions] = useState<DocumentTramiteTemplateVersion[]>(
     [],
@@ -260,6 +264,7 @@ export function useDocumentTramiteTemplates() {
       .from("document_tramite_templates")
       .select("*")
       .eq("org_id", profile.org_id)
+      .match(libraryId ? { library_id: libraryId } : {})
       .order("updated_at", { ascending: false });
     if (templatesResult.error) {
       if (isMissingSchema(templatesResult.error)) {
@@ -337,7 +342,7 @@ export function useDocumentTramiteTemplates() {
     setIsLocalMode(false);
     setSchemaStatus(normalizedTemplates.length ? "ready" : "empty");
     setIsLoading(false);
-  }, [profile?.org_id]);
+  }, [libraryId, profile?.org_id]);
 
   useEffect(() => {
     void refresh();
@@ -347,6 +352,10 @@ export function useDocumentTramiteTemplates() {
     async (input: DocumentTramiteTemplateInput) => {
       if (!profile?.id || !profile.org_id || !canManage) {
         setError("Somente administradores e gestores podem criar trâmites.");
+        return null;
+      }
+      if (!libraryId) {
+        setError("Selecione uma biblioteca antes de criar trâmites.");
         return null;
       }
       if (isLocalMode) {
@@ -376,6 +385,7 @@ export function useDocumentTramiteTemplates() {
         const nextTemplate: DocumentTramiteTemplate = {
           id: templateId,
           org_id: profile.org_id,
+          library_id: libraryId,
           code,
           name: input.name.trim(),
           description: input.description?.trim() || null,
@@ -421,6 +431,7 @@ export function useDocumentTramiteTemplates() {
         .from("document_tramite_templates")
         .insert({
           org_id: profile.org_id,
+          library_id: libraryId,
           code,
           name: input.name.trim(),
           description: input.description?.trim() || null,
@@ -489,7 +500,7 @@ export function useDocumentTramiteTemplates() {
       await refresh();
       return templateId;
     },
-    [canManage, profile?.id, profile?.org_id, refresh],
+    [canManage, isLocalMode, libraryId, profile?.id, profile?.org_id, refresh, templates, versions],
   );
 
   const updateTemplate = useCallback(

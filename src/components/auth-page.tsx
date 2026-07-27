@@ -57,7 +57,7 @@ export function AuthPage() {
       return toast.error(message);
     }
     toast.success("Bem-vindo!");
-    navigate({ to: "/authenticated/dashboard" });
+    navigate({ to: "/authenticated/organizacao" });
   }
 
   async function handleSignUp(e: React.FormEvent) {

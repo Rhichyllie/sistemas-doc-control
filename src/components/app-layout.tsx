@@ -37,6 +37,7 @@ import { Badge } from "@/components/ui/badge";
 import { navigationSections } from "@/app/navigation/navigation-items";
 import { canViewNavigationItem } from "@/app/navigation/navigation-permissions";
 import { USER_ROLES } from "@/lib/constants";
+import { getLibraryIdFromPath, toLibraryScopedPath } from "@/lib/library-routing";
 import { toast } from "sonner";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -48,6 +49,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const notificationState = useNotifications();
   const { unreadCount } = notificationState;
   const { queue } = useApprovalQueue();
+  const currentLibraryId = getLibraryIdFromPath(pathname);
 
   // Company settings
   const [openSettings, setOpenSettings] = useState(false);
@@ -408,11 +410,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 )}
                 <div className="space-y-1">
                   {visibleItems.map((item) => {
+                    const resolvedTo = currentLibraryId
+                      ? toLibraryScopedPath(item.to, currentLibraryId)
+                      : item.to;
                     const active =
-                      item.to === "/authenticated/configuracoes"
-                        ? pathname === item.to
-                        : pathname === item.to ||
-                          pathname.startsWith(`${item.to}/`);
+                      resolvedTo === "/authenticated/configuracoes"
+                        ? pathname === resolvedTo
+                        : pathname === resolvedTo ||
+                          pathname.startsWith(`${resolvedTo}/`);
                     const Icon = item.icon;
                     const pendingCount =
                       item.badge === "approval"
@@ -424,7 +429,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     return (
                       <Link
                         key={item.to}
-                        to={item.to}
+                        to={resolvedTo}
                         title={item.label}
                         className={`flex items-center rounded-lg transition-all duration-150 ${
                           sidebarCollapsed
