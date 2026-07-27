@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Code2,
+  GripVertical,
   RotateCcw,
   Sparkles,
   WandSparkles,
@@ -28,6 +29,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  defaultDropAnimationSideEffects,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  horizontalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   DOCUMENT_CODE_PATTERN_PRESETS,
   buildPatternExample,
@@ -68,6 +87,46 @@ function withFreshIds(blocks: DocumentCodePatternBlock[]) {
   }));
 }
 
+function SortableDocumentCodePatternBlockChip({
+  block,
+  index,
+  total,
+  onMoveLeft,
+  onMoveRight,
+  onRemove,
+}: {
+  block: DocumentCodePatternBlock;
+  index: number;
+  total: number;
+  onMoveLeft?: () => void;
+  onMoveRight?: () => void;
+  onRemove?: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: block.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : "auto",
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <DocumentCodePatternBlockChip
+        block={block}
+        index={index}
+        total={total}
+        onMoveLeft={onMoveLeft}
+        onMoveRight={onMoveRight}
+        onRemove={onRemove}
+        dragHandleProps={{ ...attributes, ...listeners }}
+      />
+    </div>
+  );
+}
+
 export function DocumentCodePatternBuilder({
   value,
   onChange,
@@ -83,6 +142,7 @@ export function DocumentCodePatternBuilder({
       ? withFreshIds(initialParse.blocks)
       : createDefaultPatternBlocks(),
   );
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [mode, setMode] = useState<"visual" | "advanced">(
     initialParse.isLossless ? (initialMode ?? "visual") : "advanced",
   );
@@ -97,6 +157,31 @@ export function DocumentCodePatternBuilder({
     !initialParse.isLossless || initialMode === "advanced",
   );
   const lastEmittedValue = useRef(value);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  function handleDragStart(event: any) {
+    setActiveId(event.active.id);
+  }
+
+  function handleDragEnd(event: any) {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = blocks.findIndex((b) => b.id === active.id);
+      const newIndex = blocks.findIndex((b) => b.id === over.id);
+      emit(arrayMove(blocks, oldIndex, newIndex));
+    }
+    setActiveId(null);
+  }
 
   useEffect(() => {
     if (value === lastEmittedValue.current) return;
@@ -358,19 +443,48 @@ export function DocumentCodePatternBuilder({
                 Clique nos blocos acima para montar o código.
               </div>
             ) : (
-              <div className="flex flex-wrap gap-2 rounded-lg border bg-background p-3">
-                {blocks.map((block, index) => (
-                  <DocumentCodePatternBlockChip
-                    key={block.id}
-                    block={block}
-                    index={index}
-                    total={blocks.length}
-                    onMoveLeft={() => moveBlock(index, -1)}
-                    onMoveRight={() => moveBlock(index, 1)}
-                    onRemove={() => removeBlock(index)}
-                  />
-                ))}
-              </div>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={blocks.map((b) => b.id)}
+                  strategy={horizontalListSortingStrategy}
+                >
+                  <div className="flex flex-wrap gap-2 rounded-lg border bg-background p-3">
+                    {blocks.map((block, index) => (
+                      <SortableDocumentCodePatternBlockChip
+                        key={block.id}
+                        block={block}
+                        index={index}
+                        total={blocks.length}
+                        onMoveLeft={() => moveBlock(index, -1)}
+                        onMoveRight={() => moveBlock(index, 1)}
+                        onRemove={() => removeBlock(index)}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+                <DragOverlay dropAnimation={defaultDropAnimationSideEffects}>
+                  {activeId ? (
+                    <div>
+                      {(() => {
+                        const block = blocks.find((b) => b.id === activeId);
+                        if (!block) return null;
+                        return (
+                          <DocumentCodePatternBlockChip
+                            block={block}
+                            index={blocks.findIndex((b) => b.id === activeId)}
+                            total={blocks.length}
+                          />
+                        );
+                      })()}
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
             )}
           </div>
 

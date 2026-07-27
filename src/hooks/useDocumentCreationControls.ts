@@ -107,10 +107,13 @@ export function useDocumentCreationControls({
     }),
     [area, docType, org?.code_prefix, profile?.org_id, projectCode, projectId],
   );
-  const applicablePatterns = useMemo(
-    () => rankCodePatterns(patternCatalog.patterns, context),
-    [context, patternCatalog.patterns],
-  );
+  const applicablePatterns = useMemo(() => {
+    const result = rankCodePatterns(patternCatalog.patterns, context);
+    console.log("useDocumentCreationControls: patternCatalog.patterns", patternCatalog.patterns);
+    console.log("useDocumentCreationControls: context", context);
+    console.log("useDocumentCreationControls: applicablePatterns", result);
+    return result;
+  }, [context, patternCatalog.patterns]);
   const selectedPattern =
     applicablePatterns.find((pattern) => pattern.id === selectedPatternId) ??
     null;

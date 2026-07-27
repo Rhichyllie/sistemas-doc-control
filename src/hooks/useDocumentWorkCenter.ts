@@ -663,9 +663,9 @@ export function useDocumentWorkCenter() {
     const accessibleItems = isManager
       ? sortedItems
       : sortedItems.filter((item) => item.isMine);
-    const accessibleInstances = isManager
-      ? activeInstances
-      : activeInstances.filter((instance) => instance.isMine);
+    const accessibleInstances = activeInstances.filter(
+      (instance) => instance.isMine,
+    );
     const accessibleRecentDocuments = isManager
       ? documentsState.documents
       : documentsState.documents.filter(

@@ -17,6 +17,7 @@ import {
   type ApprovalGroupRecord,
   useApprovalGroups,
 } from '@/hooks/useApprovalGroups'
+import { useProjectOptions } from '@/hooks/useProjectOptions'
 import {
   describeApprovalGroupScope,
   normalizeApprovalGroupCode,
@@ -62,9 +63,10 @@ function getMemberRoleLabel(role: string) {
   return MEMBER_ROLES.find((item) => item.value === role)?.label ?? role
 }
 
-function ApprovalGroupsPage() {
+export function ApprovalGroupsPage() {
   const { profile } = useAuthContext()
   const canManage = profile?.role === 'admin' || profile?.role === 'manager'
+  const { projects } = useProjectOptions()
   const {
     groups,
     members,
@@ -280,7 +282,15 @@ function ApprovalGroupsPage() {
                         {group.is_active ? 'Ativo' : 'Inativo'}
                       </Badge>
                       <Badge variant="outline">
-                        {describeApprovalGroupScope(group)}
+                        {group.scope === 'project' 
+                          ? (() => {
+                              const project = projects.find(p => p.id === group.project_id)
+                              return project 
+                                ? `Projeto: ${project.code ? `${project.code} - ` : ''}${project.name}` 
+                                : 'Projeto não encontrado'
+                            })()
+                          : 'Organização'
+                        }
                       </Badge>
                     </div>
                     <CardDescription className="mt-1">
@@ -436,17 +446,36 @@ function ApprovalGroupsPage() {
             <div className="space-y-2">
               <Label>Escopo</Label>
               <Select
-                value={groupForm.scope}
-                onValueChange={(scope) => setGroupForm((current) => ({
-                  ...current,
-                  scope,
-                  project_id: scope === 'organization' ? null : current.project_id,
-                }))}
+                value={
+                  groupForm.scope === 'organization' 
+                  ? 'organization' 
+                  : `project-${groupForm.project_id}`
+                }
+                onValueChange={(value) => {
+                  if (value === 'organization') {
+                    setGroupForm((current) => ({
+                      ...current,
+                      scope: 'organization',
+                      project_id: null,
+                    }))
+                  } else if (value.startsWith('project-')) {
+                    const projectId = value.slice('project-'.length)
+                    setGroupForm((current) => ({
+                      ...current,
+                      scope: 'project',
+                      project_id: projectId,
+                    }))
+                  }
+                }}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="organization">Organização</SelectItem>
-                  <SelectItem value="project" disabled>Projeto — indisponível neste ambiente</SelectItem>
+                  {projects.map((project) => (
+                    <SelectItem key={project.id} value={`project-${project.id}`}>
+                      {project.code ? `${project.code} - ` : ''}{project.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

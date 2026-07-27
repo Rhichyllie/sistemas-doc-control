@@ -5,6 +5,7 @@ import { useDocumentTemplatesAndRules } from "@/hooks/useDocumentTemplatesAndRul
 import { useDocumentCreationControls } from "@/hooks/useDocumentCreationControls";
 import { useProjectOptions } from "@/hooks/useProjectOptions";
 import { useDocumentTramiteSuggestion } from "@/hooks/useDocumentTramiteSuggestion";
+import { useDocumentCodeOptions } from "@/hooks/useDocumentCodeOptions";
 import {
   assessDocumentCompleteness,
   buildCreationRecommendations,
@@ -34,6 +35,7 @@ export interface IntelligentDocumentFormState {
   doc_type: string;
   area: string;
   project_id: string;
+  discipline_id: string;
   file: File | null;
   review_period_months: number;
   next_review_at: string;
@@ -47,7 +49,7 @@ export interface IntelligentDocumentFormState {
 }
 
 export interface DocumentTypeOption {
-  value: DocumentTypeCode;
+  value: string;
   label: string;
   default_review_months: number;
 }
@@ -55,6 +57,12 @@ export interface DocumentTypeOption {
 export interface DocumentAreaOption {
   value: string;
   label: string;
+}
+
+export interface DocumentDisciplineOption {
+  id: string;
+  code?: string;
+  name: string;
 }
 
 export type DocumentProjectOption = ProjectOperationalContext;
@@ -77,7 +85,7 @@ const FALLBACK_AREAS: DocumentAreaOption[] = [
   { value: "ADM", label: "ADM — Administrativo" },
 ];
 
-const FALLBACK_REVIEW_PERIODS: Record<DocumentTypeCode, number> = {
+const FALLBACK_REVIEW_PERIODS: Record<string, number> = {
   RNC: 6,
   IT: 12,
   PLN: 12,
@@ -96,45 +104,39 @@ function fallbackDocumentTypes(): DocumentTypeOption[] {
   }));
 }
 
-function normalizeDocumentTypes(rows: unknown[]): DocumentTypeOption[] {
+function normalizeDocumentTypes(
+  rows: { id: string; code: string; label: string; is_active: boolean }[],
+): DocumentTypeOption[] {
   return rows
-    .map((row) => {
-      const record = row as Record<string, unknown>;
-      const value = String(
-        record.code ?? record.value ?? record.doc_type ?? "",
-      ).toUpperCase() as DocumentTypeCode;
-      if (!DOC_TYPES.some((type) => type.value === value)) return null;
-      if (record.is_active === false || record.active === false) return null;
-
-      return {
-        value,
-        label: String(
-          record.name ??
-            record.label ??
-            DOC_TYPES.find((type) => type.value === value)?.label ??
-            value,
-        ),
-        default_review_months:
-          Number(record.default_review_months) ||
-          FALLBACK_REVIEW_PERIODS[value],
-      };
-    })
-    .filter((option): option is DocumentTypeOption => Boolean(option));
+    .filter((row) => row.is_active !== false)
+    .map((row) => ({
+      value: row.code.toUpperCase(),
+      label: row.label,
+      default_review_months: FALLBACK_REVIEW_PERIODS[row.code.toUpperCase()] || 24,
+    }));
 }
 
-function normalizeAreas(rows: unknown[]): DocumentAreaOption[] {
+function normalizeAreas(
+  rows: { id: string; code: string; label: string; is_active: boolean }[],
+): DocumentAreaOption[] {
   return rows
-    .map((row) => {
-      const record = row as Record<string, unknown>;
-      if (record.is_active === false || record.active === false) return null;
-      const value = String(record.code ?? record.value ?? record.area ?? "");
-      if (!value) return null;
-      return {
-        value,
-        label: String(record.name ?? record.label ?? value),
-      };
-    })
-    .filter((option): option is DocumentAreaOption => Boolean(option));
+    .filter((row) => row.is_active !== false)
+    .map((row) => ({
+      value: row.code,
+      label: row.label,
+    }));
+}
+
+function normalizeDisciplines(
+  rows: { id: string; code: string; label: string; is_active: boolean }[],
+): DocumentDisciplineOption[] {
+  return rows
+    .filter((row) => row.is_active !== false)
+    .map((row) => ({
+      id: row.id,
+      code: row.code,
+      name: row.label,
+    }));
 }
 
 async function probeDocumentColumn(column: string) {
@@ -151,10 +153,28 @@ export function useDocumentCreationIntelligence(
   options: { selectedCodePatternId?: string | null } = {},
 ) {
   const { profile } = useAuthContext();
-  const [documentTypes, setDocumentTypes] = useState<DocumentTypeOption[]>(
-    fallbackDocumentTypes,
-  );
-  const [areas, setAreas] = useState<DocumentAreaOption[]>(FALLBACK_AREAS);
+  const codeOptions = useDocumentCodeOptions({ requireManagement: false });
+  const documentTypes = useMemo(() => {
+    console.log("useDocumentCreationIntelligence calculating documentTypes from codeOptions.docTypes:", codeOptions.docTypes);
+    const normalized = normalizeDocumentTypes(codeOptions.docTypes);
+    console.log("normalized documentTypes:", normalized);
+    return normalized.length ? normalized : fallbackDocumentTypes();
+  }, [codeOptions.docTypes]);
+
+  const areas = useMemo(() => {
+    console.log("useDocumentCreationIntelligence calculating areas from codeOptions.areas:", codeOptions.areas);
+    const normalized = normalizeAreas(codeOptions.areas);
+    console.log("normalized areas:", normalized);
+    return normalized.length ? normalized : FALLBACK_AREAS;
+  }, [codeOptions.areas]);
+
+  const disciplines = useMemo(() => {
+    console.log("useDocumentCreationIntelligence calculating disciplines from codeOptions.disciplines:", codeOptions.disciplines);
+    const normalized = normalizeDisciplines(codeOptions.disciplines);
+    console.log("normalized disciplines:", normalized);
+    return normalized;
+  }, [codeOptions.disciplines]);
+
   const [capabilities, setCapabilities] =
     useState<DocumentCreationCapabilities>(
       getDocumentCreationModeCapabilities(null),
@@ -169,7 +189,7 @@ export function useDocumentCreationIntelligence(
   useEffect(() => {
     let active = true;
 
-    async function loadConfigurations() {
+    async function loadCapabilities() {
       if (!profile) {
         if (active) setIsLoadingConfigurations(false);
         return;
@@ -185,24 +205,12 @@ export function useDocumentCreationIntelligence(
         "project_id",
       ] as const;
 
-      const [typesResult, areasResult, ...columnResults] = await Promise.all([
-        supabase.from("document_types").select("*"),
-        supabase.from("document_areas").select("*"),
-        ...optionalColumns.map((column) => probeDocumentColumn(column)),
-      ]);
+      const columnResults = await Promise.all(
+        optionalColumns.map((column) => probeDocumentColumn(column)),
+      );
 
       if (!active) return;
 
-      const loadedTypes = !typesResult.error
-        ? normalizeDocumentTypes(typesResult.data ?? [])
-        : [];
-      const loadedAreas = !areasResult.error
-        ? normalizeAreas(areasResult.data ?? [])
-        : [];
-      setDocumentTypes(
-        loadedTypes.length ? loadedTypes : fallbackDocumentTypes(),
-      );
-      setAreas(loadedAreas.length ? loadedAreas : FALLBACK_AREAS);
       const detectedCapabilities = Object.fromEntries(
         optionalColumns.map((column, index) => [
           column,
@@ -214,8 +222,7 @@ export function useDocumentCreationIntelligence(
       );
 
       const fallbacks = [
-        typesResult.error ? "tipos documentais locais" : null,
-        areasResult.error ? "áreas locais" : null,
+        codeOptions.compatibilityMessage ? "opções de codificação locais" : null,
       ].filter(Boolean);
       setConfigurationMessage(
         fallbacks.length
@@ -225,7 +232,7 @@ export function useDocumentCreationIntelligence(
       setIsLoadingConfigurations(false);
     }
 
-    loadConfigurations();
+    loadCapabilities();
     return () => {
       active = false;
     };
@@ -462,12 +469,14 @@ export function useDocumentCreationIntelligence(
     capabilities,
     documentTypes,
     areas,
+    disciplines,
     projects: projectCatalog.projects,
     selectedProject,
     isLoadingConfigurations:
       isLoadingConfigurations ||
       templateGovernance.isLoading ||
-      projectCatalog.isLoading,
+      projectCatalog.isLoading ||
+      codeOptions.isLoading,
     configurationMessage: [
       configurationMessage,
       projectCatalog.compatibilityMessage,

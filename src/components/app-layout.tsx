@@ -10,6 +10,9 @@ import {
   UserCircle,
   PanelLeftClose,
   PanelLeftOpen,
+  ChevronDown,
+  ChevronRight,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,9 +32,11 @@ import { useLocalData } from "@/hooks/use-local-data";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useApprovalQueue } from "@/hooks/useApprovalQueue";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { FloatingMessagesWidget } from "@/components/messages/FloatingMessagesWidget";
 import { Badge } from "@/components/ui/badge";
-import { navigationItems } from "@/app/navigation/navigation-items";
+import { navigationSections } from "@/app/navigation/navigation-items";
 import { canViewNavigationItem } from "@/app/navigation/navigation-permissions";
+import { USER_ROLES } from "@/lib/constants";
 import { toast } from "sonner";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -51,6 +56,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [openImportConfirm, setOpenImportConfirm] = useState(false);
   const [importFileData, setImportFileData] = useState<any>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(["/authenticated/configuracoes"]));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load from localStorage on mount
@@ -133,60 +139,62 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     navigate({ to: "/login", replace: true });
   }
 
+  function getInitials(name: string) {
+    return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "U";
+  }
+
   return (
     <div className="min-h-screen flex bg-background">
       <aside
         data-app-sidebar
         className={`${
-          sidebarCollapsed ? "w-20" : "w-20 md:w-64"
+          sidebarCollapsed ? "w-20" : "w-20 md:w-72"
         } sticky top-0 flex h-screen shrink-0 flex-col overflow-hidden text-sidebar-foreground transition-[width] duration-200`}
-        style={{ backgroundColor: theme.sidebar }}
+        style={{ backgroundColor: "#061d3d" }}
       >
         <div
-          className={`border-b border-white/20 ${
-            sidebarCollapsed ? "p-3" : "p-3 md:p-5"
+          className={`${
+            sidebarCollapsed ? "p-4 pb-2" : "p-6 md:p-8 pb-4"
           }`}
         >
-          <div className="flex flex-col items-center gap-3">
+          <div className={`flex items-center gap-3 ${sidebarCollapsed ? "justify-center" : "justify-start"}`}>
             {logoUrl ? (
               <img
                 src={logoUrl}
                 alt="Logo da Empresa"
-                className={`rounded-full object-cover ${
-                  sidebarCollapsed ? "h-10 w-10" : "h-12 w-12 md:h-16 md:w-16"
+                className={`rounded-xl object-cover shrink-0 ${
+                  sidebarCollapsed ? "h-10 w-10" : "h-11 w-11"
                 }`}
               />
             ) : (
               <div
-                className={`rounded-full flex items-center justify-center ${
-                  sidebarCollapsed ? "h-10 w-10" : "h-12 w-12 md:h-14 md:w-14"
+                className={`rounded-xl flex items-center justify-center shrink-0 ${
+                  sidebarCollapsed ? "h-10 w-10" : "h-11 w-11"
                 }`}
-                style={{ backgroundColor: theme.button, color: theme.text }}
+                style={{ backgroundColor: "rgba(56,189,248,0.12)", color: "#38bdf8" }}
               >
-                <FileStack className="h-7 w-7" />
+                <FileStack className="h-5 w-5" />
               </div>
             )}
             <div
-              className={`text-center ${
-                sidebarCollapsed ? "hidden" : "hidden md:block"
+              className={`flex flex-col ${
+                sidebarCollapsed ? "hidden" : "hidden md:flex"
               }`}
             >
               <div
-                className="font-semibold text-sm"
-                style={{ color: theme.text }}
+                className="font-bold text-base text-white tracking-tight"
               >
                 {companyName}
               </div>
               <div
-                className="text-[10px] uppercase tracking-wider"
-                style={{ color: theme.text + "99" }}
+                className="text-[11px] uppercase tracking-widest text-blue-300/60"
               >
                 Document Control
               </div>
             </div>
           </div>
           <div
-            className={`mt-3 justify-center gap-2 ${
+            className={`mt-5 justify-start ${
               sidebarCollapsed ? "hidden" : "hidden md:flex"
             }`}
           >
@@ -195,8 +203,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  style={{ color: theme.text }}
-                  className="hover:bg-white/20"
+                  className="hover:bg-white/10 text-blue-300"
                 >
                   <Settings className="h-4 w-4 mr-2" /> Configurar
                 </Button>
@@ -383,81 +390,92 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav
-          className={`${sidebarCollapsed ? "px-2" : "px-2 md:px-3"} flex-1 space-y-1 overflow-y-auto py-3`}
+          className={`${sidebarCollapsed ? "px-3" : "px-3 md:px-6"} flex-1 space-y-6 overflow-y-auto py-2`}
         >
-          {navigationItems
-            .filter((item) => canViewNavigationItem(item, profile))
-            .map((item) => {
-              const active =
-                item.to === "/authenticated/configuracoes"
-                  ? pathname === item.to
-                  : pathname === item.to || pathname.startsWith(`${item.to}/`);
-              const Icon = item.icon;
-              const pendingCount =
-                item.badge === "approval"
-                  ? queue.length
-                  : item.badge === "activities"
-                    ? unreadCount
-                    : 0;
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  title={item.label}
-                  className={`flex items-center rounded-lg py-2 text-sm transition-colors ${
-                    sidebarCollapsed
-                      ? "justify-center px-2"
-                      : "justify-center px-2 md:justify-between md:gap-2.5 md:px-3"
-                  }`}
-                  style={{
-                    color: active ? theme.text : theme.text + "99",
-                    backgroundColor: active
-                      ? "rgba(255,255,255,0.18)"
-                      : "transparent",
-                    fontWeight: active ? 500 : 400,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!active)
-                      e.currentTarget.style.backgroundColor =
-                        "rgba(255,255,255,0.08)";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!active)
-                      e.currentTarget.style.backgroundColor = "transparent";
-                  }}
-                >
-                  <span className="flex items-center gap-2.5">
-                    <Icon className="h-4 w-4 flex-shrink-0" />
-                    <span
-                      className={
-                        sidebarCollapsed ? "hidden" : "hidden md:inline"
-                      }
-                    >
-                      {item.label}
+          {navigationSections.map((section) => {
+            const visibleItems = section.items.filter((item) =>
+              canViewNavigationItem(item, profile),
+            );
+            if (!visibleItems.length) return null;
+            return (
+              <div key={section.label} className="space-y-1.5">
+                {!sidebarCollapsed && (
+                  <div className="hidden md:block px-3 pt-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-400/55">
+                      {section.label}
                     </span>
-                  </span>
-                  {pendingCount > 0 && (
-                    <Badge
-                      variant="destructive"
-                      className="h-5 min-w-5 px-1 text-[10px]"
-                    >
-                      {pendingCount}
-                    </Badge>
-                  )}
-                </Link>
-              );
-            })}
+                  </div>
+                )}
+                <div className="space-y-1">
+                  {visibleItems.map((item) => {
+                    const active =
+                      item.to === "/authenticated/configuracoes"
+                        ? pathname === item.to
+                        : pathname === item.to ||
+                          pathname.startsWith(`${item.to}/`);
+                    const Icon = item.icon;
+                    const pendingCount =
+                      item.badge === "approval"
+                        ? queue.length
+                        : item.badge === "activities"
+                          ? unreadCount
+                          : 0;
+
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        title={item.label}
+                        className={`flex items-center rounded-lg transition-all duration-150 ${
+                          sidebarCollapsed
+                            ? "h-11 w-11 justify-center mx-auto"
+                            : "h-11 px-3.5 justify-start"
+                        } ${
+                          active
+                            ? "bg-blue-500/18 text-white ring-1 ring-inset ring-blue-400/30"
+                            : "text-blue-100/75 hover:bg-white/8 hover:text-white"
+                        }`}
+                      >
+                        <Icon
+                          className={`shrink-0 ${
+                            active ? "text-sky-300" : "text-blue-300/75"
+                          } ${sidebarCollapsed ? "h-5 w-5" : "h-[18px] w-[18px]"}`}
+                        />
+                        <span
+                          className={`${
+                            sidebarCollapsed
+                              ? "hidden"
+                              : "hidden md:inline ml-3 text-sm font-medium"
+                          }`}
+                        >
+                          {item.label}
+                        </span>
+                        {pendingCount > 0 && (
+                          <Badge
+                            variant="destructive"
+                            className="h-5 min-w-5 px-1 text-[10px] ml-auto"
+                          >
+                            {pendingCount}
+                          </Badge>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </nav>
         <div
-          className={`${sidebarCollapsed ? "p-2" : "p-2 md:p-3"} border-t border-white/20`}
+          className={`${sidebarCollapsed ? "p-3" : "p-4 md:p-6 pt-4 border-t border-white/10"}`}
         >
           <div
-            className={`${sidebarCollapsed ? "hidden" : "hidden md:block"} px-2 py-2 text-xs`}
+            className={`${sidebarCollapsed ? "hidden" : "hidden md:block"} mb-3`}
           >
-            <div className="font-medium truncate" style={{ color: theme.text }}>
+            <div className="font-medium truncate text-sm text-white">
               {user?.user_metadata?.full_name || user?.email}
             </div>
-            <div className="truncate" style={{ color: theme.text + "99" }}>
+            <div className="truncate text-xs text-blue-300/55">
               {user?.email}
             </div>
           </div>
@@ -465,16 +483,38 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             asChild
             variant="ghost"
             size="sm"
-            className={`w-full hover:bg-white/20 ${sidebarCollapsed ? "justify-center px-0" : "justify-center md:justify-start"}`}
-            style={{ color: theme.text }}
+            className={`w-full hover:bg-white/10 text-blue-100/80 hover:text-white ${sidebarCollapsed ? "justify-center px-0 h-11" : "justify-start h-11 px-3.5"}`}
             title="Meu Perfil"
           >
             <Link to="/authenticated/meu-perfil">
-              <UserCircle
-                className={`h-4 w-4 ${sidebarCollapsed ? "" : "md:mr-2"}`}
-              />
+              {profile?.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt="Foto do perfil"
+                  className={`rounded-full object-cover ring-1 ring-white/15 ${
+                    sidebarCollapsed ? "h-8 w-8" : "h-7 w-7 mr-3"
+                  }`}
+                />
+              ) : (
+                <div
+                  className={`rounded-full flex items-center justify-center font-semibold text-xs ring-1 ring-white/15 ${
+                    sidebarCollapsed ? "h-8 w-8" : "h-7 w-7 mr-3"
+                  }`}
+                  style={{
+                    backgroundColor: "rgba(56,189,248,0.14)",
+                    color: "#7dd3fc",
+                  }}
+                >
+                  {getInitials(
+                    profile?.full_name ||
+                      user?.user_metadata?.full_name ||
+                      user?.email ||
+                      "User",
+                  )}
+                </div>
+              )}
               <span
-                className={sidebarCollapsed ? "hidden" : "hidden md:inline"}
+                className={sidebarCollapsed ? "hidden" : "hidden md:inline text-sm font-medium"}
               >
                 Meu Perfil
               </span>
@@ -483,19 +523,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <Button
             variant="ghost"
             size="sm"
-            className={`w-full hover:bg-white/20 ${
+            className={`w-full hover:bg-white/10 text-blue-100/80 hover:text-white mt-1.5 ${
               sidebarCollapsed
-                ? "justify-center px-0"
-                : "justify-center md:justify-start"
+                ? "justify-center px-0 h-11"
+                : "justify-start h-11 px-3.5"
             }`}
-            style={{ color: theme.text }}
             title="Sair"
             onClick={handleLogout}
           >
             <LogOut
-              className={`h-4 w-4 ${sidebarCollapsed ? "" : "md:mr-2"}`}
+              className={`h-4 w-4 ${sidebarCollapsed ? "" : "mr-3"}`}
             />
-            <span className={sidebarCollapsed ? "hidden" : "hidden md:inline"}>
+            <span className={sidebarCollapsed ? "hidden" : "hidden md:inline text-sm font-medium"}>
               Sair
             </span>
           </Button>
@@ -503,28 +542,23 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main data-app-main className="min-w-0 flex-1 overflow-auto">
-        <div
-          data-app-banner
-          className="w-full relative h-48"
-          style={{
-            backgroundImage: "url('/Banner_DOC.png')",
-            backgroundSize: "cover",
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "center",
-            backgroundColor: "#ffffff",
-          }}
-        >
-          <div className="absolute inset-0 bg-black/10"></div>
-          <header className="absolute top-0 right-0 left-0 z-20 px-6 lg:px-8 py-4 flex items-center justify-end gap-3">
+          <header className="sticky top-0 z-20 bg-white border-b border-slate-200 px-6 lg:px-8 py-3 flex items-center gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Buscar documento, projeto ou código..."
+                className="pl-10 bg-slate-50 border-slate-200 shadow-none focus:bg-white"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 ml-auto">
             <Dialog open={openSettings} onOpenChange={setOpenSettings}>
               <DialogTrigger asChild>
                 <Button
-                  variant="secondary"
-                  size="default"
-                  className="bg-white/90 text-gray-800 hover:bg-white shadow-md hover:shadow-lg transition-all"
+                  variant="ghost"
+                  size="icon"
+                  className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                 >
-                  <Palette className="h-5 w-5 mr-2" />
-                  Tema
+                  <Palette className="h-5 w-5" />
                 </Button>
               </DialogTrigger>
               <DialogContent>
@@ -561,7 +595,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   <div>
                     <Label>Cor do Tema</Label>
                     <div className="mt-2">
-                      {/* Organizar por famílias de cores como Excel */}
                       {(() => {
                         const families = [
                           {
@@ -724,11 +757,32 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </Dialog>
 
             <NotificationBell state={notificationState} />
+
+            <Link
+              to="/authenticated/meu-perfil"
+              className="shrink-0"
+            >
+              {profile?.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt="Foto do perfil"
+                  className="h-9 w-9 rounded-full object-cover border border-gray-200"
+                />
+              ) : (
+                <div
+                  className="h-9 w-9 rounded-full flex items-center justify-center font-semibold text-sm border border-gray-200"
+                  style={{ backgroundColor: theme.button, color: theme.text }}
+                >
+                  {getInitials(profile?.full_name || user?.user_metadata?.full_name || user?.email || "User")}
+                </div>
+              )}
+            </Link>
+            </div>
           </header>
-        </div>
         <div data-app-content className="p-6 lg:p-8 max-w-[1600px] mx-auto">
           {children}
         </div>
+        <FloatingMessagesWidget />
       </main>
     </div>
   );

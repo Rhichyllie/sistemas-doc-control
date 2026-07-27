@@ -94,7 +94,7 @@ export function DocumentTramiteToolbar({
         type="button"
         className="ml-auto"
         onClick={onPublish}
-        disabled={!canPublish || isSaving}
+        disabled={isSaving}
       >
         <Send className="h-4 w-4" />
         Publicar modelo

@@ -46,6 +46,45 @@ interface UseDocumentCodePatternsOptions {
   loadProjects?: boolean;
 }
 
+const LOCAL_DOCUMENT_CODE_PATTERNS_STORAGE_PREFIX =
+  "tramita.document_code_patterns.local.";
+
+function getLocalDocumentCodePatternsStorageKey(orgId: string) {
+  return `${LOCAL_DOCUMENT_CODE_PATTERNS_STORAGE_PREFIX}${orgId}`;
+}
+
+function loadLocalPatterns(orgId: string) {
+  if (typeof window === "undefined") return [] as DocumentCodePattern[];
+  try {
+    const raw = window.localStorage.getItem(
+      getLocalDocumentCodePatternsStorageKey(orgId),
+    );
+    if (!raw) return [] as DocumentCodePattern[];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [] as DocumentCodePattern[];
+    return parsed
+      .map(normalizePattern)
+      .filter((item): item is DocumentCodePattern => Boolean(item));
+  } catch {
+    return [] as DocumentCodePattern[];
+  }
+}
+
+function saveLocalPatterns(orgId: string, patterns: DocumentCodePattern[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    getLocalDocumentCodePatternsStorageKey(orgId),
+    JSON.stringify(patterns),
+  );
+}
+
+function createLocalPatternId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -209,12 +248,16 @@ export function useDocumentCodePatterns(
     const [patternsResult] = await Promise.all([query, refreshProjects()]);
 
     if (patternsResult.error) {
-      setPatterns([]);
       if (isDocumentCodingCompatibilityError(patternsResult.error)) {
+        const localPatterns = loadLocalPatterns(profile.org_id);
+        setPatterns(localPatterns);
         setCompatibilityMessage(
-          "Ciclo P-11 não instalado neste ambiente. A codificação legada continua ativa.",
+          localPatterns.length > 0
+            ? "Ciclo P-11 não instalado neste ambiente. Os padrões estão sendo mantidos localmente neste navegador."
+            : "Ciclo P-11 não instalado neste ambiente. Você pode criar padrões visualmente e salvá-los localmente neste navegador.",
         );
       } else {
+        setPatterns([]);
         setError(
           `Não foi possível carregar os padrões de codificação. ${getErrorMessage(patternsResult.error, "Erro de acesso ao banco.")}`,
         );
@@ -283,10 +326,43 @@ export function useDocumentCodePatterns(
 
       setIsSaving(false);
       if (result.error) {
+        if (isDocumentCodingCompatibilityError(result.error)) {
+          const now = new Date().toISOString();
+          const localPatterns = loadLocalPatterns(profile.org_id);
+          const nextPattern = normalizePattern({
+            ...(id
+              ? localPatterns.find((pattern) => pattern.id === id) ?? {}
+              : {}),
+            ...payload,
+            id: id ?? createLocalPatternId(),
+            created_at:
+              localPatterns.find((pattern) => pattern.id === id)?.created_at ??
+              now,
+            updated_at: now,
+          });
+          if (!nextPattern) {
+            setError("Não foi possível preparar o padrão para salvamento local.");
+            return false;
+          }
+          const nextPatterns = id
+            ? localPatterns.map((pattern) =>
+                pattern.id === id ? nextPattern : pattern,
+              )
+            : [...localPatterns, nextPattern];
+          saveLocalPatterns(profile.org_id, nextPatterns);
+          setPatterns(nextPatterns);
+          setCompatibilityMessage(
+            "Ciclo P-11 não instalado neste ambiente. Os padrões estão sendo mantidos localmente neste navegador.",
+          );
+          setLastMutationMessage(
+            id
+              ? "Padrão atualizado localmente neste navegador."
+              : "Padrão criado localmente neste navegador.",
+          );
+          return true;
+        }
         setError(
-          isDocumentCodingCompatibilityError(result.error)
-            ? "Ciclo P-11 não instalado. Aplique a migration antes de salvar padrões."
-            : `Não foi possível salvar o padrão. ${getErrorMessage(result.error, "Erro de persistência.")}`,
+          `Não foi possível salvar o padrão. ${getErrorMessage(result.error, "Erro de persistência.")}`,
         );
         return false;
       }
@@ -348,7 +424,7 @@ export function useDocumentCodePatterns(
     compatibilityMessage,
     lastMutationMessage,
     canManage,
-    canUsePatterns: diagnostic === "ready",
+    canUsePatterns: patterns.some((pattern) => pattern.is_active),
     diagnostic,
     refresh,
     createPattern: (input: DocumentCodePatternMutationInput) =>

@@ -26,6 +26,7 @@ import type {
   DocumentCodePatternMutationInput,
   DocumentCodeProject,
 } from "@/hooks/useDocumentCodePatterns";
+import type { DocumentCodeOption } from "@/hooks/useDocumentCodeOptions";
 import { DOC_TYPES } from "@/lib/constants";
 import {
   validatePatternExpression,
@@ -39,22 +40,13 @@ import {
   type DocumentCodeSequenceReset,
 } from "@/lib/documentCodePatterns";
 
-const AREAS = [
-  { value: "SGI", label: "SGI — Sistema de Gestão Integrada" },
-  { value: "ENG", label: "ENG — Engenharia" },
-  { value: "OPS", label: "OPS — Operações" },
-  { value: "MNT", label: "MNT — Manutenção" },
-  { value: "SST", label: "SST — Saúde e Segurança" },
-  { value: "MA", label: "MA — Meio Ambiente" },
-  { value: "QUA", label: "QUA — Qualidade" },
-  { value: "ADM", label: "ADM — Administrativo" },
-];
-
 interface DocumentCodePatternFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pattern: DocumentCodePattern | null;
   projects: DocumentCodeProject[];
+  docTypes: DocumentCodeOption[];
+  areas: DocumentCodeOption[];
   isSaving: boolean;
   submissionError: string | null;
   onSubmit: (input: DocumentCodePatternMutationInput) => Promise<boolean>;
@@ -106,6 +98,8 @@ export function DocumentCodePatternForm({
   onOpenChange,
   pattern,
   projects,
+  docTypes,
+  areas,
   isSaving,
   submissionError,
   onSubmit,
@@ -391,7 +385,13 @@ export function DocumentCodePatternForm({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="any">Qualquer tipo</SelectItem>
-                      {DOC_TYPES.map((type) => (
+                      {docTypes.map((type) => (
+                        <SelectItem key={type.id} value={type.code}>
+                          {type.code} — {type.label}
+                        </SelectItem>
+                      ))}
+                      {/* Fallback to DOC_TYPES if no dynamic types */}
+                      {docTypes.length === 0 && DOC_TYPES.map((type) => (
                         <SelectItem key={type.value} value={type.value}>
                           {type.value} — {type.label}
                         </SelectItem>
@@ -415,7 +415,22 @@ export function DocumentCodePatternForm({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="any">Qualquer área</SelectItem>
-                      {AREAS.map((area) => (
+                      {areas.map((area) => (
+                        <SelectItem key={area.id} value={area.code}>
+                          {area.code} — {area.label}
+                        </SelectItem>
+                      ))}
+                      {/* Fallback to hardcoded AREAS if no dynamic ones */}
+                      {areas.length === 0 && [
+                        { value: "SGI", label: "SGI — Sistema de Gestão Integrada" },
+                        { value: "ENG", label: "ENG — Engenharia" },
+                        { value: "OPS", label: "OPS — Operações" },
+                        { value: "MNT", label: "MNT — Manutenção" },
+                        { value: "SST", label: "SST — Saúde e Segurança" },
+                        { value: "MA", label: "MA — Meio Ambiente" },
+                        { value: "QUA", label: "QUA — Qualidade" },
+                        { value: "ADM", label: "ADM — Administrativo" },
+                      ].map((area) => (
                         <SelectItem key={area.value} value={area.value}>
                           {area.label}
                         </SelectItem>

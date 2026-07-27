@@ -4,11 +4,13 @@ import {
   Outlet,
   useRouterState,
 } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { OperationalReadinessPanel } from "@/components/diagnostics/OperationalReadinessPanel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -38,21 +40,72 @@ interface OrgDetails {
 
 const REVIEW_PERIODS = [6, 12, 24, 36] as const;
 const ALERT_DAYS = [30, 15, 7] as const;
+const SETTINGS_SUBPAGES = [
+  {
+    to: "/authenticated/configuracoes",
+    label: "Geral",
+    description: "Parâmetros gerais da organização.",
+  },
+  {
+    to: "/authenticated/configuracoes/projetos",
+    label: "Projetos",
+    description: "Gestão de projetos e contextos operacionais.",
+  },
+  {
+    to: "/authenticated/configuracoes/equipe",
+    label: "Equipe",
+    description: "Gestão de membros e disponibilidade.",
+  },
+  {
+    to: "/authenticated/configuracoes/grupos-aprovacao",
+    label: "Grupo de aprovação",
+    description: "Grupos reutilizáveis para aprovação.",
+  },
+  {
+    to: "/authenticated/configuracoes/regras-documentais",
+    label: "Regras documentais",
+    description: "Políticas e templates aplicáveis.",
+  },
+  {
+    to: "/authenticated/configuracoes/codificacao-documental",
+    label: "Codificação Documental",
+    description: "Padrões e regras de codificação.",
+  },
+  {
+    to: "/authenticated/configuracoes/calendario",
+    label: "Calendário e SLA",
+    description: "Calendário operacional e prazos.",
+  },
+  {
+    to: "/authenticated/configuracoes/trilha-de-auditoria",
+    label: "Trilha de auditoria",
+    description: "Histórico e rastreabilidade.",
+  },
+] as const;
 
 function ConfiguracoesRoute() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname.replace(/\/+$/, ""),
   });
+  const isOverview = pathname === "/authenticated/configuracoes";
 
-  if (pathname !== "/authenticated/configuracoes") {
-    return <Outlet />;
-  }
-
-  return <Configuracoes />;
+  return (
+    <ConfiguracoesLayout>
+      {isOverview ? <ConfiguracoesOverview /> : <Outlet />}
+    </ConfiguracoesLayout>
+  );
 }
 
-function Configuracoes() {
-  const { profile, org } = useAuthContext();
+function ConfiguracoesLayout({ children }: { children: ReactNode }) {
+  return (
+    <div className="space-y-6">
+      {children}
+    </div>
+  );
+}
+
+export function ConfiguracoesOverview() {
+  const { profile, org, updateOrg, refreshProfile } = useAuthContext();
   const [orgDetails, setOrgDetails] = useState<OrgDetails | null>(null);
   const [name, setName] = useState(org?.name ?? "");
   const [prefix, setPrefix] = useState(org?.code_prefix ?? "");
@@ -65,6 +118,13 @@ function Configuracoes() {
 
   const isAdmin = profile?.role === "admin";
   const canAccess = profile?.role === "admin" || profile?.role === "manager";
+
+  useEffect(() => {
+    if (!org) return;
+    setName(org.name ?? "");
+    setPrefix(org.code_prefix ?? "");
+    setSector(org.sector ?? "industrial");
+  }, [org?.id, org?.name, org?.code_prefix, org?.sector]);
 
   useEffect(() => {
     async function loadSettings() {
@@ -85,9 +145,6 @@ function Configuracoes() {
       if (orgData) {
         const settings = (orgData.settings ?? {}) as OrgSettings;
         setOrgDetails({ ...orgData, settings } as OrgDetails);
-        setName(orgData.name ?? "");
-        setPrefix(orgData.code_prefix ?? "");
-        setSector(orgData.sector ?? "industrial");
         setReviewMonths(String(settings.default_review_months ?? 24));
         setAlertDays(settings.alert_days?.length ? settings.alert_days : [30, 15, 7]);
       }
@@ -100,7 +157,7 @@ function Configuracoes() {
 
   if (!canAccess) {
     return (
-      <Card>
+      <Card className="max-w-5xl mx-auto">
         <CardHeader>
           <CardTitle>Acesso negado</CardTitle>
           <CardDescription>Esta página é restrita a Gestores e Administradores.</CardDescription>
@@ -113,14 +170,26 @@ function Configuracoes() {
   async function saveOrganizationInfo() {
     if (!org?.id || !isAdmin) return;
     setSavingOrg(true);
-    const { error } = await supabase
-      .from("organizations")
-      .update({ name, code_prefix: prefix.toUpperCase().slice(0, 4), sector, updated_at: new Date().toISOString() })
-      .eq("id", org.id);
+    const normalizedPrefix = prefix.toUpperCase().slice(0, 4);
+    const ok = await updateOrg({ name, sector, code_prefix: normalizedPrefix });
     setSavingOrg(false);
 
-    if (error) toast.error(error.message);
-    else toast.success("Configurações salvas");
+    if (!ok) {
+      // Fallback direct update
+      const { error } = await supabase
+        .from("organizations")
+        .update({ name, code_prefix: normalizedPrefix, sector, updated_at: new Date().toISOString() })
+        .eq("id", org.id);
+      if (error) toast.error(error.message);
+      else {
+        toast.success("Configurações salvas");
+        setPrefix(normalizedPrefix);
+        await refreshProfile();
+      }
+    } else {
+      toast.success("Configurações salvas");
+      setPrefix(normalizedPrefix);
+    }
   }
 
   async function saveDeadlineSettings() {
@@ -145,12 +214,7 @@ function Configuracoes() {
   }
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <div>
-        <h1 className="text-3xl font-bold">Configurações</h1>
-        <p className="text-muted-foreground">Parâmetros da organização e padrões do TRAMITA.</p>
-      </div>
-
+    <div className="max-w-5xl mx-auto space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Informações da Organização</CardTitle>
@@ -223,6 +287,8 @@ function Configuracoes() {
           <div><span className="text-muted-foreground">Versão do TRAMITA:</span> 1.0.0 — P-7</div>
         </CardContent>
       </Card>
+
+      <OperationalReadinessPanel />
     </div>
   );
 }

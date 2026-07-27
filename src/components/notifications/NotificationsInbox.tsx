@@ -120,7 +120,7 @@ export function NotificationsInbox() {
       setLastGeneration(result);
       if (result.errors > 0) {
         toast.warning(
-          "Alguns alertas não puderam ser gerados. Verifique o diagnóstico operacional.",
+          "Alguns alertas não puderam ser gerados. Verifique a página de configurações.",
         );
       } else {
         toast.success(
@@ -198,8 +198,8 @@ export function NotificationsInbox() {
             </p>
             {lastGeneration.errors > 0 && (
               <Button asChild size="sm" variant="outline">
-                <Link to="/authenticated/configuracoes/diagnostico">
-                  Abrir Diagnóstico Operacional
+                <Link to="/authenticated/configuracoes">
+                  Abrir Configurações
                 </Link>
               </Button>
             )}

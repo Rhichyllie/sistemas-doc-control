@@ -1,16 +1,28 @@
 import { useMemo, useState } from "react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   FolderKanban,
   Loader2,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
   ShieldCheck,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ProjectEmptyState } from "@/components/projects/ProjectEmptyState";
 import { ProjectForm } from "@/components/projects/ProjectForm";
-import { ProjectSummaryCard } from "@/components/projects/ProjectSummaryCard";
+import { ProjectStatusBadge } from "@/components/projects/ProjectStatusBadge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,16 +41,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useProjects } from "@/hooks/useProjects";
 import {
   PROJECT_STATUSES,
-  PROJECT_TYPES,
+  PROJECT_TYPE_LABELS,
   buildProjectSearchText,
   getProjectStatusLabel,
   getProjectTypeLabel,
+  getProjectTypesByLabel,
   type ProjectInput,
   type ProjectOperationalContext,
 } from "@/lib/projectOperationalContext";
+
+function dateLabel(value: string | null) {
+  if (!value) return "Sem data";
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(
+    new Date(`${value}T00:00:00Z`),
+  );
+}
 
 export function ProjectAdmin() {
   const catalog = useProjects();
@@ -49,14 +77,18 @@ export function ProjectAdmin() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [deleting, setDeleting] = useState<ProjectOperationalContext | null>(null);
 
   const filteredProjects = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
     return catalog.projects.filter((project) => {
       if (statusFilter !== "all" && project.status !== statusFilter)
         return false;
-      if (typeFilter !== "all" && project.project_type !== typeFilter)
+      if (typeFilter !== "all") {
+        const typesToFilter = getProjectTypesByLabel(typeFilter);
+        if (!typesToFilter.includes(project.project_type))
         return false;
+      }
       return !query || buildProjectSearchText(project).includes(query);
     });
   }, [catalog.projects, search, statusFilter, typeFilter]);
@@ -98,9 +130,6 @@ export function ProjectAdmin() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <Badge variant="outline" className="mb-3">
-            Contextos operacionais
-          </Badge>
           <div className="flex items-center gap-3">
             <FolderKanban className="h-7 w-7 text-primary" />
             <h1 className="text-3xl font-bold tracking-tight">Projetos</h1>
@@ -133,7 +162,7 @@ export function ProjectAdmin() {
         </div>
       </div>
 
-      {catalog.compatibilityMessage && (
+      {catalog.compatibilityMessage && catalog.schemaMode !== "missing" && (
         <Alert
           variant={
             ["denied", "error"].includes(catalog.diagnostic)
@@ -145,15 +174,13 @@ export function ProjectAdmin() {
           <AlertTitle>
             {catalog.diagnostic === "legacy"
               ? "Catálogo legado em modo de compatibilidade"
-              : catalog.diagnostic === "not_installed"
-                ? "Projetos ainda não disponíveis"
-                : "Compatibilidade do catálogo"}
+              : "Compatibilidade do catálogo"}
           </AlertTitle>
           <AlertDescription>{catalog.compatibilityMessage}</AlertDescription>
         </Alert>
       )}
 
-      {catalog.error && (
+      {catalog.error && catalog.schemaMode !== "missing" && (
         <Alert variant="destructive">
           <AlertTitle>Não foi possível concluir a operação</AlertTitle>
           <AlertDescription>{catalog.error}</AlertDescription>
@@ -171,51 +198,66 @@ export function ProjectAdmin() {
         </Alert>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Contextos</p>
-            <p className="mt-1 text-2xl font-semibold">
-              {catalog.projects.length}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Ativos</p>
-            <p className="mt-1 text-2xl font-semibold">
-              {
-                catalog.projects.filter(
-                  (project) => project.is_active && project.status === "active",
-                ).length
-              }
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">
-              Documentos vinculados
-            </p>
-            <p className="mt-1 text-2xl font-semibold">
-              {catalog.projects.reduce(
-                (total, project) => total + project.document_count,
-                0,
-              )}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <div className="mt-8 flex flex-col gap-4 xl:flex-row xl:items-stretch xl:justify-between">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 w-full xl:w-auto xl:flex-1 xl:max-w-3xl">
+          <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div
+              aria-hidden
+              className="absolute inset-y-0 left-0 w-1.5 rounded-l-2xl bg-gradient-to-b from-sky-200 to-sky-400"
+            />
+            <div className="pl-2.5">
+              <p className="text-sm font-medium text-slate-700">Ativos</p>
+              <p className="mt-0.5 text-xs text-slate-500">
+              </p>
+              <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+                {
+                  catalog.projects.filter(
+                    (project) =>
+                    project.is_active && project.status === "active",
+                  ).length
+                }
+              </p>
+            </div>
+          </div>
+          <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div
+              aria-hidden
+              className="absolute inset-y-0 left-0 w-1.5 rounded-l-2xl bg-gradient-to-b from-emerald-200 to-emerald-400"
+            />
+            <div className="pl-2.5">
+              <p className="text-sm font-medium text-slate-700">Pausados</p>
+              <p className="mt-0.5 text-xs text-slate-500">
+              </p>
+              <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+                {
+                  catalog.projects.filter(
+                    (project) =>
+                      !project.is_active || project.status === "paused",
+                  ).length
+                }
+              </p>
+            </div>
+          </div>
+          <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div
+              aria-hidden
+              className="absolute inset-y-0 left-0 w-1.5 rounded-l-2xl bg-gradient-to-b from-rose-200 to-rose-400"
+            />
+            <div className="pl-2.5">
+              <p className="text-sm font-medium text-slate-700">Encerrados</p>
+              <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+                {
+                  catalog.projects.filter((project) =>
+                    ["closed", "archived", "cancelled"].includes(project.status),
+                  ).length
+                }
+              </p>
+            </div>
+          </div>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Localizar contexto</CardTitle>
-          <CardDescription>
-            Busque por código, nome, cliente, contrato, local ou responsável.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-[1fr_220px_220px]">
-          <div className="relative">
+        <div className="flex flex-wrap items-stretch justify-center gap-3">
+          <div className="relative w-full sm:w-[240px]">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
               className="pl-9"
@@ -225,7 +267,7 @@ export function ProjectAdmin() {
             />
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger>
+            <SelectTrigger className="w-full sm:w-[170px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -238,20 +280,20 @@ export function ProjectAdmin() {
             </SelectContent>
           </Select>
           <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger>
+            <SelectTrigger className="w-full sm:w-[170px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os tipos</SelectItem>
-              {PROJECT_TYPES.map((type) => (
-                <SelectItem key={type} value={type}>
-                  {getProjectTypeLabel(type)}
+              <SelectItem value="all">Todas as fases</SelectItem>
+              {PROJECT_TYPE_LABELS.map((label) => (
+                <SelectItem key={label} value={label}>
+                  {label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {catalog.isLoading ? (
         <Card>
@@ -267,35 +309,169 @@ export function ProjectAdmin() {
           onCreate={openNew}
         />
       ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
-          {filteredProjects.map((project) => (
-            <ProjectSummaryCard
-              key={project.id}
-              project={project}
-              canManage={catalog.canManage && catalog.canUseEnterpriseProjects}
-              isSaving={catalog.isSaving}
-              onEdit={openEdit}
-              onToggleActive={(item) =>
-                void updateState(
-                  () => catalog.setProjectActive(item, !item.is_active),
-                  item.is_active ? "Projeto pausado." : "Projeto reativado.",
-                )
-              }
-              onClose={(item) =>
-                void updateState(
-                  () => catalog.closeProject(item),
-                  "Projeto encerrado.",
-                )
-              }
-              onArchive={(item) =>
-                void updateState(
-                  () => catalog.archiveProject(item),
-                  "Projeto arquivado.",
-                )
-              }
-            />
-          ))}
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Projetos cadastrados</CardTitle>
+            <CardDescription>
+              Visualize e gerencie os projetos no mesmo formato tabular usado em
+              documentos.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table className="min-w-[1100px] table-fixed">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[130px] whitespace-nowrap">Código</TableHead>
+                  <TableHead className="w-[280px] whitespace-nowrap">Projeto</TableHead>
+                  <TableHead className="w-[120px] whitespace-nowrap">Fase</TableHead>
+                  <TableHead className="w-[230px] whitespace-nowrap">Cliente</TableHead>
+                  <TableHead className="w-[180px] whitespace-nowrap">Responsável</TableHead>
+                  <TableHead className="w-[150px] whitespace-nowrap">Status</TableHead>
+                  <TableHead className="w-[320px] whitespace-nowrap text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredProjects.map((project) => {
+                  const isClosed = ["closed", "archived", "cancelled"].includes(
+                    project.status,
+                  );
+                  return (
+                    <TableRow 
+                      key={project.id} 
+                      className="cursor-pointer hover:bg-muted/50 transition-colors"
+                      onClick={() => {
+                        // Prevent clicks from bubbling when clicking action buttons
+                        openEdit(project);
+                      }}
+                    >
+                      <TableCell className="font-mono font-medium whitespace-nowrap">
+                        {project.code}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <div
+                          className="truncate"
+                          title={
+                            project.description
+                              ? `${project.name} - ${project.description}`
+                              : project.name
+                          }
+                        >
+                          <span className="font-medium">{project.name}</span>
+                          {project.description && (
+                            <span className="text-muted-foreground">
+                              {" · "}
+                              {project.description}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {getProjectTypeLabel(project.project_type)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <div
+                          className="truncate"
+                          title={
+                            project.contract_number
+                              ? `${project.client_name || "Não definido"} · ${project.contract_number}`
+                              : (project.client_name || "Não definido")
+                          }
+                        >
+                          <span>{project.client_name || "Não definido"}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {" · "}
+                            {project.contract_number || "Sem contrato"}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {project.responsible_name || "Sem responsável"}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <div className="flex items-center gap-2 whitespace-nowrap">
+                          <ProjectStatusBadge status={project.status} />
+                          {!project.is_active && (
+                            <Badge variant="secondary">Pausado</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        <div className="flex justify-end gap-2 whitespace-nowrap">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="whitespace-nowrap"
+                            disabled={catalog.isSaving}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEdit(project);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Editar
+                          </Button>
+                          {!isClosed && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="whitespace-nowrap"
+                              disabled={catalog.isSaving}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void updateState(
+                                  () =>
+                                    catalog.setProjectActive(
+                                      project,
+                                      !project.is_active,
+                                    ),
+                                  project.is_active
+                                    ? "Projeto pausado."
+                                    : "Projeto reativado.",
+                                )
+                              }}
+                            >
+                              {project.is_active ? "Pausar" : "Reativar"}
+                            </Button>
+                          )}
+                          {!isClosed && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="whitespace-nowrap"
+                              disabled={catalog.isSaving}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void updateState(
+                                  () => catalog.closeProject(project),
+                                  "Projeto encerrado.",
+                                )
+                              }}
+                            >
+                              Encerrar
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="whitespace-nowrap"
+                            disabled={catalog.isSaving}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleting(project);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Excluir
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
 
       <ProjectForm
@@ -310,6 +486,41 @@ export function ProjectAdmin() {
         submissionError={catalog.error}
         onSubmit={saveProject}
       />
+
+      <AlertDialog
+        open={Boolean(deleting)}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir projeto</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleting
+                ? `O projeto "${deleting.name}" será removido definitivamente. Essa ação não pode ser desfeita.`
+                : "Confirme a exclusão do projeto."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!deleting) return;
+                const project = deleting;
+                setDeleting(null);
+                const success = await catalog.deleteProject(project);
+                if (success) {
+                  toast.success("Projeto excluído.");
+                }
+              }}
+            >
+              Excluir projeto
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

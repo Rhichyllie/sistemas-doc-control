@@ -34,11 +34,31 @@ export interface DocumentTramiteTemplateInput {
   area?: string | null;
   project_id?: string | null;
   is_default?: boolean;
+  metadata?: Record<string, unknown>;
   graph: DocumentTramiteGraph;
+}
+
+const LOCAL_DOCUMENT_TRAMITE_STORAGE_PREFIX =
+  "tramita.document_tramites.local.";
+
+interface LocalDocumentTramiteStore {
+  templates: unknown[];
+  versions: unknown[];
+}
+
+function getLocalDocumentTramiteStorageKey(orgId: string) {
+  return `${LOCAL_DOCUMENT_TRAMITE_STORAGE_PREFIX}${orgId}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function createLocalIdentifier(prefix: string) {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function isMissingSchema(error: unknown) {
@@ -81,6 +101,10 @@ function normalizeScope(value: unknown): DocumentTramiteTemplateScope {
     : "organization";
 }
 
+function normalizeValidation(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? { ...value } : {};
+}
+
 function normalizeVersion(
   value: Record<string, unknown>,
 ): DocumentTramiteTemplateVersion | null {
@@ -94,7 +118,7 @@ function normalizeVersion(
     version_number: Number(value.version_number) || 1,
     status: normalizeStatus(value.status),
     graph: deserializeTramiteGraph(value.graph),
-    validation: isRecord(value.validation) ? value.validation : {},
+    validation: normalizeValidation(value.validation),
     nodes_count: Number(value.nodes_count) || 0,
     edges_count: Number(value.edges_count) || 0,
     created_by: typeof value.created_by === "string" ? value.created_by : null,
@@ -154,6 +178,59 @@ function normalizeTemplate(
   };
 }
 
+function loadLocalTramiteStore(orgId: string) {
+  if (typeof window === "undefined") {
+    return {
+      templates: [] as DocumentTramiteTemplate[],
+      versions: [] as DocumentTramiteTemplateVersion[],
+    };
+  }
+  try {
+    const raw = window.localStorage.getItem(
+      getLocalDocumentTramiteStorageKey(orgId),
+    );
+    if (!raw) {
+      return {
+        templates: [] as DocumentTramiteTemplate[],
+        versions: [] as DocumentTramiteTemplateVersion[],
+      };
+    }
+    const parsed = JSON.parse(raw) as Partial<LocalDocumentTramiteStore>;
+    const versions = Array.isArray(parsed.versions)
+      ? parsed.versions
+          .filter(isRecord)
+          .map(normalizeVersion)
+          .filter((value): value is DocumentTramiteTemplateVersion =>
+            Boolean(value),
+          )
+      : [];
+    const templates = Array.isArray(parsed.templates)
+      ? parsed.templates
+          .filter(isRecord)
+          .map((value) => normalizeTemplate(value, versions))
+          .filter((value): value is DocumentTramiteTemplate => Boolean(value))
+      : [];
+    return { templates, versions };
+  } catch {
+    return {
+      templates: [] as DocumentTramiteTemplate[],
+      versions: [] as DocumentTramiteTemplateVersion[],
+    };
+  }
+}
+
+function saveLocalTramiteStore(
+  orgId: string,
+  templates: DocumentTramiteTemplate[],
+  versions: DocumentTramiteTemplateVersion[],
+) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    getLocalDocumentTramiteStorageKey(orgId),
+    JSON.stringify({ templates, versions }),
+  );
+}
+
 export function useDocumentTramiteTemplates() {
   const { profile } = useAuthContext();
   const [templates, setTemplates] = useState<DocumentTramiteTemplate[]>([]);
@@ -166,6 +243,7 @@ export function useDocumentTramiteTemplates() {
   const [schemaStatus, setSchemaStatus] =
     useState<DocumentTramiteSchemaStatus>("loading");
   const canManage = profile?.role === "admin" || profile?.role === "manager";
+  const [isLocalMode, setIsLocalMode] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!profile?.org_id) {
@@ -184,14 +262,21 @@ export function useDocumentTramiteTemplates() {
       .eq("org_id", profile.org_id)
       .order("updated_at", { ascending: false });
     if (templatesResult.error) {
-      setTemplates([]);
-      setVersions([]);
       if (isMissingSchema(templatesResult.error)) {
-        setSchemaStatus("not_installed");
+        const localStore = loadLocalTramiteStore(profile.org_id);
+        setTemplates(localStore.templates);
+        setVersions(localStore.versions);
+        setIsLocalMode(true);
+        setSchemaStatus(localStore.templates.length ? "ready" : "empty");
         setError(
-          "Ciclo P-12 não instalado. Aplique a migration do Modelador de Trâmites.",
+          localStore.templates.length
+            ? "Ciclo P-12 não instalado. Os trâmites estão sendo mantidos localmente neste navegador."
+            : "Ciclo P-12 não instalado. Você pode modelar trâmites localmente neste navegador.",
         );
       } else {
+        setTemplates([]);
+        setVersions([]);
+        setIsLocalMode(false);
         setSchemaStatus("restricted");
         setError(
           `Não foi possível carregar os trâmites. ${getErrorMessage(
@@ -210,19 +295,29 @@ export function useDocumentTramiteTemplates() {
       .eq("org_id", profile.org_id)
       .order("version_number", { ascending: false });
     if (versionsResult.error) {
-      setTemplates([]);
-      setVersions([]);
-      setSchemaStatus(
-        isMissingSchema(versionsResult.error) ? "partial" : "restricted",
-      );
-      setError(
-        isMissingSchema(versionsResult.error)
-          ? "Schema P-12 parcial: a tabela de versões não está disponível."
-          : `Não foi possível carregar versões. ${getErrorMessage(
-              versionsResult.error,
-              "Verifique RLS e o schema P-12.",
-            )}`,
-      );
+      if (isMissingSchema(versionsResult.error)) {
+        const localStore = loadLocalTramiteStore(profile.org_id);
+        setTemplates(localStore.templates);
+        setVersions(localStore.versions);
+        setIsLocalMode(true);
+        setSchemaStatus(localStore.templates.length ? "ready" : "empty");
+        setError(
+          localStore.templates.length
+            ? "Schema P-12 parcial. Os trâmites estão sendo mantidos localmente neste navegador."
+            : "Schema P-12 parcial. Você pode modelar trâmites localmente neste navegador.",
+        );
+      } else {
+        setTemplates([]);
+        setVersions([]);
+        setIsLocalMode(false);
+        setSchemaStatus("restricted");
+        setError(
+          `Não foi possível carregar versões. ${getErrorMessage(
+            versionsResult.error,
+            "Verifique RLS e o schema P-12.",
+          )}`,
+        );
+      }
       setIsLoading(false);
       return;
     }
@@ -239,6 +334,7 @@ export function useDocumentTramiteTemplates() {
       .filter((value): value is DocumentTramiteTemplate => Boolean(value));
     setVersions(normalizedVersions);
     setTemplates(normalizedTemplates);
+    setIsLocalMode(false);
     setSchemaStatus(normalizedTemplates.length ? "ready" : "empty");
     setIsLoading(false);
   }, [profile?.org_id]);
@@ -252,6 +348,70 @@ export function useDocumentTramiteTemplates() {
       if (!profile?.id || !profile.org_id || !canManage) {
         setError("Somente administradores e gestores podem criar trâmites.");
         return null;
+      }
+      if (isLocalMode) {
+        setIsSaving(true);
+        setError(null);
+        const now = new Date().toISOString();
+        const code = generateTramiteCode(input.code || input.name);
+        const validation = validateTramiteGraph(input.graph);
+        const templateId = createLocalIdentifier("tramite");
+        const versionId = createLocalIdentifier("tramite-version");
+        const nextVersion: DocumentTramiteTemplateVersion = {
+          id: versionId,
+          org_id: profile.org_id,
+          template_id: templateId,
+          version_number: 1,
+          status: "draft",
+          graph: structuredClone(input.graph),
+          validation: { ...validation },
+          nodes_count: input.graph.nodes.length,
+          edges_count: input.graph.edges.length,
+          created_by: profile.id,
+          published_by: null,
+          published_at: null,
+          metadata: { local_mode: true },
+          created_at: now,
+        };
+        const nextTemplate: DocumentTramiteTemplate = {
+          id: templateId,
+          org_id: profile.org_id,
+          code,
+          name: input.name.trim(),
+          description: input.description?.trim() || null,
+          status: "draft",
+          template_scope: input.template_scope ?? "organization",
+          doc_type: input.doc_type || null,
+          area: input.area || null,
+          project_id: input.project_id || null,
+          is_default: input.is_default ?? false,
+          is_active: true,
+          current_version_id: versionId,
+          created_by: profile.id,
+          updated_by: profile.id,
+          published_by: null,
+          published_at: null,
+          metadata: { ...(input.metadata ?? {}), local_mode: true },
+          created_at: now,
+          updated_at: now,
+          current_version: nextVersion,
+          published_version: null,
+          working_version: nextVersion,
+        };
+        const nextTemplates: DocumentTramiteTemplate[] = [
+          nextTemplate,
+          ...templates,
+        ];
+        const nextVersions: DocumentTramiteTemplateVersion[] = [
+          nextVersion,
+          ...versions,
+        ];
+        saveLocalTramiteStore(profile.org_id, nextTemplates, nextVersions);
+        setTemplates(nextTemplates);
+        setVersions(nextVersions);
+        setSchemaStatus("ready");
+        setIsSaving(false);
+        return templateId;
       }
       setIsSaving(true);
       setError(null);
@@ -273,7 +433,7 @@ export function useDocumentTramiteTemplates() {
           is_active: true,
           created_by: profile.id,
           updated_by: profile.id,
-          metadata: {},
+          metadata: input.metadata ?? {},
         })
         .select("*")
         .single();
@@ -343,6 +503,24 @@ export function useDocumentTramiteTemplates() {
       >,
     ) => {
       if (!profile?.id || !canManage) return false;
+      if (isLocalMode && profile.org_id) {
+        setIsSaving(true);
+        setError(null);
+        const nextTemplates: DocumentTramiteTemplate[] = templates.map((template) =>
+          template.id === templateId
+            ? {
+                ...template,
+                ...updates,
+                updated_by: profile.id,
+                updated_at: new Date().toISOString(),
+              }
+            : template,
+        );
+        saveLocalTramiteStore(profile.org_id, nextTemplates, versions);
+        setTemplates(nextTemplates);
+        setIsSaving(false);
+        return true;
+      }
       setIsSaving(true);
       const result = await supabase
         .from("document_tramite_templates")
@@ -361,6 +539,58 @@ export function useDocumentTramiteTemplates() {
 
   const ensureDraftVersion = useCallback(
     async (templateId: string) => {
+      if (isLocalMode && profile?.id && profile.org_id) {
+        const existing = versions
+          .filter(
+            (version) =>
+              version.template_id === templateId && version.status === "draft",
+          )
+          .sort((left, right) => right.version_number - left.version_number)[0];
+        if (existing) return existing;
+        const source = versions
+          .filter((version) => version.template_id === templateId)
+          .sort((left, right) => right.version_number - left.version_number)[0];
+        if (!source) return null;
+        const nextVersion: DocumentTramiteTemplateVersion = {
+          ...source,
+          id: createLocalIdentifier("tramite-version"),
+          version_number: source.version_number + 1,
+          status: "draft",
+          graph: structuredClone(source.graph),
+          validation: {},
+          nodes_count: source.graph.nodes.length,
+          edges_count: source.graph.edges.length,
+          created_by: profile.id,
+          published_by: null,
+          published_at: null,
+          metadata: {
+            ...(source.metadata ?? {}),
+            created_from_version_id: source.id,
+            local_mode: true,
+          },
+          created_at: new Date().toISOString(),
+        };
+        const nextVersions: DocumentTramiteTemplateVersion[] = [
+          nextVersion,
+          ...versions,
+        ];
+        const nextTemplates: DocumentTramiteTemplate[] = templates.map((template) =>
+          template.id === templateId
+            ? {
+                ...template,
+                current_version_id: nextVersion.id,
+                current_version: nextVersion,
+                working_version: nextVersion,
+                updated_by: profile.id,
+                updated_at: nextVersion.created_at,
+              }
+            : template,
+        );
+        saveLocalTramiteStore(profile.org_id, nextTemplates, nextVersions);
+        setVersions(nextVersions);
+        setTemplates(nextTemplates);
+        return nextVersion;
+      }
       const existing = versions
         .filter(
           (version) =>
@@ -407,6 +637,49 @@ export function useDocumentTramiteTemplates() {
   const saveGraph = useCallback(
     async (templateId: string, graph: DocumentTramiteGraph) => {
       if (!profile?.id || !profile.org_id || !canManage) return false;
+      if (isLocalMode) {
+        setIsSaving(true);
+        setError(null);
+        const baseVersion = await ensureDraftVersion(templateId);
+        if (!baseVersion) {
+          setIsSaving(false);
+          return false;
+        }
+        const validation = validateTramiteGraph(graph);
+        const updatedVersion: DocumentTramiteTemplateVersion = {
+          ...baseVersion,
+          graph: structuredClone(graph),
+          validation: { ...validation },
+          nodes_count: graph.nodes.length,
+          edges_count: graph.edges.length,
+        };
+        const baseVersions = versions.some(
+          (version) => version.id === updatedVersion.id,
+        )
+          ? versions
+          : [baseVersion, ...versions];
+        const nextVersions: DocumentTramiteTemplateVersion[] = baseVersions.map(
+          (version) => (version.id === updatedVersion.id ? updatedVersion : version),
+        );
+        const nextTemplates: DocumentTramiteTemplate[] = templates.map((template) =>
+          template.id === templateId
+            ? {
+                ...template,
+                current_version_id: updatedVersion.id,
+                current_version: updatedVersion,
+                working_version:
+                  updatedVersion.status === "draft" ? updatedVersion : null,
+                updated_by: profile.id,
+                updated_at: new Date().toISOString(),
+              }
+            : template,
+        );
+        saveLocalTramiteStore(profile.org_id, nextTemplates, nextVersions);
+        setVersions(nextVersions);
+        setTemplates(nextTemplates);
+        setIsSaving(false);
+        return true;
+      }
       setIsSaving(true);
       setError(null);
       const version = await ensureDraftVersion(templateId);
@@ -522,6 +795,50 @@ export function useDocumentTramiteTemplates() {
   const publishTemplate = useCallback(
     async (templateId: string) => {
       if (!profile?.id || !profile.org_id || !canManage) return false;
+      if (isLocalMode) {
+        setIsSaving(true);
+        setError(null);
+        const now = new Date().toISOString();
+        const latestVersion = versions
+          .filter((version) => version.template_id === templateId)
+          .sort((left, right) => right.version_number - left.version_number)[0];
+        if (!latestVersion) {
+          setError("Nenhuma versão disponível para publicar.");
+          setIsSaving(false);
+          return false;
+        }
+        const publishedVersion: DocumentTramiteTemplateVersion = {
+          ...latestVersion,
+          status: "published",
+          published_by: profile.id,
+          published_at: now,
+          metadata: { ...(latestVersion.metadata ?? {}), local_mode: true },
+        };
+        const nextVersions: DocumentTramiteTemplateVersion[] = versions.map(
+          (version) => (version.id === publishedVersion.id ? publishedVersion : version),
+        );
+        const nextTemplates: DocumentTramiteTemplate[] = templates.map((template) =>
+          template.id === templateId
+            ? {
+                ...template,
+                status: "published",
+                current_version_id: publishedVersion.id,
+                current_version: publishedVersion,
+                published_version: publishedVersion,
+                working_version: null,
+                published_by: profile.id,
+                published_at: now,
+                updated_by: profile.id,
+                updated_at: now,
+              }
+            : template,
+        );
+        saveLocalTramiteStore(profile.org_id, nextTemplates, nextVersions);
+        setVersions(nextVersions);
+        setTemplates(nextTemplates);
+        setIsSaving(false);
+        return true;
+      }
       setIsSaving(true);
       setError(null);
       const rpc = await supabase.rpc("publish_document_tramite_template", {
@@ -563,6 +880,7 @@ export function useDocumentTramiteTemplates() {
         area: template.area,
         project_id: template.project_id,
         is_default: false,
+        metadata: template.metadata,
         graph:
           template.current_version?.graph ??
           deserializeTramiteGraph({ nodes: [], edges: [] }),
@@ -593,6 +911,7 @@ export function useDocumentTramiteTemplates() {
     isSaving,
     error,
     schemaStatus,
+    isLocalMode,
     canManage,
     refresh,
     createTemplate,

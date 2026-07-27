@@ -17,6 +17,7 @@ interface ActivityInboxPreviewProps {
   className?: string
   emptyTitle?: string
   emptyDescription?: string
+  emptyPrimaryAction?: React.ReactNode
 }
 
 const TYPE_META: Record<OperationalActivityType, { label: string; icon: typeof Info }> = {
@@ -45,25 +46,29 @@ export function ActivityInboxPreview({
   className,
   emptyTitle = 'Nenhuma atividade pendente agora.',
   emptyDescription = 'Quando houver revisões, aprovações ou documentos para corrigir, eles aparecerão aqui.',
+  emptyPrimaryAction,
 }: ActivityInboxPreviewProps) {
   const visibleItems = typeof limit === 'number' ? items.slice(0, limit) : items
 
   return (
     <Card className={cn('overflow-hidden', className)}>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div>
-          <CardTitle>{title}</CardTitle>
-          <CardDescription>{description}</CardDescription>
-        </div>
-        {items.length > 0 && <Badge variant="secondary">{items.length}</Badge>}
-      </CardHeader>
-      <CardContent className="p-0">
+      {(title || description) && (
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            {title && <CardTitle>{title}</CardTitle>}
+            {description && <CardDescription>{description}</CardDescription>}
+          </div>
+          {items.length > 0 && <Badge variant="secondary">{items.length}</Badge>}
+        </CardHeader>
+      )}
+      <CardContent className={cn(!title && !description ? 'pt-0' : 'p-0')}>
         {loading ? (
           <div className="px-6 py-10 text-sm text-muted-foreground">Carregando suas atividades...</div>
         ) : visibleItems.length === 0 ? (
           <EmptyState
             title={emptyTitle}
             description={emptyDescription}
+            primaryAction={emptyPrimaryAction}
           />
         ) : (
           <div className="divide-y">

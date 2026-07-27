@@ -100,8 +100,8 @@ function buildFallbackReport(input: {
         title: "Aplicar o ciclo 25 para análise completa",
         explanation:
           "O resumo local não calcula gargalos, ciclo médio, delegações nem compliance consolidado.",
-        action_label: "Abrir Diagnóstico Operacional",
-        action_url: "/authenticated/configuracoes/diagnostico",
+        action_label: "Abrir Configurações",
+        action_url: "/authenticated/configuracoes",
       },
     ],
     limitations: [

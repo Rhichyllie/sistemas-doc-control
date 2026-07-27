@@ -6,12 +6,20 @@ import {
   isTransactionalDocumentCreationUnavailable,
   normalizeTransactionalDocumentCreationResult,
 } from "@/lib/documentCreationTransaction";
-import { validateDocumentCreation } from "@/lib/documentCreationValidation";
+import {
+  validateDocumentCreation,
+  type DocumentValidationOverrides,
+} from "@/lib/documentCreationValidation";
 import { isDocumentCodingCompatibilityError } from "@/lib/documentCodePatterns";
 import { normalizeDocumentCreationPayload } from "@/lib/documentIntelligence";
 import { isDocumentTemplateSchemaUnavailable } from "@/lib/documentTemplateRules";
 import { isWorkflowFoundationUnavailable } from "@/lib/workflowCompatibility";
 import type { DocumentCreationCodeMode } from "@/hooks/useDocumentCreationControls";
+import {
+  loadLocalDocuments,
+  saveLocalDocuments,
+  type Document,
+} from "@/hooks/useDocuments";
 
 /*
  * STORAGE SETUP REQUIRED (manual step — cannot be done via migrations):
@@ -45,9 +53,16 @@ export interface CreateDocumentInput {
   area: string;
   description?: string;
   project_id?: string | null;
+  discipline_id?: string | null;
   revision?: number;
+  register_revision?: string | null;
+  register_status?: string | null;
   review_period_months?: number;
   next_review_at?: string;
+  received_at?: string | null;
+  analysis_days?: number | null;
+  analysis_deadline?: string | null;
+  external_link?: string | null;
   file?: File | null;
   advancedFields?: {
     confidentiality?: string;
@@ -84,6 +99,7 @@ export interface CreateDocumentInput {
     suggestedTramiteVersionId?: string | null;
     suggestedTramiteReason?: string | null;
   };
+  validationOverrides?: DocumentValidationOverrides;
 }
 
 export interface CreateDocumentResult {
@@ -105,6 +121,49 @@ async function calculateFileHash(file: File) {
   }
 }
 
+function isOptionalRegisterFieldError(error: unknown) {
+  const record =
+    error && typeof error === "object"
+      ? (error as Record<string, unknown>)
+      : {};
+  const code = String(record.code ?? "").toUpperCase();
+  const message = [record.message, record.details, record.hint]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (["42703", "PGRST204", "PGRST200"].includes(code)) return true;
+
+  return [
+    "discipline_id",
+    "received_at",
+    "analysis_days",
+    "analysis_deadline",
+    "external_link",
+    "register_status",
+    "register_revision",
+  ].some((term) => message.includes(term));
+}
+
+function isMissingDocumentsSchema(error: unknown) {
+  const record =
+    error && typeof error === "object"
+      ? (error as Record<string, unknown>)
+      : {};
+  const code = String(record.code ?? "").toUpperCase();
+  const message = [record.message, record.details, record.hint]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    (message.includes("documents") &&
+      (message.includes("does not exist") || message.includes("schema cache")))
+  );
+}
+
 export function useCreateDocument() {
   const { profile } = useAuthContext();
   const [loading, setLoading] = useState(false);
@@ -124,7 +183,7 @@ export function useCreateDocument() {
       return null;
     }
 
-    const validationErrors = validateDocumentCreation(input);
+    const validationErrors = validateDocumentCreation(input, input.validationOverrides);
     if (input.coding?.mode === "selected_pattern" && !input.coding.patternId) {
       validationErrors.push("Escolha o padrão de codificação.");
     }
@@ -193,6 +252,46 @@ export function useCreateDocument() {
       }
     }
 
+    async function syncDocumentRegisterFields(documentId: string) {
+      const payload: Record<string, unknown> = {};
+
+      if (input.discipline_id !== undefined) {
+        payload.discipline_id = input.discipline_id || null;
+      }
+      if (input.received_at !== undefined) {
+        payload.received_at = input.received_at || null;
+      }
+      if (input.analysis_days !== undefined) {
+        payload.analysis_days = input.analysis_days ?? null;
+      }
+      if (input.analysis_deadline !== undefined) {
+        payload.analysis_deadline = input.analysis_deadline || null;
+      }
+      if (input.external_link !== undefined) {
+        payload.external_link = input.external_link?.trim() || null;
+      }
+      if (input.register_status !== undefined) {
+        payload.register_status = input.register_status?.trim() || null;
+      }
+      if (input.register_revision !== undefined) {
+        payload.register_revision = input.register_revision?.trim() || null;
+      }
+
+      if (Object.keys(payload).length === 0) return undefined;
+
+      const { error: registerFieldError } = await supabase
+        .from("documents")
+        .update(payload)
+        .eq("id", documentId)
+        .eq("org_id", currentProfile.org_id);
+
+      if (registerFieldError && !isOptionalRegisterFieldError(registerFieldError)) {
+        return `Documento criado, mas os campos operacionais do cadastro não puderam ser sincronizados: ${getErrorMessage(registerFieldError, "erro não identificado")}`;
+      }
+
+      return undefined;
+    }
+
     try {
       let file_path: string | null = null;
       let file_name: string | null = null;
@@ -239,6 +338,15 @@ export function useCreateDocument() {
       const requestedCodeMode = input.coding?.mode ?? "automatic";
       const creationMetadata = {
         document_metadata: input.advancedFields?.metadata ?? {},
+        document_register: {
+          discipline_id: input.discipline_id ?? null,
+          register_revision: input.register_revision ?? null,
+          register_status: input.register_status ?? null,
+          received_at: input.received_at ?? null,
+          analysis_days: input.analysis_days ?? null,
+          analysis_deadline: input.analysis_deadline ?? null,
+          external_link: input.external_link ?? null,
+        },
         creation_mode: creationMode,
         source: creationSource,
         completeness_score: input.creationContext?.completenessScore ?? null,
@@ -326,12 +434,16 @@ export function useCreateDocument() {
         }
 
         const usageLogWarning = await registerTemplateUsage(created.documentId);
+        const registerFieldWarning = await syncDocumentRegisterFields(
+          created.documentId,
+        );
         return {
           id: created.documentId,
           code: created.code,
           warning:
-            [...created.warnings, usageLogWarning].filter(Boolean).join(" ") ||
-            undefined,
+            [...created.warnings, usageLogWarning, registerFieldWarning]
+              .filter(Boolean)
+              .join(" ") || undefined,
         };
       }
 
@@ -365,11 +477,73 @@ export function useCreateDocument() {
             file_hash,
             review_period_months: input.review_period_months ?? 24,
             next_review_at: input.next_review_at ?? null,
+            discipline_id: input.discipline_id ?? null,
+            received_at: input.received_at ?? null,
+            analysis_days: input.analysis_days ?? null,
+            analysis_deadline: input.analysis_deadline ?? null,
+            external_link: input.external_link?.trim() || null,
+            register_status: input.register_status?.trim() || null,
+            register_revision: input.register_revision?.trim() || null,
             ...advancedFields,
           }),
         )
         .select("id, code")
         .single();
+
+      if (insertError && isMissingDocumentsSchema(insertError)) {
+        const now = new Date().toISOString();
+        const nextId =
+          globalThis.crypto?.randomUUID?.() ?? `local-document-${Date.now()}`;
+        const localCode =
+          input.creationContext?.codePreview?.trim() ||
+          `DOC-${Date.now().toString().slice(-6)}`;
+        const localDocuments = loadLocalDocuments(profile.org_id);
+        const nextDocument: Document = {
+          id: nextId,
+          org_id: profile.org_id,
+          code: localCode,
+          title: input.title.trim(),
+          project_id: input.project_id || null,
+          discipline_id: input.discipline_id || null,
+          doc_type: input.doc_type,
+          area: input.area,
+          status: "draft",
+          register_status: input.register_status?.trim() || null,
+          revision,
+          register_revision: input.register_revision?.trim() || null,
+          description: input.description?.trim() || null,
+          file_path,
+          file_name,
+          file_size,
+          next_review_at: input.next_review_at || null,
+          received_at: input.received_at || null,
+          analysis_days: input.analysis_days ?? null,
+          analysis_deadline: input.analysis_deadline || null,
+          external_link: input.external_link?.trim() || null,
+          author_id: profile.id,
+          published_at: null,
+          created_at: now,
+          updated_at: now,
+          published_version_id: null,
+          working_version_id: null,
+          code_pattern_id: input.creationContext?.codePatternId ?? null,
+          code_generation_mode:
+            input.creationContext?.codePreviewMode ?? "local_fallback",
+          manual_code: requestedCodeMode === "manual",
+          working_revision: null,
+          published_revision: null,
+          correction: null,
+          author: { full_name: currentProfile.full_name || "Usuário" },
+          project: null,
+        };
+        saveLocalDocuments(profile.org_id, [nextDocument, ...localDocuments]);
+        return {
+          id: nextId,
+          code: localCode,
+          warning:
+            "Tabela documents indisponível. O documento foi salvo localmente neste navegador para permitir testes.",
+        };
+      }
 
       if (insertError) {
         throw new Error(
@@ -546,6 +720,8 @@ export function useCreateDocument() {
         }
       }
 
+      const registerFieldWarning = await syncDocumentRegisterFields(data.id);
+
       const { error: auditError } = await supabase.from("audit_trail").insert({
         document_id: data.id,
         org_id: profile.org_id,
@@ -595,11 +771,9 @@ export function useCreateDocument() {
             input.creationContext?.suggestedTramiteReason ?? null,
         },
       });
-      if (auditError) {
-        throw new Error(
-          `Não foi possível concluir a auditoria inicial: ${getErrorMessage(auditError, "erro não identificado")}`,
-        );
-      }
+      const auditWarning = auditError
+        ? `Documento criado, mas o evento inicial da trilha de auditoria não pôde ser salvo: ${getErrorMessage(auditError, "erro não identificado")}`
+        : undefined;
 
       const usageLogWarning = await registerTemplateUsage(data.id);
 
@@ -607,7 +781,13 @@ export function useCreateDocument() {
         id: data.id,
         code: finalCode,
         warning:
-          [transactionalFallbackWarning, codeGenerationWarning, usageLogWarning]
+          [
+            transactionalFallbackWarning,
+            codeGenerationWarning,
+            registerFieldWarning,
+            auditWarning,
+            usageLogWarning,
+          ]
             .filter(Boolean)
             .join(" ") || undefined,
       };

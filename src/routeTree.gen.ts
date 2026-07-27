@@ -35,9 +35,17 @@ import { Route as AuthenticatedDocumentosRegrasRouteImport } from './routes/auth
 import { Route as AuthenticatedDocumentosNovoInteligenteRouteImport } from './routes/authenticated/documentos/novo-inteligente'
 import { Route as AuthenticatedDocumentosCodificacaoRouteImport } from './routes/authenticated/documentos/codificacao'
 import { Route as AuthenticatedDocumentosCentralRouteImport } from './routes/authenticated/documentos/central'
-import { Route as AuthenticatedConfiguracoesDiagnosticoRouteImport } from './routes/authenticated/configuracoes/diagnostico'
+import { Route as AuthenticatedConfiguracoesTrilhaDeAuditoriaRouteImport } from './routes/authenticated/configuracoes/trilha-de-auditoria'
+import { Route as AuthenticatedConfiguracoesRegrasDocumentaisRouteImport } from './routes/authenticated/configuracoes/regras-documentais'
+import { Route as AuthenticatedConfiguracoesProjetosRouteImport } from './routes/authenticated/configuracoes/projetos'
+import { Route as AuthenticatedConfiguracoesGruposAprovacaoRouteImport } from './routes/authenticated/configuracoes/grupos-aprovacao'
+import { Route as AuthenticatedConfiguracoesEquipeRouteImport } from './routes/authenticated/configuracoes/equipe'
+import { Route as AuthenticatedConfiguracoesCodificacaoDocumentalRouteImport } from './routes/authenticated/configuracoes/codificacao-documental'
 import { Route as AuthenticatedConfiguracoesCalendarioRouteImport } from './routes/authenticated/configuracoes/calendario'
 import { Route as AuthenticatedAuditoriaRelatoriosRouteImport } from './routes/authenticated/auditoria/relatorios'
+import { Route as AuthenticatedConfiguracoesCodificacaoDocumentalTiposDocumentoRouteImport } from './routes/authenticated/configuracoes/codificacao-documental.tipos-documento'
+import { Route as AuthenticatedConfiguracoesCodificacaoDocumentalDisciplinasRouteImport } from './routes/authenticated/configuracoes/codificacao-documental.disciplinas'
+import { Route as AuthenticatedConfiguracoesCodificacaoDocumentalAreasRouteImport } from './routes/authenticated/configuracoes/codificacao-documental.areas'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -184,10 +192,40 @@ const AuthenticatedDocumentosCentralRoute =
     path: '/documentos/central',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedConfiguracoesDiagnosticoRoute =
-  AuthenticatedConfiguracoesDiagnosticoRouteImport.update({
-    id: '/diagnostico',
-    path: '/diagnostico',
+const AuthenticatedConfiguracoesTrilhaDeAuditoriaRoute =
+  AuthenticatedConfiguracoesTrilhaDeAuditoriaRouteImport.update({
+    id: '/trilha-de-auditoria',
+    path: '/trilha-de-auditoria',
+    getParentRoute: () => AuthenticatedConfiguracoesRoute,
+  } as any)
+const AuthenticatedConfiguracoesRegrasDocumentaisRoute =
+  AuthenticatedConfiguracoesRegrasDocumentaisRouteImport.update({
+    id: '/regras-documentais',
+    path: '/regras-documentais',
+    getParentRoute: () => AuthenticatedConfiguracoesRoute,
+  } as any)
+const AuthenticatedConfiguracoesProjetosRoute =
+  AuthenticatedConfiguracoesProjetosRouteImport.update({
+    id: '/projetos',
+    path: '/projetos',
+    getParentRoute: () => AuthenticatedConfiguracoesRoute,
+  } as any)
+const AuthenticatedConfiguracoesGruposAprovacaoRoute =
+  AuthenticatedConfiguracoesGruposAprovacaoRouteImport.update({
+    id: '/grupos-aprovacao',
+    path: '/grupos-aprovacao',
+    getParentRoute: () => AuthenticatedConfiguracoesRoute,
+  } as any)
+const AuthenticatedConfiguracoesEquipeRoute =
+  AuthenticatedConfiguracoesEquipeRouteImport.update({
+    id: '/equipe',
+    path: '/equipe',
+    getParentRoute: () => AuthenticatedConfiguracoesRoute,
+  } as any)
+const AuthenticatedConfiguracoesCodificacaoDocumentalRoute =
+  AuthenticatedConfiguracoesCodificacaoDocumentalRouteImport.update({
+    id: '/codificacao-documental',
+    path: '/codificacao-documental',
     getParentRoute: () => AuthenticatedConfiguracoesRoute,
   } as any)
 const AuthenticatedConfiguracoesCalendarioRoute =
@@ -201,6 +239,27 @@ const AuthenticatedAuditoriaRelatoriosRoute =
     id: '/auditoria/relatorios',
     path: '/auditoria/relatorios',
     getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedConfiguracoesCodificacaoDocumentalTiposDocumentoRoute =
+  AuthenticatedConfiguracoesCodificacaoDocumentalTiposDocumentoRouteImport.update(
+    {
+      id: '/tipos-documento',
+      path: '/tipos-documento',
+      getParentRoute: () =>
+        AuthenticatedConfiguracoesCodificacaoDocumentalRoute,
+    } as any,
+  )
+const AuthenticatedConfiguracoesCodificacaoDocumentalDisciplinasRoute =
+  AuthenticatedConfiguracoesCodificacaoDocumentalDisciplinasRouteImport.update({
+    id: '/disciplinas',
+    path: '/disciplinas',
+    getParentRoute: () => AuthenticatedConfiguracoesCodificacaoDocumentalRoute,
+  } as any)
+const AuthenticatedConfiguracoesCodificacaoDocumentalAreasRoute =
+  AuthenticatedConfiguracoesCodificacaoDocumentalAreasRouteImport.update({
+    id: '/areas',
+    path: '/areas',
+    getParentRoute: () => AuthenticatedConfiguracoesCodificacaoDocumentalRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -226,13 +285,21 @@ export interface FileRoutesByFullPath {
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
   '/authenticated/auditoria/relatorios': typeof AuthenticatedAuditoriaRelatoriosRoute
   '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
-  '/authenticated/configuracoes/diagnostico': typeof AuthenticatedConfiguracoesDiagnosticoRoute
+  '/authenticated/configuracoes/codificacao-documental': typeof AuthenticatedConfiguracoesCodificacaoDocumentalRouteWithChildren
+  '/authenticated/configuracoes/equipe': typeof AuthenticatedConfiguracoesEquipeRoute
+  '/authenticated/configuracoes/grupos-aprovacao': typeof AuthenticatedConfiguracoesGruposAprovacaoRoute
+  '/authenticated/configuracoes/projetos': typeof AuthenticatedConfiguracoesProjetosRoute
+  '/authenticated/configuracoes/regras-documentais': typeof AuthenticatedConfiguracoesRegrasDocumentaisRoute
+  '/authenticated/configuracoes/trilha-de-auditoria': typeof AuthenticatedConfiguracoesTrilhaDeAuditoriaRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
   '/authenticated/documentos/tramites': typeof AuthenticatedDocumentosTramitesRoute
   '/authenticated/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
+  '/authenticated/configuracoes/codificacao-documental/areas': typeof AuthenticatedConfiguracoesCodificacaoDocumentalAreasRoute
+  '/authenticated/configuracoes/codificacao-documental/disciplinas': typeof AuthenticatedConfiguracoesCodificacaoDocumentalDisciplinasRoute
+  '/authenticated/configuracoes/codificacao-documental/tipos-documento': typeof AuthenticatedConfiguracoesCodificacaoDocumentalTiposDocumentoRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -257,13 +324,21 @@ export interface FileRoutesByTo {
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
   '/authenticated/auditoria/relatorios': typeof AuthenticatedAuditoriaRelatoriosRoute
   '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
-  '/authenticated/configuracoes/diagnostico': typeof AuthenticatedConfiguracoesDiagnosticoRoute
+  '/authenticated/configuracoes/codificacao-documental': typeof AuthenticatedConfiguracoesCodificacaoDocumentalRouteWithChildren
+  '/authenticated/configuracoes/equipe': typeof AuthenticatedConfiguracoesEquipeRoute
+  '/authenticated/configuracoes/grupos-aprovacao': typeof AuthenticatedConfiguracoesGruposAprovacaoRoute
+  '/authenticated/configuracoes/projetos': typeof AuthenticatedConfiguracoesProjetosRoute
+  '/authenticated/configuracoes/regras-documentais': typeof AuthenticatedConfiguracoesRegrasDocumentaisRoute
+  '/authenticated/configuracoes/trilha-de-auditoria': typeof AuthenticatedConfiguracoesTrilhaDeAuditoriaRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
   '/authenticated/documentos/tramites': typeof AuthenticatedDocumentosTramitesRoute
   '/authenticated/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
+  '/authenticated/configuracoes/codificacao-documental/areas': typeof AuthenticatedConfiguracoesCodificacaoDocumentalAreasRoute
+  '/authenticated/configuracoes/codificacao-documental/disciplinas': typeof AuthenticatedConfiguracoesCodificacaoDocumentalDisciplinasRoute
+  '/authenticated/configuracoes/codificacao-documental/tipos-documento': typeof AuthenticatedConfiguracoesCodificacaoDocumentalTiposDocumentoRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -289,13 +364,21 @@ export interface FileRoutesById {
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
   '/authenticated/auditoria/relatorios': typeof AuthenticatedAuditoriaRelatoriosRoute
   '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
-  '/authenticated/configuracoes/diagnostico': typeof AuthenticatedConfiguracoesDiagnosticoRoute
+  '/authenticated/configuracoes/codificacao-documental': typeof AuthenticatedConfiguracoesCodificacaoDocumentalRouteWithChildren
+  '/authenticated/configuracoes/equipe': typeof AuthenticatedConfiguracoesEquipeRoute
+  '/authenticated/configuracoes/grupos-aprovacao': typeof AuthenticatedConfiguracoesGruposAprovacaoRoute
+  '/authenticated/configuracoes/projetos': typeof AuthenticatedConfiguracoesProjetosRoute
+  '/authenticated/configuracoes/regras-documentais': typeof AuthenticatedConfiguracoesRegrasDocumentaisRoute
+  '/authenticated/configuracoes/trilha-de-auditoria': typeof AuthenticatedConfiguracoesTrilhaDeAuditoriaRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
   '/authenticated/documentos/tramites': typeof AuthenticatedDocumentosTramitesRoute
   '/authenticated/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
+  '/authenticated/configuracoes/codificacao-documental/areas': typeof AuthenticatedConfiguracoesCodificacaoDocumentalAreasRoute
+  '/authenticated/configuracoes/codificacao-documental/disciplinas': typeof AuthenticatedConfiguracoesCodificacaoDocumentalDisciplinasRoute
+  '/authenticated/configuracoes/codificacao-documental/tipos-documento': typeof AuthenticatedConfiguracoesCodificacaoDocumentalTiposDocumentoRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -322,13 +405,21 @@ export interface FileRouteTypes {
     | '/authenticated/trilha-de-auditoria'
     | '/authenticated/auditoria/relatorios'
     | '/authenticated/configuracoes/calendario'
-    | '/authenticated/configuracoes/diagnostico'
+    | '/authenticated/configuracoes/codificacao-documental'
+    | '/authenticated/configuracoes/equipe'
+    | '/authenticated/configuracoes/grupos-aprovacao'
+    | '/authenticated/configuracoes/projetos'
+    | '/authenticated/configuracoes/regras-documentais'
+    | '/authenticated/configuracoes/trilha-de-auditoria'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
     | '/authenticated/documentos/tramites'
     | '/authenticated/documents/$documentId'
+    | '/authenticated/configuracoes/codificacao-documental/areas'
+    | '/authenticated/configuracoes/codificacao-documental/disciplinas'
+    | '/authenticated/configuracoes/codificacao-documental/tipos-documento'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -353,13 +444,21 @@ export interface FileRouteTypes {
     | '/authenticated/trilha-de-auditoria'
     | '/authenticated/auditoria/relatorios'
     | '/authenticated/configuracoes/calendario'
-    | '/authenticated/configuracoes/diagnostico'
+    | '/authenticated/configuracoes/codificacao-documental'
+    | '/authenticated/configuracoes/equipe'
+    | '/authenticated/configuracoes/grupos-aprovacao'
+    | '/authenticated/configuracoes/projetos'
+    | '/authenticated/configuracoes/regras-documentais'
+    | '/authenticated/configuracoes/trilha-de-auditoria'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
     | '/authenticated/documentos/tramites'
     | '/authenticated/documents/$documentId'
+    | '/authenticated/configuracoes/codificacao-documental/areas'
+    | '/authenticated/configuracoes/codificacao-documental/disciplinas'
+    | '/authenticated/configuracoes/codificacao-documental/tipos-documento'
   id:
     | '__root__'
     | '/'
@@ -384,13 +483,21 @@ export interface FileRouteTypes {
     | '/authenticated/trilha-de-auditoria'
     | '/authenticated/auditoria/relatorios'
     | '/authenticated/configuracoes/calendario'
-    | '/authenticated/configuracoes/diagnostico'
+    | '/authenticated/configuracoes/codificacao-documental'
+    | '/authenticated/configuracoes/equipe'
+    | '/authenticated/configuracoes/grupos-aprovacao'
+    | '/authenticated/configuracoes/projetos'
+    | '/authenticated/configuracoes/regras-documentais'
+    | '/authenticated/configuracoes/trilha-de-auditoria'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
     | '/authenticated/documentos/tramites'
     | '/authenticated/documents/$documentId'
+    | '/authenticated/configuracoes/codificacao-documental/areas'
+    | '/authenticated/configuracoes/codificacao-documental/disciplinas'
+    | '/authenticated/configuracoes/codificacao-documental/tipos-documento'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -584,11 +691,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDocumentosCentralRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/authenticated/configuracoes/diagnostico': {
-      id: '/authenticated/configuracoes/diagnostico'
-      path: '/diagnostico'
-      fullPath: '/authenticated/configuracoes/diagnostico'
-      preLoaderRoute: typeof AuthenticatedConfiguracoesDiagnosticoRouteImport
+    '/authenticated/configuracoes/trilha-de-auditoria': {
+      id: '/authenticated/configuracoes/trilha-de-auditoria'
+      path: '/trilha-de-auditoria'
+      fullPath: '/authenticated/configuracoes/trilha-de-auditoria'
+      preLoaderRoute: typeof AuthenticatedConfiguracoesTrilhaDeAuditoriaRouteImport
+      parentRoute: typeof AuthenticatedConfiguracoesRoute
+    }
+    '/authenticated/configuracoes/regras-documentais': {
+      id: '/authenticated/configuracoes/regras-documentais'
+      path: '/regras-documentais'
+      fullPath: '/authenticated/configuracoes/regras-documentais'
+      preLoaderRoute: typeof AuthenticatedConfiguracoesRegrasDocumentaisRouteImport
+      parentRoute: typeof AuthenticatedConfiguracoesRoute
+    }
+    '/authenticated/configuracoes/projetos': {
+      id: '/authenticated/configuracoes/projetos'
+      path: '/projetos'
+      fullPath: '/authenticated/configuracoes/projetos'
+      preLoaderRoute: typeof AuthenticatedConfiguracoesProjetosRouteImport
+      parentRoute: typeof AuthenticatedConfiguracoesRoute
+    }
+    '/authenticated/configuracoes/grupos-aprovacao': {
+      id: '/authenticated/configuracoes/grupos-aprovacao'
+      path: '/grupos-aprovacao'
+      fullPath: '/authenticated/configuracoes/grupos-aprovacao'
+      preLoaderRoute: typeof AuthenticatedConfiguracoesGruposAprovacaoRouteImport
+      parentRoute: typeof AuthenticatedConfiguracoesRoute
+    }
+    '/authenticated/configuracoes/equipe': {
+      id: '/authenticated/configuracoes/equipe'
+      path: '/equipe'
+      fullPath: '/authenticated/configuracoes/equipe'
+      preLoaderRoute: typeof AuthenticatedConfiguracoesEquipeRouteImport
+      parentRoute: typeof AuthenticatedConfiguracoesRoute
+    }
+    '/authenticated/configuracoes/codificacao-documental': {
+      id: '/authenticated/configuracoes/codificacao-documental'
+      path: '/codificacao-documental'
+      fullPath: '/authenticated/configuracoes/codificacao-documental'
+      preLoaderRoute: typeof AuthenticatedConfiguracoesCodificacaoDocumentalRouteImport
       parentRoute: typeof AuthenticatedConfiguracoesRoute
     }
     '/authenticated/configuracoes/calendario': {
@@ -605,20 +747,77 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAuditoriaRelatoriosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/authenticated/configuracoes/codificacao-documental/tipos-documento': {
+      id: '/authenticated/configuracoes/codificacao-documental/tipos-documento'
+      path: '/tipos-documento'
+      fullPath: '/authenticated/configuracoes/codificacao-documental/tipos-documento'
+      preLoaderRoute: typeof AuthenticatedConfiguracoesCodificacaoDocumentalTiposDocumentoRouteImport
+      parentRoute: typeof AuthenticatedConfiguracoesCodificacaoDocumentalRoute
+    }
+    '/authenticated/configuracoes/codificacao-documental/disciplinas': {
+      id: '/authenticated/configuracoes/codificacao-documental/disciplinas'
+      path: '/disciplinas'
+      fullPath: '/authenticated/configuracoes/codificacao-documental/disciplinas'
+      preLoaderRoute: typeof AuthenticatedConfiguracoesCodificacaoDocumentalDisciplinasRouteImport
+      parentRoute: typeof AuthenticatedConfiguracoesCodificacaoDocumentalRoute
+    }
+    '/authenticated/configuracoes/codificacao-documental/areas': {
+      id: '/authenticated/configuracoes/codificacao-documental/areas'
+      path: '/areas'
+      fullPath: '/authenticated/configuracoes/codificacao-documental/areas'
+      preLoaderRoute: typeof AuthenticatedConfiguracoesCodificacaoDocumentalAreasRouteImport
+      parentRoute: typeof AuthenticatedConfiguracoesCodificacaoDocumentalRoute
+    }
   }
 }
 
+interface AuthenticatedConfiguracoesCodificacaoDocumentalRouteChildren {
+  AuthenticatedConfiguracoesCodificacaoDocumentalAreasRoute: typeof AuthenticatedConfiguracoesCodificacaoDocumentalAreasRoute
+  AuthenticatedConfiguracoesCodificacaoDocumentalDisciplinasRoute: typeof AuthenticatedConfiguracoesCodificacaoDocumentalDisciplinasRoute
+  AuthenticatedConfiguracoesCodificacaoDocumentalTiposDocumentoRoute: typeof AuthenticatedConfiguracoesCodificacaoDocumentalTiposDocumentoRoute
+}
+
+const AuthenticatedConfiguracoesCodificacaoDocumentalRouteChildren: AuthenticatedConfiguracoesCodificacaoDocumentalRouteChildren =
+  {
+    AuthenticatedConfiguracoesCodificacaoDocumentalAreasRoute:
+      AuthenticatedConfiguracoesCodificacaoDocumentalAreasRoute,
+    AuthenticatedConfiguracoesCodificacaoDocumentalDisciplinasRoute:
+      AuthenticatedConfiguracoesCodificacaoDocumentalDisciplinasRoute,
+    AuthenticatedConfiguracoesCodificacaoDocumentalTiposDocumentoRoute:
+      AuthenticatedConfiguracoesCodificacaoDocumentalTiposDocumentoRoute,
+  }
+
+const AuthenticatedConfiguracoesCodificacaoDocumentalRouteWithChildren =
+  AuthenticatedConfiguracoesCodificacaoDocumentalRoute._addFileChildren(
+    AuthenticatedConfiguracoesCodificacaoDocumentalRouteChildren,
+  )
+
 interface AuthenticatedConfiguracoesRouteChildren {
   AuthenticatedConfiguracoesCalendarioRoute: typeof AuthenticatedConfiguracoesCalendarioRoute
-  AuthenticatedConfiguracoesDiagnosticoRoute: typeof AuthenticatedConfiguracoesDiagnosticoRoute
+  AuthenticatedConfiguracoesCodificacaoDocumentalRoute: typeof AuthenticatedConfiguracoesCodificacaoDocumentalRouteWithChildren
+  AuthenticatedConfiguracoesEquipeRoute: typeof AuthenticatedConfiguracoesEquipeRoute
+  AuthenticatedConfiguracoesGruposAprovacaoRoute: typeof AuthenticatedConfiguracoesGruposAprovacaoRoute
+  AuthenticatedConfiguracoesProjetosRoute: typeof AuthenticatedConfiguracoesProjetosRoute
+  AuthenticatedConfiguracoesRegrasDocumentaisRoute: typeof AuthenticatedConfiguracoesRegrasDocumentaisRoute
+  AuthenticatedConfiguracoesTrilhaDeAuditoriaRoute: typeof AuthenticatedConfiguracoesTrilhaDeAuditoriaRoute
 }
 
 const AuthenticatedConfiguracoesRouteChildren: AuthenticatedConfiguracoesRouteChildren =
   {
     AuthenticatedConfiguracoesCalendarioRoute:
       AuthenticatedConfiguracoesCalendarioRoute,
-    AuthenticatedConfiguracoesDiagnosticoRoute:
-      AuthenticatedConfiguracoesDiagnosticoRoute,
+    AuthenticatedConfiguracoesCodificacaoDocumentalRoute:
+      AuthenticatedConfiguracoesCodificacaoDocumentalRouteWithChildren,
+    AuthenticatedConfiguracoesEquipeRoute:
+      AuthenticatedConfiguracoesEquipeRoute,
+    AuthenticatedConfiguracoesGruposAprovacaoRoute:
+      AuthenticatedConfiguracoesGruposAprovacaoRoute,
+    AuthenticatedConfiguracoesProjetosRoute:
+      AuthenticatedConfiguracoesProjetosRoute,
+    AuthenticatedConfiguracoesRegrasDocumentaisRoute:
+      AuthenticatedConfiguracoesRegrasDocumentaisRoute,
+    AuthenticatedConfiguracoesTrilhaDeAuditoriaRoute:
+      AuthenticatedConfiguracoesTrilhaDeAuditoriaRoute,
   }
 
 const AuthenticatedConfiguracoesRouteWithChildren =

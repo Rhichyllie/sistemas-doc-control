@@ -166,9 +166,7 @@ export function useDocumentCodePreview({
     if (
       !enabled ||
       !profile?.id ||
-      !profile.org_id ||
-      !normalizedType ||
-      !normalizedArea
+      !profile.org_id
     ) {
       setCodePreview(unavailablePreview());
       setError(null);
@@ -181,43 +179,8 @@ export function useDocumentCodePreview({
     setError(null);
     setCompatibilityMessage(null);
 
-    const rpcResult = patternId
-      ? await supabase.rpc("preview_document_code_for_pattern", {
-          p_pattern_id: patternId,
-          p_doc_type: normalizedType,
-          p_area: normalizedArea,
-          p_project_id: projectId || null,
-          p_reference_date: new Date().toISOString().slice(0, 10),
-        })
-      : await supabase.rpc("preview_document_code", {
-          p_doc_type: normalizedType,
-          p_area: normalizedArea,
-          p_project_id: projectId || null,
-          p_reference_date: new Date().toISOString().slice(0, 10),
-        });
-    if (currentRequest !== requestId.current) return;
-
-    if (!rpcResult.error) {
-      const normalized = normalizeRpcPreview(rpcResult.data);
-      setCodePreview(normalized ?? unavailablePreview());
-      setIsLoading(false);
-      return;
-    }
-
-    if (!isDocumentCodingCompatibilityError(rpcResult.error)) {
-      setCodePreview({
-        ...unavailablePreview(),
-        mode: "legacy_fallback",
-        explanation: [
-          "O preview configurável não pôde ser consultado. O gatilho legado continuará gerando o código.",
-        ],
-      });
-      setError(
-        `Não foi possível consultar o código previsto. ${getErrorMessage(rpcResult.error, "Erro de acesso ao banco.")}`,
-      );
-      setIsLoading(false);
-      return;
-    }
+    // Always use local preview for now, to ensure new patterns are used immediately
+    let rpcResult: { data: unknown; error: unknown } | null = null;
 
     const patternsResult = await supabase
       .from("document_code_patterns")
@@ -226,10 +189,12 @@ export function useDocumentCodePreview({
       .eq("is_active", true);
     if (currentRequest !== requestId.current) return;
 
+    console.log("useDocumentCodePreview: patternsResult", patternsResult);
     if (!patternsResult.error) {
       const patterns = (patternsResult.data ?? [])
         .map(normalizePattern)
         .filter((item): item is DocumentCodePattern => Boolean(item));
+      console.log("useDocumentCodePreview: normalized patterns", patterns);
       const context = {
         orgId: profile.org_id,
         orgCode: org?.code_prefix,
@@ -238,10 +203,13 @@ export function useDocumentCodePreview({
         projectId,
         projectCode,
       };
+      console.log("useDocumentCodePreview: context", context);
       const applicablePatterns = rankCodePatterns(patterns, context);
+      console.log("useDocumentCodePreview: applicablePatterns", applicablePatterns);
       const match = patternId
         ? applicablePatterns.find((pattern) => pattern.id === patternId)
         : applicablePatterns[0];
+      console.log("useDocumentCodePreview: selected match", match);
       if (match) {
         const localPreview = previewLocalDocumentCode(match, context);
         if (localPreview.code) {

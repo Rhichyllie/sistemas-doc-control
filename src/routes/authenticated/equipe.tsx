@@ -2,6 +2,18 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -19,8 +31,12 @@ import {
 } from "@/components/ui/table";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
+import { useProjectOptions } from "@/hooks/useProjectOptions";
+import { useProjectMembers } from "@/hooks/useProjectMembers";
 import { USER_ROLES } from "@/lib/constants";
 import { TeamAvailabilityPanel } from "@/components/team/TeamAvailabilityPanel";
+import { Users, UserPlus } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/authenticated/equipe")({
@@ -50,15 +66,28 @@ function formatMemberSince(value: string) {
   }).format(new Date(value));
 }
 
-function EquipePage() {
+export function EquipePage() {
   const { profile, org } = useAuthContext();
-  const { members, loading, error, updateMemberRole, toggleMemberActive } =
+  const { members, loading, error, updateMemberRole, toggleMemberActive, addMember } =
     useTeam();
+  const { projects, isLoading: projectsLoading } = useProjectOptions();
+  const {
+    members: projectMembers,
+    isLoading: projectMembersLoading,
+    addMember: addProjectMember,
+    removeMember: removeProjectMember,
+    getProjectsForProfile,
+  } = useProjectMembers();
   const isAdmin = profile?.role === "admin";
   const countsByRole = USER_ROLES.map((role) => ({
     ...role,
     count: members.filter((member) => member.role === role.value).length,
   }));
+  const [newMemberDialogOpen, setNewMemberDialogOpen] = useState(false);
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [newMemberRole, setNewMemberRole] = useState<Role>("viewer");
+  const [newMemberDepartment, setNewMemberDepartment] = useState("");
 
   async function handleRoleChange(memberId: string, role: Role) {
     const ok = await updateMemberRole(memberId, role);
@@ -81,6 +110,43 @@ function EquipePage() {
     );
   }
 
+  async function handleProjectToggle(
+    memberId: string,
+    projectId: string,
+    checked: boolean,
+  ) {
+    if (checked) {
+      const ok = await addProjectMember(projectId, memberId);
+      if (!ok) toast.error("Não foi possível adicionar o projeto");
+    } else {
+      const ok = await removeProjectMember(projectId, memberId);
+      if (!ok) toast.error("Não foi possível remover o projeto");
+    }
+  }
+
+  async function handleAddNewMember() {
+    if (!newMemberName) {
+      toast.error("O nome do membro é obrigatório");
+      return;
+    }
+    const ok = await addMember({
+      full_name: newMemberName,
+      role: newMemberRole,
+      email: newMemberEmail || undefined,
+      department: newMemberDepartment || null,
+    });
+    if (ok) {
+      toast.success("Membro adicionado com sucesso!");
+      setNewMemberDialogOpen(false);
+      setNewMemberName("");
+      setNewMemberEmail("");
+      setNewMemberRole("viewer");
+      setNewMemberDepartment("");
+    } else {
+      toast.error("Não foi possível adicionar o membro");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
@@ -90,7 +156,81 @@ function EquipePage() {
             {org?.name ?? "Organização"}
           </p>
         </div>
-        <Badge variant="secondary">{members.length} membros</Badge>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <Dialog open={newMemberDialogOpen} onOpenChange={setNewMemberDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Adicionar Membro
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Adicionar novo membro</DialogTitle>
+                  <DialogDescription>
+                    Preencha os dados do novo membro da equipe.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="name">Nome completo</Label>
+                    <Input
+                      id="name"
+                      value={newMemberName}
+                      onChange={(e) => setNewMemberName(e.target.value)}
+                      placeholder="Digite o nome completo"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="email">E-mail (opcional)</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={newMemberEmail}
+                      onChange={(e) => setNewMemberEmail(e.target.value)}
+                      placeholder="email@exemplo.com"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="role">Perfil</Label>
+                    <Select
+                      value={newMemberRole}
+                      onValueChange={(val) => setNewMemberRole(val as Role)}
+                    >
+                      <SelectTrigger id="role">
+                        <SelectValue placeholder="Selecione o perfil" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {USER_ROLES.map((role) => (
+                          <SelectItem key={role.value} value={role.value}>
+                            {role.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="department">Área/Departamento (opcional)</Label>
+                    <Input
+                      id="department"
+                      value={newMemberDepartment}
+                      onChange={(e) => setNewMemberDepartment(e.target.value)}
+                      placeholder="Ex: RH, Financeiro, Operações"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <DialogClose asChild>
+                    <Button variant="secondary">Cancelar</Button>
+                  </DialogClose>
+                  <Button onClick={handleAddNewMember}>Adicionar</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+          <Badge variant="secondary">{members.length} membros</Badge>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
@@ -122,100 +262,164 @@ function EquipePage() {
                 <TableHead>Nome</TableHead>
                 <TableHead>Perfil</TableHead>
                 <TableHead>Área/Departamento</TableHead>
+                <TableHead>Projetos</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Membro desde</TableHead>
                 {isAdmin && <TableHead className="text-right">Ações</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading && (
+              {loading || projectsLoading || projectMembersLoading ? (
                 <TableRow>
                   <TableCell
-                    colSpan={isAdmin ? 6 : 5}
+                    colSpan={isAdmin ? 7 : 6}
                     className="text-center py-8"
                   >
                     Carregando equipe...
                   </TableCell>
                 </TableRow>
-              )}
-              {error && !loading && (
+              ) : error ? (
                 <TableRow>
                   <TableCell
-                    colSpan={isAdmin ? 6 : 5}
+                    colSpan={isAdmin ? 7 : 6}
                     className="text-center text-destructive py-8"
                   >
                     {error}
                   </TableCell>
                 </TableRow>
-              )}
-              {!loading && !error && members.length === 0 && (
+              ) : members.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={isAdmin ? 6 : 5}
+                    colSpan={isAdmin ? 7 : 6}
                     className="text-center text-muted-foreground py-8"
                   >
                     Nenhum membro encontrado
                   </TableCell>
                 </TableRow>
-              )}
-              {!loading &&
-                !error &&
-                members.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell className="font-medium">
-                      {member.full_name}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={roleBadgeClass[member.role]}>
-                        {getRoleLabel(member.role)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{member.department || "—"}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={member.active ? "secondary" : "destructive"}
-                      >
-                        {member.active ? "Ativo" : "Inativo"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {formatMemberSince(member.created_at)}
-                    </TableCell>
-                    {isAdmin && (
-                      <TableCell>
-                        <div className="flex justify-end gap-2">
-                          <Select
-                            value={member.role}
-                            onValueChange={(value) =>
-                              handleRoleChange(member.id, value as Role)
-                            }
-                          >
-                            <SelectTrigger className="w-44">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {USER_ROLES.map((role) => (
-                                <SelectItem key={role.value} value={role.value}>
-                                  {role.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Button
-                            size="sm"
-                            variant={member.active ? "destructive" : "outline"}
-                            disabled={member.id === profile?.id}
-                            onClick={() =>
-                              handleToggleActive(member.id, !member.active)
-                            }
-                          >
-                            {member.active ? "Desativar" : "Reativar"}
-                          </Button>
-                        </div>
+              ) : (
+                members.map((member) => {
+                  const assignedProjects = getProjectsForProfile(member.id);
+                  return (
+                    <TableRow key={member.id}>
+                      <TableCell className="font-medium">
+                        {member.full_name}
                       </TableCell>
-                    )}
-                  </TableRow>
-                ))}
+                      <TableCell>
+                        <Badge className={roleBadgeClass[member.role]}>
+                          {getRoleLabel(member.role)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{member.department || "—"}</TableCell>
+                      <TableCell>
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <Users className="h-4 w-4 mr-1" />
+                              {assignedProjects.length}
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>
+                                Projetos de {member.full_name}
+                              </DialogTitle>
+                              <DialogDescription>
+                                Selecione os projetos aos quais este membro
+                                pertence.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="grid gap-2">
+                              {projects.length === 0 ? (
+                                <p className="text-muted-foreground">
+                                  Nenhum projeto cadastrado.
+                                </p>
+                              ) : (
+                                projects.map((project) => (
+                                  <div
+                                    key={project.id}
+                                    className="flex items-center gap-2"
+                                  >
+                                    <Checkbox
+                                      id={`project-${project.id}`}
+                                      checked={assignedProjects.includes(
+                                        project.id,
+                                      )}
+                                      onCheckedChange={(checked) =>
+                                        handleProjectToggle(
+                                          member.id,
+                                          project.id,
+                                          checked === true,
+                                        )
+                                      }
+                                    />
+                                    <label
+                                      htmlFor={`project-${project.id}`}
+                                      className="text-sm"
+                                    >
+                                      {project.code
+                                        ? `${project.code} - `
+                                        : ""}
+                                      {project.name}
+                                    </label>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={member.active ? "secondary" : "destructive"}
+                        >
+                          {member.active ? "Ativo" : "Inativo"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {formatMemberSince(member.created_at)}
+                      </TableCell>
+                      {isAdmin && (
+                        <TableCell>
+                          <div className="flex justify-end gap-2">
+                            <Select
+                              value={member.role}
+                              onValueChange={(value) =>
+                                handleRoleChange(member.id, value as Role)
+                              }
+                            >
+                              <SelectTrigger className="w-44">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {USER_ROLES.map((role) => (
+                                  <SelectItem
+                                    key={role.value}
+                                    value={role.value}
+                                  >
+                                    {role.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              size="sm"
+                              variant={
+                                member.active ? "destructive" : "outline"
+                              }
+                              disabled={member.id === profile?.id}
+                              onClick={() =>
+                                handleToggleActive(member.id, !member.active)
+                              }
+                            >
+                              {member.active ? "Desativar" : "Reativar"}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })
+              )}
             </TableBody>
           </Table>
         </CardContent>

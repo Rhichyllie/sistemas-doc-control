@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import {
+  FileText,
   GitBranch,
   Layers3,
   Loader2,
   Plus,
   RefreshCw,
   ShieldAlert,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentTramiteModeler } from "@/components/tramites/DocumentTramiteModeler";
@@ -37,37 +39,131 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { useDocuments } from "@/hooks/useDocuments";
 import { useDocumentTramiteTemplates } from "@/hooks/useDocumentTramiteTemplates";
+import { useLocalData } from "@/hooks/use-local-data";
+import { useOperationalCalendar } from "@/hooks/useOperationalCalendar";
 import { useProjectOptions } from "@/hooks/useProjectOptions";
+import { useWorkflowActors } from "@/hooks/useWorkflowActors";
 import { DOC_TYPES } from "@/lib/constants";
+import { addBusinessDaysLocal } from "@/lib/operationalCalendar";
 import {
+  createTramiteEdge,
+  createTramiteNode,
   generateTramiteCode,
   type DocumentTramiteTemplateScope,
   type DocumentTramiteTemplateStatus,
 } from "@/lib/documentTramiteModel";
-import {
-  DOCUMENT_TRAMITE_PRESETS,
-  getDocumentTramitePreset,
-} from "@/lib/documentTramitePresets";
 import { validateTramiteGraph } from "@/lib/documentTramiteValidation";
 
 const AREAS = ["SGI", "ENG", "OPS", "MNT", "SST", "MA", "QUA", "ADM"];
 
+type ApprovalFlowType = "simple" | "multidisciplinary";
+
+interface ApprovalStageDraft {
+  id: string;
+  areaLabel: string;
+  dueDays: number;
+  assignmentType: "user" | "group";
+  assigneeId: string;
+  assigneeLabel: string;
+}
+
 const EMPTY_FORM = {
-  name: "",
-  code: "",
-  description: "",
-  presetId: "technical-review",
-  scope: "organization" as DocumentTramiteTemplateScope,
-  docType: "",
-  area: "",
-  projectId: "",
+  documentId: "",
+  approvalFlowType: "simple" as ApprovalFlowType,
+  stageAreaLabel: "",
+  stageDueDays: "",
+  stageAssigneeKey: "",
+  stages: [] as ApprovalStageDraft[],
 };
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(
+    new Date(`${value}T00:00:00`),
+  );
+}
+
+function getRevisionLabel(value: string | null | undefined, revision: number) {
+  return value?.trim() || String(revision).padStart(2, "0");
+}
+
+function createStageIdentifier() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function parseStageAssignmentKey(value: string) {
+  if (value.startsWith("user:")) {
+    return { type: "user" as const, id: value.slice(5) };
+  }
+  if (value.startsWith("group:")) {
+    return { type: "group" as const, id: value.slice(6) };
+  }
+  return null;
+}
+
+function buildApprovalFlowGraph(
+  stages: ApprovalStageDraft[],
+  flowType: ApprovalFlowType,
+) {
+  const start = createTramiteNode("start", { x: 80, y: 180 });
+  const publication = createTramiteNode("publication", { x: 280, y: 180 }, {
+    label: "Publicação",
+  });
+  const end = createTramiteNode("end", { x: 480, y: 180 });
+
+  const reviewNodes = stages.map((stage, index) =>
+    createTramiteNode(
+      "review",
+      { x: 280 + index * 220, y: 180 },
+      {
+        label:
+          flowType === "multidisciplinary"
+            ? `Análise ${stage.areaLabel}`
+            : "Análise do documento",
+        description: `Etapa ${index + 1} configurada na abertura do fluxo.`,
+        assignment_type:
+          stage.assignmentType === "group" ? "approval_group" : "specific_user",
+        assignee_group_id:
+          stage.assignmentType === "group" ? stage.assigneeId : null,
+        assignee_user_id:
+          stage.assignmentType === "user" ? stage.assigneeId : null,
+        due_days: stage.dueDays,
+        instructions: `Responsável inicial: ${stage.assigneeLabel}`,
+        metadata: {
+          configured_area: stage.areaLabel,
+          configured_order: index + 1,
+        },
+      },
+    ),
+  );
+
+  const nodes = [start, ...reviewNodes, publication, end];
+  const edges = [];
+  let previousNodeId = start.id;
+
+  for (const node of reviewNodes) {
+    edges.push(createTramiteEdge(previousNodeId, node.id));
+    previousNodeId = node.id;
+  }
+
+  edges.push(createTramiteEdge(previousNodeId, publication.id));
+  edges.push(createTramiteEdge(publication.id, end.id));
+
+  return { nodes, edges };
+}
 
 export function DocumentTramiteAdmin() {
   const catalog = useDocumentTramiteTemplates();
   const projects = useProjectOptions();
+  const documentsState = useDocuments();
+  const { disciplines } = useLocalData();
+  const actors = useWorkflowActors();
+  const operationalCalendar = useOperationalCalendar();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -81,6 +177,54 @@ export function DocumentTramiteAdmin() {
   const [docTypeFilter, setDocTypeFilter] = useState("all");
   const [areaFilter, setAreaFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
+  const selectedDocument =
+    documentsState.documents.find((document) => document.id === form.documentId) ??
+    null;
+  const selectedDocumentProject =
+    selectedDocument?.project ??
+    projects.projects.find((project) => project.id === selectedDocument?.project_id) ??
+    null;
+  const selectedDiscipline =
+    disciplines.find(
+      (discipline) => discipline.id === selectedDocument?.discipline_id,
+    ) ?? null;
+  const totalAnalysisDays = selectedDocument?.analysis_days ?? null;
+  const usedAnalysisDays = form.stages.reduce(
+    (total, stage) => total + stage.dueDays,
+    0,
+  );
+  const remainingAnalysisDays =
+    totalAnalysisDays === null ? null : Math.max(totalAnalysisDays - usedAnalysisDays, 0);
+  const stageSummaries = useMemo(() => {
+    const receivedAt = selectedDocument?.received_at ?? null;
+    if (!receivedAt) {
+      return form.stages.map((stage, index) => ({
+        ...stage,
+        order: index + 1,
+        dueDate: null as string | null,
+      }));
+    }
+
+    let cumulativeDays = 0;
+    return form.stages.map((stage, index) => {
+      cumulativeDays += stage.dueDays;
+      return {
+        ...stage,
+        order: index + 1,
+        dueDate: addBusinessDaysLocal(
+          receivedAt,
+          cumulativeDays,
+          operationalCalendar.defaultCalendar,
+          operationalCalendar.holidays,
+        ),
+      };
+    });
+  }, [
+    form.stages,
+    operationalCalendar.defaultCalendar,
+    operationalCalendar.holidays,
+    selectedDocument?.received_at,
+  ]);
 
   const selectedTemplate =
     catalog.templates.find((template) => template.id === selectedId) ?? null;
@@ -122,20 +266,73 @@ export function DocumentTramiteAdmin() {
   }
 
   async function createTemplate() {
-    const preset = getDocumentTramitePreset(form.presetId);
-    if (!form.name.trim() || !preset) {
-      toast.error("Informe o nome e escolha um ponto de partida.");
+    if (!form.documentId) {
+      toast.error("Selecione um documento para iniciar o fluxo.");
       return;
     }
+    if (!selectedDocument) {
+      toast.error("O documento selecionado não foi encontrado.");
+      return;
+    }
+    if (form.stages.length === 0) {
+      toast.error("Adicione ao menos uma etapa de aprovação.");
+      return;
+    }
+    if (totalAnalysisDays !== null && usedAnalysisDays > totalAnalysisDays) {
+      toast.error("A soma das etapas não pode ultrapassar o prazo total do documento.");
+      return;
+    }
+    const flowTypeLabel =
+      form.approvalFlowType === "simple" ? "simples" : "multidisciplinar";
+    const graph = buildApprovalFlowGraph(form.stages, form.approvalFlowType);
+    const name = `Fluxo ${selectedDocument.code ?? "DOC"} - ${selectedDocument.title}`;
     const id = await catalog.createTemplate({
-      name: form.name,
-      code: form.code || generateTramiteCode(form.name),
-      description: form.description,
-      template_scope: form.scope,
-      doc_type: form.docType || null,
-      area: form.area || null,
-      project_id: form.projectId || null,
-      graph: structuredClone(preset.graph),
+      name,
+      code: generateTramiteCode(
+        `${selectedDocument.code ?? selectedDocument.title}-${flowTypeLabel}`,
+      ),
+      description: `Fluxo de aprovação ${flowTypeLabel} vinculado ao documento ${selectedDocument.code ?? selectedDocument.title}.`,
+      template_scope: selectedDocument.project_id ? "project" : "area_type",
+      doc_type: selectedDocument.doc_type || null,
+      area: selectedDocument.area || null,
+      project_id: selectedDocument.project_id || null,
+      metadata: {
+        source_document: selectedDocument
+          ? {
+              id: selectedDocument.id,
+              code: selectedDocument.code,
+              title: selectedDocument.title,
+              project_id: selectedDocument.project_id,
+              project_name: selectedDocumentProject?.name ?? null,
+              register_revision: getRevisionLabel(
+                selectedDocument.register_revision,
+                selectedDocument.revision,
+              ),
+              register_status: selectedDocument.register_status ?? null,
+              discipline_id: selectedDocument.discipline_id ?? null,
+              discipline_name: selectedDiscipline?.name ?? null,
+              received_at: selectedDocument.received_at ?? null,
+              analysis_deadline: selectedDocument.analysis_deadline ?? null,
+            }
+          : null,
+        approval_configuration: {
+          flow_type: form.approvalFlowType,
+          total_analysis_days: totalAnalysisDays,
+          used_analysis_days: usedAnalysisDays,
+          remaining_analysis_days:
+            totalAnalysisDays === null ? null : totalAnalysisDays - usedAnalysisDays,
+          stages: stageSummaries.map((stage) => ({
+            order: stage.order,
+            area_label: stage.areaLabel,
+            due_days: stage.dueDays,
+            due_date: stage.dueDate,
+            assignment_type: stage.assignmentType,
+            assignee_id: stage.assigneeId,
+            assignee_label: stage.assigneeLabel,
+          })),
+        },
+      },
+      graph,
     });
     if (id) {
       toast.success("Trâmite criado como rascunho.");
@@ -153,15 +350,96 @@ export function DocumentTramiteAdmin() {
       template?.current_version?.graph ?? { nodes: [], edges: [] },
     );
     if (!validation.isPublishable) {
-      toast.error(validation.summary);
-      setSelectedId(templateId);
-      return;
+      toast.warning(`${validation.summary} Publicação manual liberada.`);
     }
     if (await catalog.publishTemplate(templateId)) {
       toast.success("Modelo publicado.");
     } else {
       toast.error(catalog.error || "Não foi possível publicar.");
     }
+  }
+
+  function handleDocumentChange(documentId: string) {
+    setForm((current) => ({
+      ...current,
+      documentId,
+      stageAreaLabel: "",
+      stageDueDays: "",
+      stageAssigneeKey: "",
+      stages: [],
+    }));
+  }
+
+  function addApprovalStage() {
+    if (!selectedDocument) {
+      toast.error("Selecione um documento antes de configurar as etapas.");
+      return;
+    }
+    const normalizedArea = form.stageAreaLabel.trim();
+    const dueDays = Number.parseInt(form.stageDueDays, 10);
+    const assignment = parseStageAssignmentKey(form.stageAssigneeKey);
+
+    if (!normalizedArea) {
+      toast.error("Informe o setor ou a area da etapa.");
+      return;
+    }
+    if (Number.isNaN(dueDays) || dueDays <= 0) {
+      toast.error("Informe um prazo valido em dias.");
+      return;
+    }
+    if (!assignment) {
+      toast.error("Selecione o responsavel ou grupo da etapa.");
+      return;
+    }
+    if (form.approvalFlowType === "simple" && form.stages.length >= 1) {
+      toast.error("Fluxos simples aceitam apenas uma etapa inicial.");
+      return;
+    }
+    if (totalAnalysisDays !== null) {
+      if (dueDays > totalAnalysisDays) {
+        toast.error("O prazo da etapa nao pode ser maior que o prazo total do documento.");
+        return;
+      }
+      if (usedAnalysisDays + dueDays > totalAnalysisDays) {
+        toast.error("A soma das etapas ultrapassa o prazo total de analise do documento.");
+        return;
+      }
+    }
+
+    const assigneeLabel =
+      assignment.type === "group"
+        ? actors.groups.find((group) => group.id === assignment.id)?.name
+        : actors.users.find((user) => user.id === assignment.id)?.full_name;
+
+    if (!assigneeLabel) {
+      toast.error("Nao foi possivel identificar o responsavel selecionado.");
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      stages: [
+        ...current.stages,
+        {
+          id: createStageIdentifier(),
+          areaLabel: normalizedArea,
+          dueDays,
+          assignmentType: assignment.type,
+          assigneeId: assignment.id,
+          assigneeLabel,
+        },
+      ],
+      stageAreaLabel: current.approvalFlowType === "simple" ? normalizedArea : "",
+      stageDueDays: "",
+      stageAssigneeKey: "",
+    }));
+  }
+
+  function removeApprovalStage(stageId: string) {
+    setForm((current) => ({
+      ...current,
+      stages: current.stages.filter((stage) => stage.id !== stageId),
+    }));
   }
 
   return (
@@ -177,7 +455,7 @@ export function DocumentTramiteAdmin() {
             </div>
             <div>
               <h1 className="text-3xl font-bold tracking-tight">
-                Trâmites Documentais
+                Fluxo de aprovação
               </h1>
               <p className="mt-1 max-w-3xl text-muted-foreground">
                 Modele o caminho que um documento percorre até estar válido.
@@ -421,186 +699,369 @@ export function DocumentTramiteAdmin() {
         </div>
       )}
 
-      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+      <Dialog
+        open={newOpen}
+        onOpenChange={(open) => {
+          setNewOpen(open);
+          if (!open) setForm(EMPTY_FORM);
+        }}
+      >
         <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Novo trâmite documental</DialogTitle>
+            <DialogTitle>Novo fluxo de aprovação</DialogTitle>
             <DialogDescription>
-              Escolha um ponto de partida. O modelo nasce como rascunho e não
-              executa ações em documentos.
+              Selecione um documento cadastrado para iniciar o fluxo e usar seus
+              dados como base.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="tramite-name">Nome *</Label>
-              <Input
-                id="tramite-name"
-                value={form.name}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                    code:
-                      current.code === generateTramiteCode(current.name)
-                        ? generateTramiteCode(event.target.value)
-                        : current.code,
-                  }))
-                }
-                placeholder="Ex.: Revisão técnica padrão"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tramite-code">Código</Label>
-              <Input
-                id="tramite-code"
-                value={form.code}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    code: generateTramiteCode(event.target.value),
-                  }))
-                }
-                placeholder={generateTramiteCode(form.name)}
-              />
-            </div>
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="tramite-description">Descrição</Label>
-              <Textarea
-                id="tramite-description"
-                value={form.description}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    description: event.target.value,
-                  }))
+              <Label>Documento cadastrado *</Label>
+              <Select
+                value={form.documentId || "none"}
+                onValueChange={(value) =>
+                  handleDocumentChange(value === "none" ? "" : value)
                 }
-                placeholder="Explique quando este modelo deve ser usado."
-              />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label>Ponto de partida</Label>
-              <div className="grid gap-2 md:grid-cols-2">
-                {DOCUMENT_TRAMITE_PRESETS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    className={`rounded-lg border p-3 text-left transition-colors ${
-                      form.presetId === preset.id
-                        ? "border-primary bg-primary/5"
-                        : "hover:border-primary/50"
-                    }`}
-                    onClick={() =>
-                      setForm((current) => ({
-                        ...current,
-                        presetId: preset.id,
-                      }))
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      documentsState.loading
+                        ? "Carregando documentos..."
+                        : "Selecione um documento"
                     }
-                  >
-                    <span className="block text-sm font-medium">
-                      {preset.name}
-                    </span>
-                    <span className="mt-1 block text-xs text-muted-foreground">
-                      {preset.description}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Escopo</Label>
-              <Select
-                value={form.scope}
-                onValueChange={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    scope: value as DocumentTramiteTemplateScope,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="organization">Organização</SelectItem>
-                  <SelectItem value="project">Projeto</SelectItem>
-                  <SelectItem value="area">Área</SelectItem>
-                  <SelectItem value="type">Tipo</SelectItem>
-                  <SelectItem value="area_type">Área + tipo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Projeto opcional</Label>
-              <Select
-                value={form.projectId || "none"}
-                onValueChange={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    projectId: value === "none" ? "" : value,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Qualquer projeto</SelectItem>
-                  {projects.projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.code} — {project.name}
+                  <SelectItem value="none">Selecione um documento</SelectItem>
+                  {documentsState.documents.map((document) => (
+                    <SelectItem key={document.id} value={document.id}>
+                      {(document.code ?? "Sem código") + " - " + document.title}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {documentsState.error && (
+                <p className="text-xs text-destructive">
+                  {documentsState.error}
+                </p>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label>Tipo documental</Label>
-              <Select
-                value={form.docType || "any"}
-                onValueChange={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    docType: value === "any" ? "" : value,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Qualquer tipo</SelectItem>
-                  {DOC_TYPES.map((type) => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.value} — {type.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Área</Label>
-              <Select
-                value={form.area || "any"}
-                onValueChange={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    area: value === "any" ? "" : value,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Qualquer área</SelectItem>
-                  {AREAS.map((area) => (
-                    <SelectItem key={area} value={area}>
-                      {area}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {selectedDocument && (
+              <Card className="border-primary/40 shadow-sm md:col-span-2">
+                <CardContent className="space-y-5 p-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-[280px] rounded-lg border bg-muted/20 px-4 py-3">
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                            Código
+                          </p>
+                          <p className="font-medium">
+                            {selectedDocument.code ?? "Gerando..."}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                            Revisão
+                          </p>
+                          <p className="font-medium">
+                            {getRevisionLabel(
+                              selectedDocument.register_revision,
+                              selectedDocument.revision,
+                            )}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                            Status
+                          </p>
+                          <div className="pt-1">
+                            <Badge
+                              variant="secondary"
+                              className="bg-amber-100 text-amber-900 hover:bg-amber-100"
+                            >
+                              {selectedDocument.register_status || "—"}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Projeto
+                      </p>
+                      <p className="font-medium">
+                        {selectedDocumentProject?.name || "Sem projeto"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Título
+                      </p>
+                      <p className="font-medium">{selectedDocument.title}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Disciplina
+                      </p>
+                      <p className="font-medium">
+                        {selectedDiscipline?.name || "Sem disciplina"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Data de recebimento
+                      </p>
+                      <p className="font-medium">
+                        {formatDate(selectedDocument.received_at)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Prazo de análise
+                      </p>
+                      <p className="font-medium">
+                        {formatDate(selectedDocument.analysis_deadline)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Dias para análise
+                      </p>
+                      <p className="font-medium">
+                        {selectedDocument.analysis_days ?? "Não definido"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Tipo e área
+                      </p>
+                      <p className="font-medium">
+                        {selectedDocument.doc_type} · {selectedDocument.area}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {selectedDocument && (
+              <Card className="md:col-span-2">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">
+                    Configuração do Fluxo de Aprovação
+                  </CardTitle>
+                  <CardDescription>
+                    Defina o tipo de fluxo e as etapas iniciais de análise antes
+                    de abrir o modelador.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label>Tipo de fluxo</Label>
+                      <Select
+                        value={form.approvalFlowType}
+                        onValueChange={(value) =>
+                          setForm((current) => ({
+                            ...current,
+                            approvalFlowType: value as ApprovalFlowType,
+                            stages:
+                              value === "simple"
+                                ? current.stages.slice(0, 1)
+                                : current.stages,
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="simple">Simples</SelectItem>
+                          <SelectItem value="multidisciplinary">
+                            Multidisciplinar
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Prazo total do documento</Label>
+                      <Input
+                        value={
+                          totalAnalysisDays === null
+                            ? "Não definido"
+                            : `${totalAnalysisDays} dia(s)`
+                        }
+                        readOnly
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Saldo disponível</Label>
+                      <Input
+                        value={
+                          remainingAnalysisDays === null
+                            ? "Sem limite"
+                            : `${remainingAnalysisDays} dia(s)`
+                        }
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-12">
+                    <div className="space-y-2 md:col-span-4">
+                      <Label htmlFor="approval-stage-area">Setor / Área</Label>
+                      <Input
+                        id="approval-stage-area"
+                        value={form.stageAreaLabel}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            stageAreaLabel: event.target.value,
+                          }))
+                        }
+                        placeholder="Ex.: Infraestrutura"
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-3">
+                      <Label htmlFor="approval-stage-days">Prazo (dias)</Label>
+                      <Input
+                        id="approval-stage-days"
+                        type="number"
+                        min="1"
+                        max={totalAnalysisDays ?? undefined}
+                        value={form.stageDueDays}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            stageDueDays: event.target.value,
+                          }))
+                        }
+                        placeholder="5"
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-5">
+                      <Label>Responsável ou grupo</Label>
+                      <Select
+                        value={form.stageAssigneeKey || "none"}
+                        onValueChange={(value) =>
+                          setForm((current) => ({
+                            ...current,
+                            stageAssigneeKey: value === "none" ? "" : value,
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o responsável" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">
+                            Selecione o responsável
+                          </SelectItem>
+                          {actors.users.length > 0 && (
+                            <>
+                              {actors.users.map((user) => (
+                                <SelectItem
+                                  key={`user-${user.id}`}
+                                  value={`user:${user.id}`}
+                                >
+                                  {user.full_name}
+                                </SelectItem>
+                              ))}
+                            </>
+                          )}
+                          {actors.canUseGroups &&
+                            actors.groups
+                              .filter((group) => group.is_active)
+                              .map((group) => (
+                                <SelectItem
+                                  key={`group-${group.id}`}
+                                  value={`group:${group.id}`}
+                                >
+                                  Grupo: {group.name}
+                                </SelectItem>
+                              ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                    <div className="text-sm text-muted-foreground">
+                      {totalAnalysisDays === null
+                        ? "O documento ainda não tem um prazo total configurado."
+                        : `Etapas configuradas: ${usedAnalysisDays} de ${totalAnalysisDays} dia(s).`}
+                    </div>
+                    <Button type="button" onClick={addApprovalStage}>
+                      <Plus className="h-4 w-4" />
+                      Adicionar Etapa
+                    </Button>
+                  </div>
+
+                  {actors.error && (
+                    <p className="text-xs text-destructive">{actors.error}</p>
+                  )}
+
+                  <div className="overflow-hidden rounded-lg border">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/30 text-left">
+                        <tr className="border-b">
+                          <th className="px-3 py-2 font-medium">Nº</th>
+                          <th className="px-3 py-2 font-medium">Setor / Área</th>
+                          <th className="px-3 py-2 font-medium">Responsável</th>
+                          <th className="px-3 py-2 font-medium">Prazo</th>
+                          <th className="px-3 py-2 font-medium">Data limite</th>
+                          <th className="px-3 py-2 font-medium">Status</th>
+                          <th className="px-3 py-2 font-medium text-right">
+                            Ações
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {stageSummaries.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={7}
+                              className="px-3 py-6 text-center text-muted-foreground"
+                            >
+                              Nenhuma etapa cadastrada.
+                            </td>
+                          </tr>
+                        ) : (
+                          stageSummaries.map((stage) => (
+                            <tr key={stage.id} className="border-b last:border-b-0">
+                              <td className="px-3 py-3">{stage.order}</td>
+                              <td className="px-3 py-3">{stage.areaLabel}</td>
+                              <td className="px-3 py-3">{stage.assigneeLabel}</td>
+                              <td className="px-3 py-3">{stage.dueDays} dia(s)</td>
+                              <td className="px-3 py-3">
+                                {formatDate(stage.dueDate)}
+                              </td>
+                              <td className="px-3 py-3">
+                                <Badge variant="secondary">Planejada</Badge>
+                              </td>
+                              <td className="px-3 py-3 text-right">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeApprovalStage(stage.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -612,7 +1073,7 @@ export function DocumentTramiteAdmin() {
             </Button>
             <Button
               type="button"
-              disabled={!form.name.trim() || catalog.isSaving}
+              disabled={!form.documentId || catalog.isSaving}
               onClick={() => void createTemplate()}
             >
               {catalog.isSaving && <Loader2 className="h-4 w-4 animate-spin" />}

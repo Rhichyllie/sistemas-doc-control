@@ -57,7 +57,7 @@ function truncate(value: string, size = 40) {
   return value.length > size ? `${value.slice(0, size)}...` : value;
 }
 
-function AuditTrailPage() {
+export function AuditTrailPage() {
   const { org } = useAuthContext();
   const [filters, setFilters] = useState<AuditFilters>({});
   const { entries, loading, error, total } = useAuditTrail(filters);

@@ -28,6 +28,8 @@ interface UseProjectsOptions {
   loadPeople?: boolean;
 }
 
+const LOCAL_PROJECTS_STORAGE_PREFIX = "tramita.projects.local.";
+
 const ENTERPRISE_COLUMNS = `
   id,
   org_id,
@@ -91,7 +93,7 @@ function schemaMessage(mode: ProjectSchemaMode) {
     return "Catálogo legado ativo. Aplique o ciclo P-11A para habilitar contextos operacionais completos.";
   }
   if (mode === "missing") {
-    return "Tabela projects indisponível. Aplique o schema base e o ciclo P-11A.";
+    return "Tabela projects indisponível. Aplique o schema base e o ciclo P-11A. Enquanto isso, o cadastro local de projetos fica habilitado neste navegador.";
   }
   if (mode === "denied") {
     return "A leitura de projetos foi bloqueada por política de acesso. Verifique organização, papel e RLS.";
@@ -100,6 +102,35 @@ function schemaMessage(mode: ProjectSchemaMode) {
     return "Não foi possível carregar o catálogo de projetos.";
   }
   return null;
+}
+
+function getLocalProjectsStorageKey(orgId: string) {
+  return `${LOCAL_PROJECTS_STORAGE_PREFIX}${orgId}`;
+}
+
+function loadLocalProjects(orgId: string) {
+  if (typeof window === "undefined") return [] as ProjectOperationalContext[];
+  try {
+    const raw = window.localStorage.getItem(getLocalProjectsStorageKey(orgId));
+    if (!raw) return [] as ProjectOperationalContext[];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (item): item is ProjectOperationalContext =>
+            Boolean(item && typeof item === "object" && "id" in item),
+        )
+      : [];
+  } catch {
+    return [] as ProjectOperationalContext[];
+  }
+}
+
+function saveLocalProjects(orgId: string, projects: ProjectOperationalContext[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    getLocalProjectsStorageKey(orgId),
+    JSON.stringify(projects),
+  );
 }
 
 export function useProjects(options: UseProjectsOptions = {}) {
@@ -164,6 +195,10 @@ export function useProjects(options: UseProjectsOptions = {}) {
       setError(
         `${schemaMessage(mode)} ${getErrorMessage(enterpriseResult.error, "Erro de leitura.")}`,
       );
+    }
+
+    if (mode === "missing") {
+      rows = loadLocalProjects(profile.org_id);
     }
 
     const projectIds = rows
@@ -254,61 +289,157 @@ export function useProjects(options: UseProjectsOptions = {}) {
         setError("Apenas administradores e gestores podem alterar projetos.");
         return false;
       }
-      if (schemaMode !== "enterprise") {
+      if (schemaMode === "denied") {
         setError(
-          "O ciclo P-11A precisa estar aplicado para criar ou editar contextos operacionais.",
+          "A leitura de projetos foi bloqueada por permissão. Libere o acesso antes de cadastrar.",
         );
         return false;
       }
-
       const validation = validateProjectInput(input);
       if (!validation.isValid) {
         setError(validation.errors[0]);
         return false;
       }
 
+      if (schemaMode === "missing") {
+        const now = new Date().toISOString();
+        const localProjects = loadLocalProjects(profile.org_id);
+        const nextId =
+          id ??
+          `local-project-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`;
+        const existing = localProjects.find((project) => project.id === nextId);
+        const status = input.status ?? "active";
+        const nextProject: ProjectOperationalContext = {
+          id: nextId,
+          org_id: profile.org_id,
+          code:
+            validation.normalizedCode ||
+            `PROJ${nextId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,
+          has_explicit_code: Boolean(validation.normalizedCode),
+          name: input.name.trim(),
+          description: input.description?.trim() || null,
+          client_name: input.client_name?.trim() || null,
+          contract_number: input.contract_number?.trim() || null,
+          location: input.location?.trim() || null,
+          project_type: input.project_type ?? "project",
+          status,
+          area: input.area?.trim().toUpperCase() || null,
+          responsible_id: input.responsible_id || null,
+          responsible_name:
+            users.find((user) => user.id === input.responsible_id)?.name ?? null,
+          start_date: input.start_date || null,
+          end_date: input.end_date || null,
+          metadata: input.metadata ?? existing?.metadata ?? {},
+          is_active: ["closed", "cancelled", "archived"].includes(status)
+            ? false
+            : (input.is_active ?? true),
+          created_by: existing?.created_by ?? profile.id,
+          created_at: existing?.created_at ?? now,
+          updated_at: now,
+          document_count: existing?.document_count ?? 0,
+          is_legacy: false,
+        };
+        const nextProjects = existing
+          ? localProjects.map((project) =>
+              project.id === nextId ? nextProject : project,
+            )
+          : [...localProjects, nextProject];
+        saveLocalProjects(profile.org_id, nextProjects);
+        await refresh();
+        return true;
+      }
+
       setIsSaving(true);
       setError(null);
       const status = input.status ?? "active";
-      const payload = {
-        org_id: profile.org_id,
-        code: validation.normalizedCode,
-        name: input.name.trim(),
-        description: input.description?.trim() || null,
-        client_name: input.client_name?.trim() || null,
-        contract_number: input.contract_number?.trim() || null,
-        location: input.location?.trim() || null,
-        project_type: input.project_type ?? "project",
-        status,
-        area: input.area?.trim().toUpperCase() || null,
-        responsible_id: input.responsible_id || null,
-        start_date: input.start_date || null,
-        end_date: input.end_date || null,
-        metadata: input.metadata ?? {},
-        is_active: ["closed", "cancelled", "archived"].includes(status)
-          ? false
-          : (input.is_active ?? true),
-      };
-      const result = id
-        ? await supabase
-            .from("projects")
-            .update({ ...payload, updated_at: new Date().toISOString() })
-            .eq("id", id)
-            .or(`org_id.eq.${profile.org_id},org_id.is.null`)
-            .select("id")
-            .maybeSingle()
-        : await supabase
-            .from("projects")
-            .insert({ ...payload, created_by: profile.id })
-            .select("id")
-            .single();
+      const result =
+        schemaMode === "enterprise"
+          ? id
+            ? await supabase
+                .from("projects")
+                .update({
+                  org_id: profile.org_id,
+                  code: validation.normalizedCode,
+                  name: input.name.trim(),
+                  description: input.description?.trim() || null,
+                  client_name: input.client_name?.trim() || null,
+                  contract_number: input.contract_number?.trim() || null,
+                  location: input.location?.trim() || null,
+                  project_type: input.project_type ?? "project",
+                  status,
+                  area: input.area?.trim().toUpperCase() || null,
+                  responsible_id: input.responsible_id || null,
+                  start_date: input.start_date || null,
+                  end_date: input.end_date || null,
+                  metadata: input.metadata ?? {},
+                  is_active: ["closed", "cancelled", "archived"].includes(status)
+                    ? false
+                    : (input.is_active ?? true),
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", id)
+                .or(`org_id.eq.${profile.org_id},org_id.is.null`)
+                .select("id")
+                .maybeSingle()
+            : await supabase
+                .from("projects")
+                .insert({
+                  org_id: profile.org_id,
+                  code: validation.normalizedCode,
+                  name: input.name.trim(),
+                  description: input.description?.trim() || null,
+                  client_name: input.client_name?.trim() || null,
+                  contract_number: input.contract_number?.trim() || null,
+                  location: input.location?.trim() || null,
+                  project_type: input.project_type ?? "project",
+                  status,
+                  area: input.area?.trim().toUpperCase() || null,
+                  responsible_id: input.responsible_id || null,
+                  start_date: input.start_date || null,
+                  end_date: input.end_date || null,
+                  metadata: input.metadata ?? {},
+                  is_active: ["closed", "cancelled", "archived"].includes(status)
+                    ? false
+                    : (input.is_active ?? true),
+                  created_by: profile.id,
+                })
+                .select("id")
+                .single()
+          : id
+            ? await supabase
+                .from("projects")
+                .update({
+                  code: validation.normalizedCode,
+                  name: input.name.trim(),
+                  client: input.client_name?.trim() || null,
+                  start_date: input.start_date || null,
+                  end_date: input.end_date || null,
+                  status,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", id)
+                .select("id")
+                .maybeSingle()
+            : await supabase
+                .from("projects")
+                .insert({
+                  code: validation.normalizedCode,
+                  name: input.name.trim(),
+                  client: input.client_name?.trim() || null,
+                  start_date: input.start_date || null,
+                  end_date: input.end_date || null,
+                  status,
+                  created_by: profile.id,
+                })
+                .select("id")
+                .single();
       setIsSaving(false);
 
       if (result.error) {
         const classification = classifyProjectError(result.error);
         setError(
           classification === "legacy"
-            ? "O ciclo P-11A não está completo neste ambiente."
+            ? "O catálogo legado permite o cadastro básico, mas alguns campos avançados do P-11A não estão disponíveis."
             : `Não foi possível salvar o projeto. ${getErrorMessage(result.error, "Erro de persistência.")}`,
         );
         return false;
@@ -338,6 +469,56 @@ export function useProjects(options: UseProjectsOptions = {}) {
     [saveProject],
   );
 
+  const deleteProject = useCallback(
+    async (project: ProjectOperationalContext) => {
+      if (!profile?.id || !profile.org_id) {
+        setError("Seu perfil ou organização ainda não está disponível.");
+        return false;
+      }
+      if (!canManage) {
+        setError("Apenas administradores e gestores podem excluir projetos.");
+        return false;
+      }
+      if (schemaMode === "denied") {
+        setError(
+          "A leitura de projetos foi bloqueada por permissão. Libere o acesso antes de excluir.",
+        );
+        return false;
+      }
+
+      if (schemaMode === "missing") {
+        const localProjects = loadLocalProjects(profile.org_id);
+        const nextProjects = localProjects.filter((item) => item.id !== project.id);
+        saveLocalProjects(profile.org_id, nextProjects);
+        await refresh();
+        return true;
+      }
+
+      setIsSaving(true);
+      setError(null);
+      const result =
+        schemaMode === "enterprise"
+          ? await supabase
+              .from("projects")
+              .delete()
+              .eq("id", project.id)
+              .or(`org_id.eq.${profile.org_id},org_id.is.null`)
+          : await supabase.from("projects").delete().eq("id", project.id);
+      setIsSaving(false);
+
+      if (result.error) {
+        setError(
+          `Não foi possível excluir o projeto. ${getErrorMessage(result.error, "Erro de persistência.")}`,
+        );
+        return false;
+      }
+
+      await refresh();
+      return true;
+    },
+    [canManage, profile?.id, profile?.org_id, refresh, schemaMode],
+  );
+
   const compatibilityMessage = schemaMessage(schemaMode);
   const diagnostic = useMemo(() => {
     if (isLoading) return "loading" as const;
@@ -359,7 +540,10 @@ export function useProjects(options: UseProjectsOptions = {}) {
     diagnostic,
     compatibilityMessage,
     canManage,
-    canUseEnterpriseProjects: schemaMode === "enterprise",
+    canUseEnterpriseProjects:
+      schemaMode === "enterprise" ||
+      schemaMode === "legacy" ||
+      schemaMode === "missing",
     refresh,
     createProject: (input: ProjectInput) => saveProject(null, input),
     updateProject: (id: string, input: ProjectInput) => saveProject(id, input),
@@ -378,6 +562,7 @@ export function useProjects(options: UseProjectsOptions = {}) {
         is_active: false,
         status: "closed",
       }),
+    deleteProject,
     clearError: () => setError(null),
   };
 }

@@ -166,7 +166,7 @@ export function DocumentTramiteModeler({
         isDirty={builder.isDirty}
         canUndo={builder.canUndo}
         canRedo={builder.canRedo}
-        canPublish={builder.validation.isPublishable}
+        canPublish={Boolean(template.current_version)}
         onSave={() => void save()}
         onValidate={() =>
           toast[builder.validation.isPublishable ? "success" : "warning"](

@@ -12,7 +12,7 @@ export const Route = createFileRoute("/authenticated/documentos/regras")({
   component: DocumentRulesPage,
 });
 
-function DocumentRulesPage() {
+export function DocumentRulesPage() {
   const { profile } = useAuthContext();
   const canAccess = profile?.role === "admin" || profile?.role === "manager";
 

@@ -26,7 +26,9 @@ export function useProjectOptions(options: UseProjectOptionsOptions = {}) {
     schemaMode: catalog.schemaMode,
     compatibilityMessage: catalog.compatibilityMessage,
     canUseProjects:
-      catalog.schemaMode === "enterprise" || catalog.schemaMode === "legacy",
+      catalog.schemaMode === "enterprise" ||
+      catalog.schemaMode === "legacy" ||
+      catalog.schemaMode === "missing",
     refresh: catalog.refresh,
   };
 }

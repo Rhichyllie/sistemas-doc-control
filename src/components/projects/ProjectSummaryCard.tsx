@@ -66,7 +66,7 @@ export function ProjectSummaryCard({
               {project.name}
             </CardTitle>
             <CardDescription>
-              {getProjectTypeLabel(project.project_type)}
+              Fase {getProjectTypeLabel(project.project_type)}
               {project.area ? ` · Área ${project.area}` : ""}
             </CardDescription>
           </div>

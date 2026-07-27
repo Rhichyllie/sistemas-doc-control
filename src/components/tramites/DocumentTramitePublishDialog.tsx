@@ -55,6 +55,12 @@ export function DocumentTramitePublishDialog({
             Publicar este modelo não inicia workflow, não cria tarefas e não
             envia notificações.
           </p>
+          {!validation.isPublishable && (
+            <p className="text-amber-700">
+              Este modelo ainda possui pendências de validação, mas a
+              publicação manual foi liberada.
+            </p>
+          )}
         </div>
         <DialogFooter>
           <Button
@@ -66,7 +72,7 @@ export function DocumentTramitePublishDialog({
           </Button>
           <Button
             type="button"
-            disabled={!validation.isPublishable || isPublishing}
+            disabled={isPublishing}
             onClick={onConfirm}
           >
             {isPublishing ? (

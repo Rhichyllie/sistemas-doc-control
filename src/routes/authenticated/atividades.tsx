@@ -1,14 +1,19 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
+import { ArrowRight, FileText, GitBranch, Plus } from 'lucide-react'
 import { ActivityInboxPreview } from '@/components/operational/ActivityInboxPreview'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
+import { useDocumentWorkCenter } from '@/hooks/useDocumentWorkCenter'
 import {
   type OperationalActivityType,
   useOperationalCockpit,
 } from '@/hooks/useOperationalCockpit'
+import { getDeadlineModeLabel } from '@/lib/operationalCalendar'
 
 export const Route = createFileRoute('/authenticated/atividades')({
   component: ActivitiesPage,
@@ -26,10 +31,53 @@ const TYPE_OPTIONS: { value: OperationalActivityType | 'all'; label: string }[] 
   { value: 'informational', label: 'Informativos' },
 ]
 
+function formatDate(value?: string | null) {
+  if (!value) return 'Sem prazo'
+  const date = new Date(value.includes('T') ? value : `${value}T12:00:00`)
+  if (Number.isNaN(date.getTime())) return 'Prazo inválido'
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: value.includes('T') ? 'short' : undefined,
+  }).format(date)
+}
+
+function PillActionLink({
+  to,
+  children,
+  params,
+  hash,
+  className = '',
+}: {
+  to: string
+  children: string
+  params?: Record<string, string>
+  hash?: string
+  className?: string
+}) {
+  return (
+    <Link
+      to={to}
+      params={params}
+      hash={hash}
+      className={`group inline-flex h-10 min-w-0 overflow-hidden rounded-full bg-blue-900 shadow-[0_12px_22px_-16px_rgba(15,23,42,0.28),0_10px_18px_-16px_rgba(30,64,175,0.36)] transition-all hover:-translate-y-0.5 hover:bg-blue-950 hover:shadow-[0_16px_26px_-16px_rgba(15,23,42,0.3),0_14px_20px_-16px_rgba(30,64,175,0.4)] ${className}`}
+    >
+      <span className="flex h-full w-10 shrink-0 items-center justify-center bg-white">
+        <Plus className="h-4 w-4 text-sky-900" />
+      </span>
+      <span className="flex min-w-0 flex-1 items-center justify-center px-4 text-center text-xs font-semibold leading-tight text-white">
+        {children}
+      </span>
+    </Link>
+  )
+}
+
 function ActivitiesPage() {
-  const { isLoading, error, warnings, activityItems, kpis } = useOperationalCockpit()
+  const { profile, isLoading, activityItems, kpis } = useOperationalCockpit()
+  const workCenter = useDocumentWorkCenter()
   const [typeFilter, setTypeFilter] = useState<OperationalActivityType | 'all'>('all')
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'actionable' | 'critical'>('all')
+  const canViewOperationalPanels =
+    profile?.role === 'manager' || profile?.role === 'admin'
 
   const filteredItems = useMemo(() => activityItems.filter((item) => {
     if (typeFilter !== 'all' && item.type !== typeFilter) return false
@@ -37,7 +85,6 @@ function ActivitiesPage() {
     if (priorityFilter === 'actionable' && ['recent_update', 'informational'].includes(item.type)) return false
     return true
   }), [activityItems, priorityFilter, typeFilter])
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
@@ -51,20 +98,6 @@ function ActivitiesPage() {
           {kpis.myPending} {kpis.myPending === 1 ? 'pendência' : 'pendências'}
         </Badge>
       </div>
-
-      {error && (
-        <Alert variant="destructive">
-          <AlertTitle>Não foi possível carregar todos os dados</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      {warnings.map((warning) => (
-        <Alert key={warning}>
-          <AlertTitle>Fonte alternativa em uso</AlertTitle>
-          <AlertDescription>{warning}</AlertDescription>
-        </Alert>
-      ))}
-
       <Card>
         <CardContent className="grid gap-3 p-4 md:grid-cols-2">
           <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as OperationalActivityType | 'all')}>
@@ -106,6 +139,137 @@ function ActivitiesPage() {
             : 'Ajuste os filtros de tipo ou prioridade para ampliar a busca.'
         }
       />
+
+      {canViewOperationalPanels && (
+        <>
+          <div className="grid gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Documentos recentes
+                </CardTitle>
+                <CardDescription>
+                  Últimos documentos movimentados na operação.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {workCenter.isLoading ? (
+                  Array.from({ length: 4 }).map((_, index) => (
+                    <Skeleton key={index} className="h-12 w-full" />
+                  ))
+                ) : workCenter.recentDocuments.length ? (
+                  workCenter.recentDocuments.map((document) => (
+                    <Link
+                      key={document.id}
+                      to="/authenticated/documents/$documentId"
+                      params={{ documentId: document.id }}
+                      className="flex items-center justify-between gap-3 rounded-lg p-2 hover:bg-muted"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium">
+                          {document.code || 'Sem código'} — {document.title}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {document.status.replaceAll('_', ' ')}
+                        </span>
+                      </span>
+                      <ArrowRight className="h-4 w-4 shrink-0" />
+                    </Link>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum documento recente disponível.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <GitBranch className="h-5 w-5 text-primary" />
+                  Trâmites em execução
+                </CardTitle>
+                <CardDescription>
+                  Progresso das instâncias ativas. As ações continuam no detalhe do documento.
+                </CardDescription>
+              </div>
+              <PillActionLink to="/authenticated/documentos/central">
+                Abrir Central Documental
+              </PillActionLink>
+            </CardHeader>
+            <CardContent>
+              {workCenter.isLoading ? (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <Skeleton className="h-36" />
+                  <Skeleton className="h-36" />
+                </div>
+              ) : workCenter.activeInstances.length ? (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {workCenter.activeInstances.map((instance) => (
+                    <div key={instance.id} className="rounded-xl border p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">{instance.templateName}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {[instance.documentCode, instance.documentTitle]
+                              .filter(Boolean)
+                              .join(' — ')}
+                          </p>
+                        </div>
+                        <Badge variant={instance.isOverdue ? 'destructive' : 'secondary'}>
+                          {instance.isOverdue ? 'Atrasado' : 'Em execução'}
+                        </Badge>
+                      </div>
+                      <div className="mt-4 flex items-center gap-3">
+                        <Progress value={instance.progress} />
+                        <span className="text-sm font-medium">
+                          {instance.progress}%
+                        </span>
+                      </div>
+                      <p className="mt-3 text-xs text-muted-foreground">
+                        {instance.activeStepLabels.length
+                          ? `Etapa ativa: ${instance.activeStepLabels.join(', ')}`
+                          : 'Sem etapa ativa legível.'}
+                        {' · '}
+                        {formatDate(instance.dueAt)}
+                      </p>
+                      {instance.dueAt && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {getDeadlineModeLabel(instance.deadlineMode)}
+                          {instance.dueAtSuggested
+                            ? ' · prazo sugerido, não persistido'
+                            : ''}
+                        </p>
+                      )}
+                      <div className="mt-4">
+                        <PillActionLink
+                          to="/authenticated/documents/$documentId"
+                          params={{ documentId: instance.documentId }}
+                          hash="document-tramite-execution"
+                        >
+                          Abrir execução
+                        </PillActionLink>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed p-8 text-center">
+                  <GitBranch className="mx-auto h-8 w-8 text-muted-foreground" />
+                  <p className="mt-3 font-medium">Nenhum trâmite em execução</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Não há instâncias ativas neste momento.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   )
 }

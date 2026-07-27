@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, X, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   getCodeTokenDescription,
@@ -14,6 +14,7 @@ interface DocumentCodePatternBlockChipProps {
   onMoveRight?: () => void;
   onRemove?: () => void;
   onAdd?: () => void;
+  dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>;
 }
 
 function technicalValue(block: DocumentCodePatternBlock) {
@@ -30,6 +31,7 @@ export function DocumentCodePatternBlockChip({
   onMoveRight,
   onRemove,
   onAdd,
+  dragHandleProps,
 }: DocumentCodePatternBlockChipProps) {
   const isLiteral = block.type === "TEXT";
   const isSeparator = block.type === "SEPARATOR";
@@ -62,6 +64,18 @@ export function DocumentCodePatternBlockChip({
       className={`flex items-center gap-1 rounded-lg border p-1.5 ${style}`}
       title={description}
     >
+      {dragHandleProps && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 cursor-grab active:cursor-grabbing"
+          {...dragHandleProps}
+          aria-label="Mover bloco"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </Button>
+      )}
       <div className="min-w-0 px-1.5">
         <span className="block truncate text-xs font-medium">{label}</span>
         <span className="block truncate font-mono text-[10px] text-muted-foreground">

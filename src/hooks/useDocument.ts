@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthContext } from '@/contexts/AuthContext'
 import type { WorkflowAssignmentType } from '@/lib/workflowCompatibility'
 import { isWorkflowFoundationUnavailable } from '@/lib/workflowCompatibility'
-import type { Document } from './useDocuments'
+import { loadLocalDocuments, type Document } from './useDocuments'
 
 export interface DocumentVersion {
   id: string
@@ -89,7 +89,33 @@ export function useDocument(documentId: string | undefined) {
         .eq('org_id', profile.org_id)
         .single()
 
-      if (docError) throw docError
+      if (docError) {
+        const message = [docError.message, docError.details, docError.hint]
+          .filter((value): value is string => typeof value === 'string')
+          .join(' ')
+          .toLowerCase()
+        const isMissingDocumentsTable =
+          String(docError.code ?? '').toUpperCase() === '42P01'
+          || String(docError.code ?? '').toUpperCase() === 'PGRST205'
+          || (message.includes('documents') && (message.includes('does not exist') || message.includes('schema cache')))
+
+        if (isMissingDocumentsTable) {
+          const localDocument = loadLocalDocuments(profile.org_id).find(
+            (item) => item.id === documentId,
+          )
+          if (!localDocument) {
+            throw new Error('Documento não encontrado neste navegador.')
+          }
+          setDocument({
+            ...localDocument,
+            versions: [],
+            approval_steps: [],
+          })
+          setLoading(false)
+          return
+        }
+        throw docError
+      }
 
       const { data: versions, error: versionsError } = await supabase
         .from('document_versions')

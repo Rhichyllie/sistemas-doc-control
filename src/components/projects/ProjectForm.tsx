@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -23,9 +24,10 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ProjectResponsibleOption } from "@/hooks/useProjects";
 import {
   PROJECT_STATUSES,
-  PROJECT_TYPES,
+  PROJECT_TYPE_LABELS,
   getProjectStatusLabel,
   getProjectTypeLabel,
+  getProjectTypesByLabel,
   normalizeProjectCode,
   suggestProjectCode,
   validateProjectInput,
@@ -35,7 +37,16 @@ import {
   type ProjectType,
 } from "@/lib/projectOperationalContext";
 
-const AREAS = ["SGI", "ENG", "OPS", "MNT", "SST", "MA", "QUA", "ADM"];
+// Create phase options using unique labels and a representative type per label
+const PROJECT_PHASE_OPTIONS: Array<{ value: ProjectType; label: string }> = 
+  PROJECT_TYPE_LABELS.map((label) => {
+    // Get the first type for each label as the representative
+    const types = getProjectTypesByLabel(label);
+    return {
+      value: types[0],
+      label: label,
+    };
+  });
 
 interface ProjectFormProps {
   open: boolean;
@@ -58,7 +69,7 @@ function initialState(project: ProjectOperationalContext | null) {
     location: project?.location ?? "",
     project_type: project?.project_type ?? ("project" as ProjectType),
     status: project?.status ?? ("active" as ProjectStatus),
-    area: project?.area ?? "",
+    has_client: Boolean(project?.client_name || project?.contract_number),
     responsible_id: project?.responsible_id ?? "",
     start_date: project?.start_date ?? "",
     end_date: project?.end_date ?? "",
@@ -103,10 +114,10 @@ export function ProjectForm({
       ...form,
       code: form.code || null,
       description: form.description || null,
-      client_name: form.client_name || null,
-      contract_number: form.contract_number || null,
+      client_name: form.has_client ? form.client_name || null : null,
+      contract_number: form.has_client ? form.contract_number || null : null,
       location: form.location || null,
-      area: form.area || null,
+      area: null,
       responsible_id: form.responsible_id || null,
       start_date: form.start_date || null,
       end_date: form.end_date || null,
@@ -188,7 +199,7 @@ export function ProjectForm({
               </p>
             </div>
             <div className="space-y-2">
-              <Label>Tipo</Label>
+              <Label>Fase do projeto</Label>
               <Select
                 value={form.project_type}
                 onValueChange={(value) =>
@@ -202,13 +213,27 @@ export function ProjectForm({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PROJECT_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {getProjectTypeLabel(type)}
+                  {PROJECT_PHASE_OPTIONS.map((phase) => (
+                    <SelectItem key={phase.value} value={phase.value}>
+                      {phase.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="project-description">Descrição</Label>
+              <Textarea
+                id="project-description"
+                value={form.description}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+                rows={3}
+              />
             </div>
             <div className="space-y-2">
               <Label>Status</Label>
@@ -234,69 +259,63 @@ export function ProjectForm({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Área</Label>
-              <Select
-                value={form.area || "none"}
+              <Label htmlFor="project-has-client">Cliente?</Label>
+              <RadioGroup
+                id="project-has-client"
+                value={form.has_client ? "true" : "false"}
                 onValueChange={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    area: value === "none" ? "" : value,
-                  }))
+                  setForm((current) => {
+                    const hasClient = value === "true";
+                    return {
+                      ...current,
+                      has_client: hasClient,
+                      client_name: hasClient ? current.client_name : "",
+                      contract_number: hasClient ? current.contract_number : "",
+                    };
+                  })
                 }
+                className="grid grid-cols-2 gap-3"
               >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sem área específica</SelectItem>
-                  {AREAS.map((area) => (
-                    <SelectItem key={area} value={area}>
-                      {area}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <label className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm">
+                  <RadioGroupItem value="true" id="project-has-client-true" />
+                  <span>Sim</span>
+                </label>
+                <label className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm">
+                  <RadioGroupItem value="false" id="project-has-client-false" />
+                  <span>Não</span>
+                </label>
+              </RadioGroup>
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="project-description">Descrição</Label>
-              <Textarea
-                id="project-description"
-                value={form.description}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    description: event.target.value,
-                  }))
-                }
-                rows={3}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="project-client">Cliente</Label>
-              <Input
-                id="project-client"
-                value={form.client_name}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    client_name: event.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="project-contract">Contrato</Label>
-              <Input
-                id="project-contract"
-                value={form.contract_number}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    contract_number: event.target.value,
-                  }))
-                }
-              />
-            </div>
+            {form.has_client && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="project-client">Nome do cliente</Label>
+                  <Input
+                    id="project-client"
+                    value={form.client_name}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        client_name: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="project-contract">Número do contrato</Label>
+                  <Input
+                    id="project-contract"
+                    value={form.contract_number}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        contract_number: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </>
+            )}
             <div className="space-y-2">
               <Label htmlFor="project-location">Local</Label>
               <Input
@@ -385,7 +404,7 @@ export function ProjectForm({
                 {form.name || "Nome do projeto"}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {getProjectTypeLabel(form.project_type)} ·{" "}
+                Fase {getProjectTypeLabel(form.project_type)} ·{" "}
                 {getProjectStatusLabel(form.status)}
                 {form.client_name ? ` · ${form.client_name}` : ""}
                 {form.contract_number ? ` · ${form.contract_number}` : ""}

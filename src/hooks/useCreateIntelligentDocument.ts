@@ -13,6 +13,7 @@ import {
 import {
   validateDocumentCreation,
   validateSelectedProject,
+  type DocumentValidationOverrides,
 } from "@/lib/documentCreationValidation";
 import {
   DOCUMENT_RULE_FIELD_LABELS,
@@ -55,15 +56,19 @@ export interface CreateIntelligentDocumentInput {
     client: string | null;
     contract: string | null;
   } | null;
+  validationOverrides?: DocumentValidationOverrides;
 }
 
 export function getIntelligentDocumentValidationErrors(
   input: CreateIntelligentDocumentInput,
 ) {
-  const errors = validateDocumentCreation({
-    ...input.form,
-    project_id: input.capabilities.project_id ? input.form.project_id : null,
-  });
+  const errors = validateDocumentCreation(
+    {
+      ...input.form,
+      project_id: input.capabilities.project_id ? input.form.project_id : null,
+    },
+    input.validationOverrides,
+  );
   const projectError = validateSelectedProject(input.form.project_id, {
     projectCapabilityAvailable: input.capabilities.project_id,
     availableProjectIds: input.availableProjectIds,
@@ -137,6 +142,7 @@ export function useCreateIntelligentDocument() {
       area: form.area,
       project_id:
         capabilities.project_id && form.project_id ? form.project_id : null,
+      discipline_id: form.discipline_id || null,
       revision: form.revision,
       review_period_months: form.review_period_months,
       next_review_at: form.next_review_at || undefined,
@@ -170,6 +176,7 @@ export function useCreateIntelligentDocument() {
         suggestedTramiteVersionId: input.tramite.templateVersionId,
         suggestedTramiteReason: input.tramite.reason,
       },
+      validationOverrides: input.validationOverrides,
     });
   }
 

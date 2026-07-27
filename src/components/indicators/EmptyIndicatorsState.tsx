@@ -30,7 +30,7 @@ export function EmptyIndicatorsState({
             icon: DatabaseZap,
             title: "Não foi possível carregar os indicadores consolidados",
             description:
-              "Verifique o Diagnóstico Operacional para confirmar ciclo, RPC e permissões.",
+              "Verifique a página de configurações para confirmar ciclo, RPC e permissões.",
           }
         : source === "fallback" || source === "not_installed"
           ? {
@@ -61,8 +61,8 @@ export function EmptyIndicatorsState({
       </CardHeader>
       <CardContent className="flex justify-center">
         <Button asChild variant="outline">
-          <Link to="/authenticated/configuracoes/diagnostico">
-            Abrir Diagnóstico Operacional
+          <Link to="/authenticated/configuracoes">
+            Abrir Configurações
           </Link>
         </Button>
       </CardContent>

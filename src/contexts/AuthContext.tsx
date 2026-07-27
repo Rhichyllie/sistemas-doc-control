@@ -56,6 +56,9 @@ interface AuthContextValue {
   signup: (email: string, fullName: string, password: string) => Promise<LegacyResult<User>>
   checkEmailExists: (email: string) => Promise<boolean>
   resetPassword: (email: string, newPassword?: string) => Promise<LegacyResult>
+  updateProfile: (updates: Partial<Pick<UserProfile, 'full_name' | 'department' | 'avatar_url'>>) => Promise<boolean>
+  refreshProfile: () => Promise<void>
+  updateOrg: (updates: Partial<Pick<OrgInfo, 'name' | 'sector' | 'code_prefix'>>) => Promise<boolean>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -275,6 +278,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: true }
   }
 
+  async function refreshProfile() {
+    if (!user?.id) return;
+    await loadProfileAndOrg(user.id);
+  }
+
+  async function updateProfile(updates: Partial<Pick<UserProfile, 'full_name' | 'department' | 'avatar_url'>>): Promise<boolean> {
+    if (!profile) return false;
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', profile.id);
+      if (error) {
+        console.error('[auth] updateProfile error:', error);
+        // Fallback: update local state only
+        setProfile(prev => prev ? { ...prev, ...updates } : prev);
+        return false;
+      }
+      await refreshProfile();
+      return true;
+    } catch (err) {
+      console.error('[auth] updateProfile exception:', err);
+      setProfile(prev => prev ? { ...prev, ...updates } : prev);
+      return false;
+    }
+  }
+
+  async function updateOrg(updates: Partial<Pick<OrgInfo, 'name' | 'sector' | 'code_prefix'>>): Promise<boolean> {
+    if (!org?.id) return false;
+    try {
+      const normalized: Partial<OrgInfo> = { ...updates };
+      if (normalized.code_prefix) {
+        normalized.code_prefix = normalized.code_prefix.toUpperCase().slice(0, 4);
+      }
+      const { error } = await supabase
+        .from('organizations')
+        .update({ ...normalized, updated_at: new Date().toISOString() })
+        .eq('id', org.id);
+      if (error) {
+        console.error('[auth] updateOrg error:', error);
+        // Fallback: optimistic local update
+        setOrg(prev => prev ? { ...prev, ...normalized } : prev);
+        return false;
+      }
+      // Optimistic + re-sync
+      setOrg(prev => prev ? { ...prev, ...normalized } : prev);
+      await refreshProfile();
+      return true;
+    } catch (err) {
+      console.error('[auth] updateOrg exception:', err);
+      return false;
+    }
+  }
+
   const role = profile?.role ?? null
   const value: AuthContextValue = {
     user,
@@ -294,6 +351,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signup,
     checkEmailExists,
     resetPassword,
+    updateProfile,
+    refreshProfile,
+    updateOrg,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

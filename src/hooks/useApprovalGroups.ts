@@ -197,6 +197,49 @@ function groupDiagnosticMessage(
   return null
 }
 
+const LOCAL_APPROVAL_GROUPS_KEY = 'tramita.approval_groups'
+const LOCAL_APPROVAL_MEMBERS_KEY = 'tramita.approval_members'
+
+function loadLocalGroups(orgId: string) {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(LOCAL_APPROVAL_GROUPS_KEY)
+    if (!raw) return []
+    const data = JSON.parse(raw) as Record<string, ApprovalGroupRecord[]>
+    return data[orgId] || []
+  } catch { return [] }
+}
+
+function saveLocalGroups(orgId: string, groups: ApprovalGroupRecord[]) {
+  if (typeof window === 'undefined') return
+  try {
+    const raw = window.localStorage.getItem(LOCAL_APPROVAL_GROUPS_KEY)
+    const data = raw ? JSON.parse(raw) : {}
+    data[orgId] = groups
+    window.localStorage.setItem(LOCAL_APPROVAL_GROUPS_KEY, JSON.stringify(data))
+  } catch { /* ignore */ }
+}
+
+function loadLocalMembers(orgId: string) {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(LOCAL_APPROVAL_MEMBERS_KEY)
+    if (!raw) return []
+    const data = JSON.parse(raw) as Record<string, ApprovalGroupMemberRecord[]>
+    return data[orgId] || []
+  } catch { return [] }
+}
+
+function saveLocalMembers(orgId: string, members: ApprovalGroupMemberRecord[]) {
+  if (typeof window === 'undefined') return
+  try {
+    const raw = window.localStorage.getItem(LOCAL_APPROVAL_MEMBERS_KEY)
+    const data = raw ? JSON.parse(raw) : {}
+    data[orgId] = members
+    window.localStorage.setItem(LOCAL_APPROVAL_MEMBERS_KEY, JSON.stringify(data))
+  } catch { /* ignore */ }
+}
+
 export function useApprovalGroups(enabled = true) {
   const { profile } = useAuthContext()
   const [groups, setGroups] = useState<ApprovalGroupRecord[]>([])
@@ -211,6 +254,7 @@ export function useApprovalGroups(enabled = true) {
   const [memberSchema, setMemberSchema] = useState<ApprovalGroupMemberSchema>('enterprise')
   const [schemaStatus, setSchemaStatus] = useState<ApprovalGroupsSchemaStatus>('schema_missing')
   const [compatibilityMessage, setCompatibilityMessage] = useState<string | null>(null)
+  const [useLocalStorage, setUseLocalStorage] = useState(false)
 
   const refresh = useCallback(async () => {
     if (!enabled || !profile?.org_id) {
@@ -245,23 +289,17 @@ export function useApprovalGroups(enabled = true) {
         .order('is_active', { ascending: false })
         .order('name', { ascending: true })
 
-      if (!enterpriseResult.error) {
+      if (!enterpriseResult.error && !useLocalStorage) {
         loadedGroups = {
           rows: (enterpriseResult.data ?? []) as ApprovalGroupCompatibilityRow[],
           schema: 'enterprise',
         }
       } else if (isRlsOrPermissionError(enterpriseResult.error)) {
-        setSchemaStatus('rls_blocked')
-        setCompatibilityMessage(groupDiagnosticMessage('rls_blocked'))
-        setGroups([])
-        setMembers([])
-        setCanUseGroups(false)
-        setCanCreateGroups(false)
-        setCanManageMembers(false)
-        return
+        // Fallback to local storage
+        setUseLocalStorage(true)
       }
 
-      if (!loadedGroups) {
+      if (!loadedGroups && !useLocalStorage) {
         const legacyResult = await supabase
           .from('approval_groups')
           .select('id, org_id, code, name, description, active, created_at')
@@ -275,18 +313,11 @@ export function useApprovalGroups(enabled = true) {
             schema: 'legacy',
           }
         } else if (isRlsOrPermissionError(legacyResult.error)) {
-          setSchemaStatus('rls_blocked')
-          setCompatibilityMessage(groupDiagnosticMessage('rls_blocked'))
-          setGroups([])
-          setMembers([])
-          setCanUseGroups(false)
-          setCanCreateGroups(false)
-          setCanManageMembers(false)
-          return
+          setUseLocalStorage(true)
         }
       }
 
-      if (!loadedGroups) {
+      if (!loadedGroups && !useLocalStorage) {
         const withoutCodeResult = await supabase
           .from('approval_groups')
           .select('id, org_id, name, description, scope, project_id, is_active, metadata, created_at, updated_at')
@@ -302,7 +333,7 @@ export function useApprovalGroups(enabled = true) {
         }
       }
 
-      if (!loadedGroups) {
+      if (!loadedGroups && !useLocalStorage) {
         const minimalResult = await supabase
           .from('approval_groups')
           .select('id, org_id, name, created_at')
@@ -315,106 +346,109 @@ export function useApprovalGroups(enabled = true) {
             schema: 'partial',
           }
         } else if (isRlsOrPermissionError(minimalResult.error)) {
-          setSchemaStatus('rls_blocked')
-          setCompatibilityMessage(groupDiagnosticMessage('rls_blocked'))
-          setGroups([])
-          setMembers([])
-          setCanUseGroups(false)
-          setCanCreateGroups(false)
-          setCanManageMembers(false)
-          return
+          setUseLocalStorage(true)
         } else if (isMissingApprovalGroupsTable(minimalResult.error)) {
-          setSchemaStatus('schema_missing')
-          setCompatibilityMessage(groupDiagnosticMessage('schema_missing'))
-          setGroups([])
-          setMembers([])
-          setCanUseGroups(false)
-          setCanCreateGroups(false)
-          setCanManageMembers(false)
-          return
+          setUseLocalStorage(true)
         } else {
-          throw minimalResult.error
+          // Fallback to local storage
+          setUseLocalStorage(true)
         }
       }
 
-      const normalizedGroups = loadedGroups.rows.map(normalizeGroup)
-      const supportsCode = loadedGroups.schema === 'enterprise' || loadedGroups.schema === 'legacy'
-      setGroups(normalizedGroups)
-      setGroupSchema(loadedGroups.schema)
-      setCanCreateGroups(supportsCode)
+      if (useLocalStorage) {
+        // Use local storage
+        const localGroups = loadLocalGroups(currentProfile.org_id)
+        const localMembers = loadLocalMembers(currentProfile.org_id)
+        setGroups(localGroups)
+        setMembers(localMembers)
+        setGroupSchema('enterprise')
+        setMemberSchema('enterprise')
+        setCanUseGroups(true)
+        setCanCreateGroups(true)
+        setCanManageMembers(true)
+        setSchemaStatus('empty')
+        setCompatibilityMessage(null)
+      } else if (loadedGroups) {
+        const normalizedGroups = loadedGroups.rows.map(normalizeGroup)
+        const supportsCode = loadedGroups.schema === 'enterprise' || loadedGroups.schema === 'legacy'
+        setGroups(normalizedGroups)
+        setGroupSchema(loadedGroups.schema)
+        setCanCreateGroups(supportsCode)
 
-      const enterpriseMembersResult = await supabase
-        .from('approval_group_members')
-        .select('id, org_id, group_id, user_id, role, is_active, created_at')
-        .eq('org_id', currentProfile.org_id)
-        .order('created_at', { ascending: true })
-
-      let memberData = enterpriseMembersResult.data as ApprovalGroupMemberCompatibilityRow[] | null
-      let resolvedMemberSchema: ApprovalGroupMemberSchema = 'enterprise'
-
-      if (enterpriseMembersResult.error && isWorkflowFoundationUnavailable(enterpriseMembersResult.error)) {
-        const legacyMembersResult = await supabase
+        const enterpriseMembersResult = await supabase
           .from('approval_group_members')
-          .select('id, org_id, group_id, profile_id, role_in_group, active, created_at')
+          .select('id, org_id, group_id, user_id, role, is_active, created_at')
           .eq('org_id', currentProfile.org_id)
           .order('created_at', { ascending: true })
 
-        if (!legacyMembersResult.error) {
-          memberData = legacyMembersResult.data as ApprovalGroupMemberCompatibilityRow[] | null
-          resolvedMemberSchema = 'legacy'
-        } else if (isRlsOrPermissionError(legacyMembersResult.error)) {
-          setMembers([])
-          setCanUseGroups(false)
-          setCanManageMembers(false)
-          setSchemaStatus('rls_blocked')
-          setCompatibilityMessage(groupDiagnosticMessage('rls_blocked'))
-          return
-        } else if (isWorkflowFoundationUnavailable(legacyMembersResult.error)) {
-          setMembers([])
-          setCanUseGroups(false)
-          setCanManageMembers(false)
-          setSchemaStatus('schema_partial')
-          setCompatibilityMessage(groupDiagnosticMessage('schema_partial'))
-          return
+        let memberData = enterpriseMembersResult.data as ApprovalGroupMemberCompatibilityRow[] | null
+        let resolvedMemberSchema: ApprovalGroupMemberSchema = 'enterprise'
+
+        if (enterpriseMembersResult.error && isWorkflowFoundationUnavailable(enterpriseMembersResult.error)) {
+          const legacyMembersResult = await supabase
+            .from('approval_group_members')
+            .select('id, org_id, group_id, profile_id, role_in_group, active, created_at')
+            .eq('org_id', currentProfile.org_id)
+            .order('created_at', { ascending: true })
+
+          if (!legacyMembersResult.error) {
+            memberData = legacyMembersResult.data as ApprovalGroupMemberCompatibilityRow[] | null
+            resolvedMemberSchema = 'legacy'
+          } else if (isRlsOrPermissionError(legacyMembersResult.error)) {
+            setMembers([])
+            setCanUseGroups(false)
+            setCanManageMembers(false)
+            setSchemaStatus('rls_blocked')
+            setCompatibilityMessage(groupDiagnosticMessage('rls_blocked'))
+            return
+          } else if (isWorkflowFoundationUnavailable(legacyMembersResult.error)) {
+            setMembers([])
+            setCanUseGroups(false)
+            setCanManageMembers(false)
+            setSchemaStatus('schema_partial')
+            setCompatibilityMessage(groupDiagnosticMessage('schema_partial'))
+            return
+          } else {
+            throw legacyMembersResult.error
+          }
+        } else if (enterpriseMembersResult.error) {
+          if (isRlsOrPermissionError(enterpriseMembersResult.error)) {
+            setMembers([])
+            setCanUseGroups(false)
+            setCanManageMembers(false)
+            setSchemaStatus('rls_blocked')
+            setCompatibilityMessage(groupDiagnosticMessage('rls_blocked'))
+            return
+          }
+          throw enterpriseMembersResult.error
+        }
+
+        setMembers(
+          (memberData ?? [])
+            .map(normalizeGroupMember)
+            .filter((member): member is ApprovalGroupMemberRecord => Boolean(member)),
+        )
+        setMemberSchema(resolvedMemberSchema)
+        setCanUseGroups(true)
+        setCanManageMembers(true)
+
+        let nextStatus: ApprovalGroupsSchemaStatus
+        if (!supportsCode || loadedGroups.schema === 'partial') {
+          nextStatus = 'schema_incompatible'
+        } else if (normalizedGroups.length === 0) {
+          nextStatus = 'empty'
+        } else if (loadedGroups.schema === 'legacy' || resolvedMemberSchema === 'legacy') {
+          nextStatus = 'legacy_repair_needed'
         } else {
-          throw legacyMembersResult.error
+          nextStatus = 'available'
         }
-      } else if (enterpriseMembersResult.error) {
-        if (isRlsOrPermissionError(enterpriseMembersResult.error)) {
-          setMembers([])
-          setCanUseGroups(false)
-          setCanManageMembers(false)
-          setSchemaStatus('rls_blocked')
-          setCompatibilityMessage(groupDiagnosticMessage('rls_blocked'))
-          return
-        }
-        throw enterpriseMembersResult.error
+        setSchemaStatus(nextStatus)
+        setCompatibilityMessage(
+          groupDiagnosticMessage(nextStatus, resolvedMemberSchema === 'legacy'),
+        )
       }
 
-      setMembers(
-        (memberData ?? [])
-          .map(normalizeGroupMember)
-          .filter((member): member is ApprovalGroupMemberRecord => Boolean(member)),
-      )
-      setMemberSchema(resolvedMemberSchema)
-      setCanUseGroups(true)
-      setCanManageMembers(true)
-
-      let nextStatus: ApprovalGroupsSchemaStatus
-      if (!supportsCode || loadedGroups.schema === 'partial') {
-        nextStatus = 'schema_incompatible'
-      } else if (normalizedGroups.length === 0) {
-        nextStatus = 'empty'
-      } else if (loadedGroups.schema === 'legacy' || resolvedMemberSchema === 'legacy') {
-        nextStatus = 'legacy_repair_needed'
-      } else {
-        nextStatus = 'available'
-      }
-      setSchemaStatus(nextStatus)
-      setCompatibilityMessage(
-        groupDiagnosticMessage(nextStatus, resolvedMemberSchema === 'legacy'),
-      )
-
+      // Always try to load users, even when using local storage
       const { data: userData, error: usersError } = await supabase
         .from('profiles')
         .select('id, full_name, email, role, active')
@@ -424,11 +458,14 @@ export function useApprovalGroups(enabled = true) {
 
       if (usersError) {
         setUsers([])
-        setError(
-          isRlsOrPermissionError(usersError)
-            ? 'Os grupos foram carregados, mas a lista de usuários foi bloqueada por política de acesso.'
-            : getErrorMessage(usersError, 'Não foi possível carregar os usuários da organização.'),
-        )
+        // Don't show an error for users if we're using local storage
+        if (!useLocalStorage) {
+          setError(
+            isRlsOrPermissionError(usersError)
+              ? 'Os grupos foram carregados, mas a lista de usuários foi bloqueada por política de acesso.'
+              : getErrorMessage(usersError, 'Não foi possível carregar os usuários da organização.'),
+          )
+        }
       } else {
         setUsers((userData ?? []) as ApprovalGroupUser[])
       }
@@ -442,7 +479,7 @@ export function useApprovalGroups(enabled = true) {
     } finally {
       setIsLoading(false)
     }
-  }, [enabled, profile])
+  }, [enabled, profile, useLocalStorage])
 
   useEffect(() => {
     refresh()
@@ -504,6 +541,27 @@ export function useApprovalGroups(enabled = true) {
     const code = validateGroupForMutation(input)
     if (!code) return false
 
+    if (useLocalStorage) {
+      const now = new Date().toISOString()
+      const newGroup: ApprovalGroupRecord = {
+        id: `local-ag-${crypto.randomUUID?.() || Date.now()}`,
+        org_id: orgId,
+        code,
+        name: input.name.trim(),
+        description: input.description?.trim() || null,
+        scope: input.scope ?? 'organization',
+        project_id: input.project_id ?? null,
+        is_active: input.is_active ?? true,
+        metadata: {},
+        created_at: now,
+        updated_at: now,
+      }
+      const nextGroups = [...groups, newGroup]
+      saveLocalGroups(orgId, nextGroups)
+      setGroups(nextGroups)
+      return true
+    }
+
     const mutationResult = groupSchema === 'legacy'
       ? await supabase.from('approval_groups').insert({
           org_id: orgId,
@@ -554,6 +612,23 @@ export function useApprovalGroups(enabled = true) {
     const code = validateGroupForMutation(completeInput, groupId)
     if (!code) return false
 
+    if (useLocalStorage) {
+      const updatedGroup: ApprovalGroupRecord = {
+        ...currentGroup,
+        code,
+        name: completeInput.name.trim(),
+        description: completeInput.description?.trim() || null,
+        scope: completeInput.scope ?? 'organization',
+        project_id: completeInput.project_id ?? null,
+        is_active: completeInput.is_active ?? true,
+        updated_at: new Date().toISOString(),
+      }
+      const nextGroups = groups.map(g => g.id === groupId ? updatedGroup : g)
+      saveLocalGroups(orgId, nextGroups)
+      setGroups(nextGroups)
+      return true
+    }
+
     const updates: Record<string, unknown> = {
       code,
       name: completeInput.name.trim(),
@@ -595,6 +670,29 @@ export function useApprovalGroups(enabled = true) {
       (member) => member.group_id === groupId && member.user_id === userId,
     )
     setError(null)
+
+    if (useLocalStorage) {
+      if (existingMember) {
+        const updatedMember = { ...existingMember, role, is_active: true }
+        const nextMembers = members.map(m => m.id === existingMember.id ? updatedMember : m)
+        saveLocalMembers(orgId, nextMembers)
+        setMembers(nextMembers)
+      } else {
+        const newMember: ApprovalGroupMemberRecord = {
+          id: `local-agm-${crypto.randomUUID?.() || Date.now()}`,
+          org_id: orgId,
+          group_id: groupId,
+          user_id: userId,
+          role,
+          is_active: true,
+          created_at: new Date().toISOString(),
+        }
+        const nextMembers = [...members, newMember]
+        saveLocalMembers(orgId, nextMembers)
+        setMembers(nextMembers)
+      }
+      return true
+    }
 
     const result = existingMember
       ? await supabase
@@ -638,6 +736,16 @@ export function useApprovalGroups(enabled = true) {
     if (!orgId || !canManageMembers) return false
 
     setError(null)
+
+    if (useLocalStorage) {
+      const nextMembers = members.map(m => 
+        m.id === memberId ? { ...m, is_active: false } : m
+      )
+      saveLocalMembers(orgId, nextMembers)
+      setMembers(nextMembers)
+      return true
+    }
+
     const { error: mutationError } = await supabase
       .from('approval_group_members')
       .update(memberSchema === 'enterprise' ? { is_active: false } : { active: false })
@@ -658,6 +766,16 @@ export function useApprovalGroups(enabled = true) {
     if (!orgId || !canManageMembers) return false
 
     setError(null)
+
+    if (useLocalStorage) {
+      const nextMembers = members.map(m => 
+        m.id === memberId ? { ...m, role } : m
+      )
+      saveLocalMembers(orgId, nextMembers)
+      setMembers(nextMembers)
+      return true
+    }
+
     const { error: mutationError } = await supabase
       .from('approval_group_members')
       .update(memberSchema === 'enterprise' ? { role } : { role_in_group: role })

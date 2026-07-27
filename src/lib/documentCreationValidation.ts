@@ -43,6 +43,11 @@ export interface DocumentCreationValidationInput {
   file?: File | null;
 }
 
+export interface DocumentValidationOverrides {
+  allowedDocTypes?: string[] | null;
+  allowedAreas?: string[] | null;
+}
+
 export interface ProjectValidationContext {
   projectCapabilityAvailable: boolean;
   availableProjectIds: string[];
@@ -86,6 +91,7 @@ export function validateDocumentFile(file: File | null | undefined) {
 
 export function validateDocumentCreation(
   input: DocumentCreationValidationInput,
+  overrides?: DocumentValidationOverrides,
 ) {
   const errors: string[] = [];
   const title = input.title?.trim() ?? "";
@@ -100,18 +106,26 @@ export function validateDocumentCreation(
     errors.push("O título deve ter pelo menos 3 caracteres.");
   }
 
+  const allowedDocTypes =
+    overrides?.allowedDocTypes && overrides.allowedDocTypes.length > 0
+      ? new Set(overrides.allowedDocTypes.map((t) => t.toUpperCase()))
+      : new Set(DOCUMENT_TYPE_CODES.map((t) => t.toUpperCase()));
+
   if (!docType) {
     errors.push("Selecione o tipo documental.");
-  } else if (
-    !DOCUMENT_TYPE_CODES.includes(
-      docType as (typeof DOCUMENT_TYPE_CODES)[number],
-    )
-  ) {
+  } else if (!allowedDocTypes.has(docType)) {
     errors.push("O tipo documental selecionado não é reconhecido.");
   }
 
+  const allowedAreas =
+    overrides?.allowedAreas && overrides.allowedAreas.length > 0
+      ? new Set(overrides.allowedAreas.map((a) => a.trim()))
+      : null;
+
   if (!area) {
     errors.push("Selecione a área responsável.");
+  } else if (allowedAreas && !allowedAreas.has(area.trim())) {
+    errors.push("A área selecionada não é reconhecida.");
   }
 
   if (!Number.isInteger(revision) || revision !== 0) {

@@ -152,9 +152,9 @@ export function OperationalIndicatorsDashboard() {
                 </Link>
               </Button>
               <Button asChild variant="outline">
-                <Link to="/authenticated/configuracoes/diagnostico">
+                <Link to="/authenticated/configuracoes">
                   <ShieldCheck className="mr-2 h-4 w-4" />
-                  Diagnóstico
+                  Configurações
                 </Link>
               </Button>
               <Button

@@ -25,15 +25,22 @@ export interface Document {
   code: string | null
   title: string
   project_id: string | null
+  discipline_id?: string | null
   doc_type: string
   area: string
   status: string
+  register_status?: string | null
   revision: number
+  register_revision?: string | null
   description: string | null
   file_path: string | null
   file_name: string | null
   file_size: number | null
   next_review_at: string | null
+  received_at?: string | null
+  analysis_days?: number | null
+  analysis_deadline?: string | null
+  external_link?: string | null
   author_id: string
   published_at: string | null
   created_at: string
@@ -63,6 +70,114 @@ export interface DocumentFilters {
   doc_type?: string
   area?: string
   search?: string
+}
+
+const LOCAL_DOCUMENTS_STORAGE_PREFIX = 'tramita.documents.local.'
+
+function getLocalDocumentsStorageKey(orgId: string) {
+  return `${LOCAL_DOCUMENTS_STORAGE_PREFIX}${orgId}`
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function normalizeLocalDocument(row: unknown): Document | null {
+  if (!isRecord(row) || typeof row.id !== 'string') return null
+
+  return {
+    id: row.id,
+    org_id: typeof row.org_id === 'string' ? row.org_id : '',
+    code: typeof row.code === 'string' ? row.code : null,
+    title: typeof row.title === 'string' ? row.title : 'Documento sem título',
+    project_id: typeof row.project_id === 'string' ? row.project_id : null,
+    discipline_id: typeof row.discipline_id === 'string' ? row.discipline_id : null,
+    doc_type: typeof row.doc_type === 'string' ? row.doc_type : '',
+    area: typeof row.area === 'string' ? row.area : '',
+    status: typeof row.status === 'string' ? row.status : 'draft',
+    register_status: typeof row.register_status === 'string' ? row.register_status : null,
+    revision: Number(row.revision) || 0,
+    register_revision: typeof row.register_revision === 'string' ? row.register_revision : null,
+    description: typeof row.description === 'string' ? row.description : null,
+    file_path: typeof row.file_path === 'string' ? row.file_path : null,
+    file_name: typeof row.file_name === 'string' ? row.file_name : null,
+    file_size: typeof row.file_size === 'number' ? row.file_size : null,
+    next_review_at: typeof row.next_review_at === 'string' ? row.next_review_at : null,
+    received_at: typeof row.received_at === 'string' ? row.received_at : null,
+    analysis_days: typeof row.analysis_days === 'number' ? row.analysis_days : null,
+    analysis_deadline: typeof row.analysis_deadline === 'string' ? row.analysis_deadline : null,
+    external_link: typeof row.external_link === 'string' ? row.external_link : null,
+    author_id: typeof row.author_id === 'string' ? row.author_id : '',
+    published_at: typeof row.published_at === 'string' ? row.published_at : null,
+    created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+    updated_at: typeof row.updated_at === 'string' ? row.updated_at : new Date().toISOString(),
+    published_version_id: typeof row.published_version_id === 'string' ? row.published_version_id : null,
+    working_version_id: typeof row.working_version_id === 'string' ? row.working_version_id : null,
+    code_pattern_id: typeof row.code_pattern_id === 'string' ? row.code_pattern_id : null,
+    code_generation_mode: typeof row.code_generation_mode === 'string' ? row.code_generation_mode : null,
+    manual_code: row.manual_code === true,
+    working_revision: isRecord(row.working_revision)
+      ? {
+          id: String(row.working_revision.id ?? ''),
+          revision: Number(row.working_revision.revision) || 0,
+          status: String(row.working_revision.status ?? 'draft'),
+        }
+      : null,
+    published_revision: isRecord(row.published_revision)
+      ? {
+          id: String(row.published_revision.id ?? ''),
+          revision: Number(row.published_revision.revision) || 0,
+          status: String(row.published_revision.status ?? 'published'),
+        }
+      : null,
+    correction: null,
+    author: isRecord(row.author) && typeof row.author.full_name === 'string'
+      ? { full_name: row.author.full_name }
+      : undefined,
+    project: isRecord(row.project) && typeof row.project.id === 'string'
+      ? {
+          id: row.project.id,
+          code: typeof row.project.code === 'string' ? row.project.code : '',
+          name: typeof row.project.name === 'string' ? row.project.name : '',
+        }
+      : null,
+  }
+}
+
+export function loadLocalDocuments(orgId: string) {
+  if (typeof window === 'undefined') return [] as Document[]
+  try {
+    const raw = window.localStorage.getItem(getLocalDocumentsStorageKey(orgId))
+    if (!raw) return [] as Document[]
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return [] as Document[]
+    return parsed
+      .map(normalizeLocalDocument)
+      .filter((item): item is Document => Boolean(item))
+      .sort((left, right) => right.created_at.localeCompare(left.created_at))
+  } catch {
+    return [] as Document[]
+  }
+}
+
+export function saveLocalDocuments(orgId: string, documents: Document[]) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(
+    getLocalDocumentsStorageKey(orgId),
+    JSON.stringify(documents),
+  )
+}
+
+function isMissingDocumentsSchema(error: { code?: string; message?: string; details?: string; hint?: string }) {
+  const code = String(error.code ?? '').toUpperCase()
+  const message = [error.message, error.details, error.hint]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ')
+    .toLowerCase()
+
+  return code === '42P01'
+    || code === 'PGRST205'
+    || (message.includes('documents') && (message.includes('does not exist') || message.includes('schema cache')))
 }
 
 function isOptionalProjectError(error: { code?: string; message?: string }) {
@@ -120,7 +235,25 @@ export function useDocuments(filters: DocumentFilters = {}) {
         if (!queryError) setSchemaFallback(true)
       }
 
-      if (queryError) throw queryError
+      if (queryError) {
+        if (isMissingDocumentsSchema(queryError) && currentProfile.org_id) {
+          let localDocuments = loadLocalDocuments(currentProfile.org_id)
+          if (filters.status) localDocuments = localDocuments.filter((document) => document.status === filters.status)
+          if (filters.doc_type) localDocuments = localDocuments.filter((document) => document.doc_type === filters.doc_type)
+          if (filters.area) localDocuments = localDocuments.filter((document) => document.area === filters.area)
+          if (filters.search) {
+            const term = filters.search.toLowerCase()
+            localDocuments = localDocuments.filter((document) =>
+              `${document.title} ${document.code ?? ''}`.toLowerCase().includes(term),
+            )
+          }
+          setDocuments(localDocuments)
+          setSchemaFallback(true)
+          setLoading(false)
+          return
+        }
+        throw queryError
+      }
 
       const loadedDocuments = (data ?? []) as unknown as Document[]
       const documentIds = loadedDocuments.map((document) => document.id)

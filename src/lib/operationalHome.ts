@@ -12,7 +12,7 @@ export type OperationalTarget =
   | "/authenticated/documentos/codificacao"
   | "/authenticated/documentos/regras"
   | "/authenticated/documentos/tramites"
-  | "/authenticated/projetos"
+  | "/authenticated/configuracoes/projetos"
   | "/authenticated/configuracoes/calendario"
   | "/authenticated/equipe"
   | "/authenticated/notificacoes"
@@ -349,7 +349,7 @@ function capabilities(
         : metrics.projects
           ? "available"
           : "configure",
-      target: "/authenticated/projetos",
+      target: "/authenticated/configuracoes/projetos",
     },
     {
       id: "policies",

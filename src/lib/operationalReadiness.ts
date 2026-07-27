@@ -32,7 +32,7 @@ export type GoLiveSectionId =
   | "pilot";
 
 export type OperationalReadinessRoute =
-  | "/authenticated/configuracoes/diagnostico"
+  | "/authenticated/configuracoes"
   | "/authenticated/schema-doctor"
   | "/authenticated/projetos"
   | "/authenticated/documentos/regras"

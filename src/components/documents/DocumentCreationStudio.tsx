@@ -78,6 +78,7 @@ const INITIAL_FORM: IntelligentDocumentFormState = {
   doc_type: "",
   area: "",
   project_id: "",
+  discipline_id: "",
   file: null,
   review_period_months: 24,
   next_review_at: suggestNextReviewDate({ review_period_months: 24 }) ?? "",
@@ -546,6 +547,34 @@ export function DocumentCreationStudio() {
             </SelectContent>
           </Select>
           {renderPolicyHint("area")}
+        </div>
+        <div className={policyFieldClass("discipline_id")}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Label>Disciplina</Label>
+              {renderPolicyBadge("discipline_id")}
+            </div>
+          </div>
+          <Select
+            value={form.discipline_id || "none"}
+            onValueChange={(value) =>
+              updateField("discipline_id", value === "none" ? "" : value)
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione a disciplina" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Sem disciplina</SelectItem>
+              {intelligence.disciplines.map((discipline) => (
+                <SelectItem key={discipline.id} value={discipline.id}>
+                  {discipline.code ? `${discipline.code} · ` : ""}
+                  {discipline.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {renderPolicyHint("discipline_id")}
         </div>
 
         {intelligence.capabilities.confidentiality && (

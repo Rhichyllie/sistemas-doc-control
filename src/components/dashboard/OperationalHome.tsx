@@ -1,27 +1,25 @@
 import { Link } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
-  CalendarClock,
-  CheckCircle2,
-  CircleOff,
+  Clock,
   Code2,
   FilePlus2,
-  FileStack,
   FolderKanban,
-  Gauge,
+  Filter,
   GitBranch,
-  LayoutDashboard,
-  ListTodo,
-  RefreshCw,
+  Inbox,
   ScrollText,
-  Settings2,
-  Sparkles,
-  Workflow,
+  RefreshCw,
+  FileStack,
+  Hash,
+  FileCheck2,
+  type LucideIcon,
 } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ActivityInboxPreview } from "@/components/operational/ActivityInboxPreview";
 import {
   Card,
   CardContent,
@@ -30,196 +28,179 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  type OperationalActivityType,
+  useOperationalCockpit,
+} from "@/hooks/useOperationalCockpit";
+import { useDocumentWorkCenter } from "@/hooks/useDocumentWorkCenter";
 import { useOperationalHome } from "@/hooks/useOperationalHome";
-import type {
-  OperationalCapability,
-  OperationalCapabilityStatus,
-  OperationalHealthCard,
-  OperationalRisk,
-  OperationalTarget,
-} from "@/lib/operationalHome";
+import { getDeadlineModeLabel } from "@/lib/operationalCalendar";
+import { cn } from "@/lib/utils";
 
-const HEALTH_ICONS: Record<OperationalHealthCard["id"], typeof Gauge> = {
-  active_documents: FileStack,
-  critical_pending: AlertTriangle,
-  active_tramites: GitBranch,
-  upcoming_reviews: CalendarClock,
-  drafts: FilePlus2,
-  without_next_step: ListTodo,
-};
-
-const CAPABILITY_LABELS: Record<
-  OperationalCapabilityStatus,
-  {
-    label: string;
-    variant: "default" | "secondary" | "destructive" | "outline";
-  }
-> = {
-  available: { label: "Disponível", variant: "default" },
-  configure: { label: "Precisa configurar", variant: "secondary" },
-  not_installed: { label: "Não instalado", variant: "outline" },
-  attention: { label: "Atenção", variant: "destructive" },
-};
-
-function healthBorder(status: OperationalHealthCard["status"]) {
-  if (status === "critical") return "border-destructive/40";
-  if (status === "attention") return "border-amber-300";
-  return "border-emerald-200";
+function formatDate(value?: string | null) {
+  if (!value) return "Sem prazo";
+  const date = new Date(value.includes("T") ? value : `${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return "Prazo inválido";
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: value.includes("T") ? "short" : undefined,
+  }).format(date);
 }
 
-function riskVariant(risk: OperationalRisk) {
-  return risk.severity === "critical"
-    ? ("destructive" as const)
-    : ("secondary" as const);
-}
+const TYPE_OPTIONS: { value: OperationalActivityType | "all"; label: string }[] =
+  [
+    { value: "all", label: "Todos os tipos" },
+    { value: "approval_pending", label: "Aprovações pendentes" },
+    { value: "review_pending", label: "Revisões pendentes" },
+    { value: "rejected_for_correction", label: "Correções necessárias" },
+    { value: "mention", label: "Menções" },
+    { value: "nearing_due", label: "Próximos do prazo" },
+    { value: "overdue", label: "Atrasados" },
+    { value: "recent_update", label: "Atualizações recentes" },
+    { value: "informational", label: "Informativos" },
+  ];
 
-function HealthCard({ card }: { card: OperationalHealthCard }) {
-  const Icon = HEALTH_ICONS[card.id];
-  return (
-    <Link to={card.target} className="group">
-      <Card
-        className={`h-full transition-all hover:-translate-y-0.5 hover:shadow-md ${healthBorder(
-          card.status,
-        )}`}
-      >
-        <CardContent className="flex items-start justify-between gap-3 p-5">
-          <div>
-            <p className="text-sm text-muted-foreground">{card.label}</p>
-            <p className="mt-1 text-3xl font-semibold">{card.value}</p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              {card.description}
-            </p>
-          </div>
-          <div className="rounded-xl bg-primary/10 p-2 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-            <Icon className="h-5 w-5" />
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
-  );
-}
-
-function RiskLine({ risk }: { risk: OperationalRisk }) {
-  return (
-    <div className="flex flex-col justify-between gap-3 rounded-xl border p-4 sm:flex-row sm:items-center">
-      <div className="flex min-w-0 gap-3">
-        <div
-          className={`mt-0.5 rounded-lg p-2 ${
-            risk.severity === "critical"
-              ? "bg-destructive/10 text-destructive"
-              : "bg-amber-100 text-amber-700"
-          }`}
-        >
-          <AlertTriangle className="h-4 w-4" />
-        </div>
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="font-medium">{risk.title}</p>
-            <Badge variant={riskVariant(risk)}>{risk.count}</Badge>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {risk.description}
-          </p>
-        </div>
-      </div>
-      <Button asChild size="sm" variant="ghost">
-        <Link to={risk.target}>
-          Ver detalhes
-          <ArrowRight className="h-4 w-4" />
-        </Link>
-      </Button>
-    </div>
-  );
-}
-
-function CapabilityLine({ capability }: { capability: OperationalCapability }) {
-  const status = CAPABILITY_LABELS[capability.status];
-  const Icon =
-    capability.status === "available"
-      ? CheckCircle2
-      : capability.status === "not_installed"
-        ? CircleOff
-        : Settings2;
-  return (
-    <Link
-      to={capability.target}
-      className="flex items-start justify-between gap-3 rounded-lg border p-3 transition-colors hover:border-primary"
-    >
-      <div className="flex min-w-0 gap-3">
-        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-        <div>
-          <p className="text-sm font-medium">{capability.label}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {capability.description}
-          </p>
-        </div>
-      </div>
-      <Badge variant={status.variant} className="shrink-0">
-        {status.label}
-      </Badge>
-    </Link>
-  );
-}
-
-interface QuickAction {
+interface HeroAction {
   label: string;
-  description: string;
-  target: OperationalTarget | "/authenticated/documentos/novo-inteligente";
-  icon: typeof Gauge;
+  target: string;
+  icon: LucideIcon;
   managerOnly?: boolean;
+  iconBg: string;
+  accent: string;
 }
 
-const QUICK_ACTIONS: QuickAction[] = [
+const HERO_ACTIONS: HeroAction[] = [
   {
-    label: "Novo Documento",
-    description: "Abrir cadastro documental comum.",
+    label: "Novo documento",
     target: "/authenticated/documents",
     icon: FilePlus2,
+    iconBg: "bg-transparent",
+    accent: "hover:bg-white/10 hover:border-teal-400/40",
   },
   {
-    label: "Novo Documento Inteligente",
-    description: "Criar com políticas e orientação.",
+    label: "Documento integrado",
     target: "/authenticated/documentos/novo-inteligente",
-    icon: Sparkles,
+    icon: FileStack,
+    iconBg: "bg-transparent",
+    accent: "hover:bg-white/10 hover:border-teal-400/40",
   },
   {
-    label: "Central Documental",
-    description: "Executar pendências e próximos passos.",
-    target: "/authenticated/documentos/central",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "Projetos",
-    description: "Gerenciar contexto operacional.",
-    target: "/authenticated/projetos",
+    label: "Novo projeto",
+    target: "/authenticated/configuracoes/projetos",
     icon: FolderKanban,
+    iconBg: "bg-transparent",
+    accent: "hover:bg-white/10 hover:border-teal-400/40",
   },
   {
-    label: "Modelador de Trâmites",
-    description: "Criar e publicar modelos.",
+    label: "Modelo de tramitação",
     target: "/authenticated/documentos/tramites",
-    icon: Workflow,
+    icon: GitBranch,
+    iconBg: "bg-transparent",
+    accent: "hover:bg-white/10 hover:border-teal-400/40",
     managerOnly: true,
   },
   {
     label: "Codificação",
-    description: "Configurar padrões documentais.",
     target: "/authenticated/documentos/codificacao",
-    icon: Code2,
+    icon: Hash,
+    iconBg: "bg-transparent",
+    accent: "hover:bg-white/10 hover:border-teal-400/40",
     managerOnly: true,
   },
   {
-    label: "Regras Documentais",
-    description: "Definir políticas de criação.",
+    label: "Regras documentais",
     target: "/authenticated/documentos/regras",
-    icon: ScrollText,
+    icon: FileCheck2,
+    iconBg: "bg-transparent",
+    accent: "hover:bg-white/10 hover:border-teal-400/40",
     managerOnly: true,
   },
 ];
 
+interface MetricCard {
+  label: string;
+  hint: string;
+  value: number;
+  accent: string;
+  badgeLabel?: string;
+  badgeTone?: "emerald" | "amber" | "slate";
+}
+
+function HeroActionButton({ action }: { action: HeroAction }) {
+  const Icon = action.icon;
+  return (
+    <Button
+      asChild
+      variant="outline"
+      className={cn(
+        "group h-auto min-h-[80px] flex-row items-center justify-start gap-3.5 rounded-xl border border-white/10 bg-white/5 px-4 text-left text-white backdrop-blur-sm transition-all hover:text-white",
+        action.accent,
+      )}
+    >
+      <Link to={action.target}>
+        <Icon className="h-6 w-6 text-teal-400 shrink-0" />
+        <span className="text-sm font-medium leading-tight">{action.label}</span>
+      </Link>
+    </Button>
+  );
+}
+
+function Metric({ metric }: { metric: MetricCard }) {
+  const badgeToneClass =
+    metric.badgeTone === "emerald"
+      ? "bg-emerald-50 text-emerald-700"
+      : metric.badgeTone === "amber"
+        ? "bg-amber-50 text-amber-700"
+        : "bg-slate-50 text-slate-600";
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div
+        aria-hidden
+        className={cn(
+          "absolute inset-y-0 left-0 w-1.5 opacity-90",
+          metric.accent,
+        )}
+      />
+      <div className="flex items-start justify-between gap-3 pl-3">
+        <div className="min-w-0">
+          <p className="text-3xl font-semibold tracking-tight text-slate-900">
+            {metric.value}
+          </p>
+          <p className="mt-1 text-sm font-medium text-slate-700">
+            {metric.label}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">{metric.hint}</p>
+        </div>
+        {metric.badgeLabel && (
+          <Badge
+            variant="outline"
+            className={cn("shrink-0 border-transparent text-xs font-medium", badgeToneClass)}
+          >
+            {metric.badgeLabel}
+          </Badge>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function OperationalHome() {
   const home = useOperationalHome();
+  const cockpit = useOperationalCockpit();
+  const workCenter = useDocumentWorkCenter();
+  const [typeFilter, setTypeFilter] =
+    useState<OperationalActivityType | "all">("all");
+  const [priorityFilter, setPriorityFilter] = useState<
+    "all" | "actionable" | "critical"
+  >("all");
   const firstName = home.profile?.full_name?.trim().split(/\s+/)[0];
   const currentDate = new Intl.DateTimeFormat("pt-BR", {
     weekday: "long",
@@ -227,267 +208,405 @@ export function OperationalHome() {
     month: "long",
     year: "numeric",
   }).format(new Date());
-  const healthLabel =
-    home.status === "critical"
-      ? "Risco crítico"
-      : home.status === "attention"
-        ? "Requer atenção"
-        : "Operação estável";
-  const healthVariant =
-    home.status === "critical"
-      ? ("destructive" as const)
-      : home.status === "attention"
-        ? ("secondary" as const)
-        : ("default" as const);
+  const currentDateCapitalized = currentDate.charAt(0).toUpperCase() + currentDate.slice(1);
+  const filteredActivities = useMemo(
+    () =>
+      cockpit.activityItems.filter((item) => {
+        if (typeFilter !== "all" && item.type !== typeFilter) return false;
+        if (priorityFilter === "critical" && item.priority !== "critical") {
+          return false;
+        }
+        if (
+          priorityFilter === "actionable" &&
+          ["recent_update", "informational"].includes(item.type)
+        ) {
+          return false;
+        }
+        return true;
+      }),
+    [cockpit.activityItems, priorityFilter, typeFilter],
+  );
+  const attentionItems = useMemo(
+    () =>
+      workCenter.workItems
+        .filter(
+          (item) =>
+            item.priority === "critical" ||
+            item.type === "attention" ||
+            item.type === "suggested_tramite" ||
+            (item.type === "tramite_step" && !item.responsibleName),
+        )
+        .slice(0, 6),
+    [workCenter.workItems],
+  );
+
+  const metrics: MetricCard[] = useMemo(() => {
+    const inProgress = workCenter.activeInstances.length;
+    const reviewPending = cockpit.kpis.nearingReview;
+    const operationalAlerts = attentionItems.length;
+    return [
+      {
+        label: "Pendentes de aprovação",
+        hint: cockpit.kpis.approvalsPending > 0 ? "Sem alteração hoje" : "Sem itens para aprovar",
+        value: cockpit.kpis.approvalsPending,
+        accent: "bg-gradient-to-b from-sky-200 to-sky-400",
+      },
+      {
+        label: "Em tramitação",
+        hint: inProgress > 0 ? `${inProgress} fluxo(s) ativo(s)` : "Nenhum fluxo ativo",
+        value: inProgress,
+        accent: "bg-gradient-to-b from-emerald-200 to-emerald-400",
+      },
+      {
+        label: "Aguardando revisão",
+        hint: reviewPending > 0 ? "Sem alteração hoje" : "Sem revisões pendentes",
+        value: reviewPending,
+        accent: "bg-gradient-to-b from-amber-200 to-amber-400",
+        badgeLabel: cockpit.kpis.overdue > 0 ? "Atenção" : "Tudo em dia",
+        badgeTone: cockpit.kpis.overdue > 0 ? "amber" : "emerald",
+      },
+      {
+        label: "Alertas operacionais",
+        hint: operationalAlerts > 0 ? `${operationalAlerts} item(s) requerem ação` : "Sem itens críticos",
+        value: operationalAlerts,
+        accent: "bg-gradient-to-b from-rose-200 to-rose-400",
+      },
+    ];
+  }, [cockpit.kpis, workCenter.activeInstances.length, attentionItems.length]);
 
   return (
-    <div className="space-y-7">
-      <section className="overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/[0.08] via-background to-background p-6 md:p-8">
-        <div className="flex flex-col justify-between gap-5 xl:flex-row xl:items-end">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">Visão executiva</Badge>
-              <Badge variant={healthVariant}>{healthLabel}</Badge>
+    <div className="space-y-8">
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#071d3d] via-[#0a2b63] to-[#0f766e] p-6 md:p-8 shadow-xl">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[linear-gradient(105deg,transparent_55%,rgba(56,189,248,0.12)_75%,rgba(45,212,191,0.18)_100%)]"
+        />
+        <div className="relative space-y-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="text-3xl font-bold tracking-tight text-white md:text-4xl">
+                Olá, {firstName ?? "usuário"}
+              </h1>
+              <p className="mt-2 text-sm font-medium text-blue-200/80">
+                {currentDateCapitalized}
+              </p>
             </div>
-            <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl">
-              {firstName ? `Olá, ${firstName}` : "Home Operacional"}
-            </h1>
-            <p className="mt-2 text-lg text-muted-foreground">
-              Visão executiva da operação documental.
-            </p>
-            <p className="mt-3 text-sm text-muted-foreground">
-              {home.org?.name ?? "Organização não identificada"} ·{" "}
-              <span className="capitalize">{currentDate}</span>
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               variant="outline"
               onClick={() => void home.refresh()}
               disabled={home.isLoading}
+              className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white rounded-xl px-4 py-2"
             >
               <RefreshCw
-                className={`h-4 w-4 ${home.isLoading ? "animate-spin" : ""}`}
+                className={cn("h-4 w-4 mr-2", home.isLoading && "animate-spin")}
               />
               Atualizar visão
             </Button>
-            <Button asChild>
-              <Link to="/authenticated/documentos/central">
-                Abrir Central Documental
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            {HERO_ACTIONS.filter(
+              (action) => !action.managerOnly || home.canManage,
+            ).map((action) => (
+              <HeroActionButton key={action.label} action={action} />
+            ))}
           </div>
         </div>
       </section>
 
-      {home.error && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Parte da visão operacional está indisponível</AlertTitle>
-          <AlertDescription>{home.error}</AlertDescription>
-        </Alert>
-      )}
-      {home.warnings.length > 0 && (
-        <Alert>
-          <Settings2 className="h-4 w-4" />
-          <AlertTitle>Operação em modo de compatibilidade</AlertTitle>
-          <AlertDescription>
-            <ul className="mt-1 list-disc space-y-1 pl-5">
-              {home.warnings.slice(0, 4).map((warning) => (
-                <li key={warning}>{warning}</li>
-              ))}
-            </ul>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <section>
-        <div className="mb-4">
-          <h2 className="text-xl font-semibold">Saúde documental</h2>
-          <p className="text-sm text-muted-foreground">
-            Indicadores resumidos com acesso direto às telas operacionais.
-          </p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-          {home.isLoading
-            ? Array.from({ length: 6 }).map((_, index) => (
-                <Skeleton key={index} className="h-36 rounded-xl" />
-              ))
-            : home.healthCards.map((card) => (
-                <HealthCard key={card.id} card={card} />
-              ))}
-        </div>
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {metrics.map((metric) => (
+          <Metric key={metric.label} metric={metric} />
+        ))}
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Gauge className="h-5 w-5 text-primary" />
-              Radar de risco
-            </CardTitle>
-            <CardDescription>
-              Os principais sinais executivos — sem transformar a Home em caixa
-              de tarefas.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {home.isLoading ? (
-              Array.from({ length: 3 }).map((_, index) => (
-                <Skeleton key={index} className="h-24" />
-              ))
-            ) : home.risks.length ? (
-              home.risks.map((risk) => <RiskLine key={risk.id} risk={risk} />)
-            ) : (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900">
-                <div className="flex items-center gap-2 font-medium">
-                  <CheckCircle2 className="h-5 w-5" />
-                  Nenhum risco executivo relevante
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="flex flex-col gap-4 pb-0 md:flex-row md:items-start md:justify-between md:gap-6">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+                  <Inbox className="h-4.5 w-4.5" />
                 </div>
-                <p className="mt-1 text-sm">
-                  A operação não possui atrasos ou lacunas críticas
-                  consolidadas.
-                </p>
+                <div>
+                  <CardTitle className="text-base font-semibold tracking-tight">
+                    Caixa de atividades
+                  </CardTitle>
+                  <CardDescription className="mt-0.5 text-sm">
+                    Aprovações, revisões, correções e alertas sob sua ação
+                  </CardDescription>
+                </div>
               </div>
-            )}
-            <Button asChild variant="outline" className="w-full">
-              <Link to="/authenticated/documentos/central">
-                Ver na Central Documental
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            </div>
+            <Badge
+              variant="secondary"
+              className="shrink-0 self-start border-sky-100 bg-sky-50 text-sky-700"
+            >
+              {cockpit.kpis.myPending}{" "}
+              {cockpit.kpis.myPending === 1 ? "pendência" : "pendências"}
+            </Badge>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+              <Select
+                value={typeFilter}
+                onValueChange={(value) =>
+                  setTypeFilter(value as OperationalActivityType | "all")
+                }
+              >
+                <SelectTrigger
+                  aria-label="Filtrar por tipo"
+                  className="md:w-[220px]"
+                >
+                  <Filter className="mr-2 h-4 w-4 text-slate-400" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TYPE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={priorityFilter}
+                onValueChange={(value) =>
+                  setPriorityFilter(value as typeof priorityFilter)
+                }
+              >
+                <SelectTrigger
+                  aria-label="Filtrar por prioridade"
+                  className="md:w-[220px]"
+                >
+                  <Clock className="mr-2 h-4 w-4 text-slate-400" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as prioridades</SelectItem>
+                  <SelectItem value="actionable">
+                    Somente itens acionáveis
+                  </SelectItem>
+                  <SelectItem value="critical">Somente atrasados</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <ActivityInboxPreview
+              items={filteredActivities}
+              loading={cockpit.isLoading}
+              className="border-0 shadow-none"
+              title=""
+              description=""
+              emptyTitle="Nenhuma pendência agora"
+              emptyDescription="Quando houver aprovações ou documentos aguardando sua ação, eles aparecem aqui."
+              emptyPrimaryAction={
+                <Button
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 border-sky-100 bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-800"
+                >
+                  <Link to="/authenticated/documents">
+                    Criar novo documento
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </Button>
+              }
+              showAllLink
+            />
           </CardContent>
         </Card>
 
-        <Card
-          className={
-            home.recommendation.severity === "critical"
-              ? "border-destructive/40"
-              : home.recommendation.severity === "warning"
-                ? "border-amber-300"
-                : "border-emerald-200"
-          }
-        >
+        <Card className="border-slate-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
-              Próximo movimento recomendado
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <AlertTriangle className="h-4.5 w-4.5 text-amber-600" />
+              Atenção operacional
             </CardTitle>
             <CardDescription>
-              Recomendação determinística baseada na situação atual.
+              Pontos que exigem decisão ou reclassificação
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            {home.isLoading ? (
-              <Skeleton className="h-40" />
+          <CardContent className="space-y-3">
+            {workCenter.isLoading ? (
+              Array.from({ length: 3 }).map((_, index) => (
+                <Skeleton key={index} className="h-20 w-full" />
+              ))
+            ) : attentionItems.length ? (
+              attentionItems.map((item) => (
+                <Link
+                  key={item.id}
+                  to="/authenticated/documents/$documentId"
+                  params={{ documentId: item.documentId }}
+                  hash={
+                    item.origin === "tramite"
+                      ? "document-tramite-execution"
+                      : undefined
+                  }
+                  className="block rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-medium text-slate-800">
+                      {item.title}
+                    </p>
+                    <Badge
+                      variant={
+                        item.priority === "critical"
+                          ? "destructive"
+                          : item.priority === "high"
+                            ? "default"
+                            : "secondary"
+                      }
+                    >
+                      {item.priority === "critical"
+                        ? "Crítico"
+                        : item.priority === "high"
+                          ? "Alto"
+                          : item.priority === "medium"
+                            ? "Médio"
+                            : "Baixo"}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-xs text-slate-500">
+                    {[item.documentCode, item.documentTitle]
+                      .filter(Boolean)
+                      .join(" — ")}
+                  </p>
+                </Link>
+              ))
             ) : (
-              <div className="rounded-xl bg-muted/40 p-5">
-                <p className="text-lg font-semibold">
-                  {home.recommendation.title}
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-4 py-10 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                  <AlertTriangle className="h-7 w-7" />
+                </div>
+                <p className="mt-4 text-sm font-semibold text-slate-800">
+                  Nenhum alerta no momento
                 </p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {home.recommendation.description}
+                <p className="mt-1.5 max-w-xs text-xs text-slate-500">
+                  Documentos vencidos, sem responsável ou fora de padrão
+                  aparecerão aqui.
                 </p>
-                <Button asChild className="mt-5">
-                  <Link to={home.recommendation.target}>
-                    {home.recommendation.actionLabel}
-                    <ArrowRight className="h-4 w-4" />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section>
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader>
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <GitBranch className="h-4.5 w-4.5 text-indigo-600" />
+                Trâmites em execução
+              </CardTitle>
+              <CardDescription>
+                Progresso das instâncias ativas — as ações continuam no fluxo
+                do documento
+              </CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {workCenter.isLoading ? (
+              <div className="grid gap-3 lg:grid-cols-2">
+                <Skeleton className="h-36" />
+                <Skeleton className="h-36" />
+              </div>
+            ) : workCenter.activeInstances.length ? (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {workCenter.activeInstances.map((instance) => (
+                  <div
+                    key={instance.id}
+                    className="rounded-2xl border border-slate-200 bg-white p-5"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-800">
+                          {instance.templateName}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {[instance.documentCode, instance.documentTitle]
+                            .filter(Boolean)
+                            .join(" — ")}
+                        </p>
+                      </div>
+                      <Badge
+                        variant={
+                          instance.isOverdue ? "destructive" : "secondary"
+                        }
+                      >
+                        {instance.isOverdue ? "Atrasado" : "Em execução"}
+                      </Badge>
+                    </div>
+                    <div className="mt-5 flex items-center gap-3">
+                      <Progress value={instance.progress} />
+                      <span className="text-sm font-medium text-slate-700">
+                        {instance.progress}%
+                      </span>
+                    </div>
+                    <p className="mt-3 text-xs text-slate-500">
+                      {instance.activeStepLabels.length
+                        ? `Etapa ativa: ${instance.activeStepLabels.join(", ")}`
+                        : "Sem etapa ativa legível."}
+                      {" · "}
+                      {formatDate(instance.dueAt)}
+                    </p>
+                    {instance.dueAt && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        {getDeadlineModeLabel(instance.deadlineMode)}
+                        {instance.dueAtSuggested
+                          ? " · prazo sugerido, não persistido"
+                          : ""}
+                      </p>
+                    )}
+                    <div className="mt-5">
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className="border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800"
+                      >
+                        <Link
+                          to="/authenticated/documents/$documentId"
+                          params={{ documentId: instance.documentId }}
+                          hash="document-tramite-execution"
+                        >
+                          Ver execução
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/40 px-4 py-12 text-center">
+                <ArrowRight className="h-8 w-8 text-slate-400" />
+                <p className="mt-4 text-sm font-semibold text-slate-800">
+                  Nenhum trâmite em execução
+                </p>
+                <p className="mt-1.5 max-w-md text-xs text-slate-500">
+                  Não há instâncias ativas neste momento. Inicie um trâmite a
+                  partir de um documento ou modelo.
+                </p>
+                <Button
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className="mt-4 border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800"
+                >
+                  <Link to="/authenticated/documentos/tramites">
+                    Ver modelos de tramitação
+                    <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
                 </Button>
               </div>
             )}
           </CardContent>
         </Card>
-      </div>
-
-      <section>
-        <div className="mb-4">
-          <h2 className="text-xl font-semibold">Jornada rápida</h2>
-          <p className="text-sm text-muted-foreground">
-            Acesse os módulos principais sem percorrer o menu completo.
-          </p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {QUICK_ACTIONS.filter(
-            (action) => !action.managerOnly || home.canManage,
-          ).map((action) => {
-            const Icon = action.icon;
-            return (
-              <Link
-                key={action.label}
-                to={action.target}
-                className="group rounded-xl border bg-card p-4 transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="rounded-lg bg-muted p-2 group-hover:bg-primary/10">
-                    <Icon className="h-5 w-5 text-primary" />
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-                </div>
-                <p className="mt-4 font-medium">{action.label}</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {action.description}
-                </p>
-              </Link>
-            );
-          })}
-        </div>
       </section>
-
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)]">
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <CardTitle>Maturidade da operação</CardTitle>
-                <CardDescription>
-                  Disponibilidade e configuração dos módulos documentais.
-                </CardDescription>
-              </div>
-              <Badge variant="outline">
-                {home.maturityPercent}% configurado
-              </Badge>
-            </div>
-            <Progress value={home.maturityPercent} className="mt-3" />
-          </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2">
-            {home.isLoading
-              ? Array.from({ length: 6 }).map((_, index) => (
-                  <Skeleton key={index} className="h-20" />
-                ))
-              : home.capabilities.map((capability) => (
-                  <CapabilityLine key={capability.id} capability={capability} />
-                ))}
-          </CardContent>
-        </Card>
-
-        <Card className="border-primary/25 bg-primary/[0.035]">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <LayoutDashboard className="h-5 w-5 text-primary" />
-              Central Documental
-            </CardTitle>
-            <CardDescription>
-              A Home mostra a saúde. A Central organiza a execução.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Use a Central para abrir pendências, navegar para etapas ativas,
-              tratar documentos atrasados e confirmar o início de trâmites
-              sugeridos.
-            </p>
-            <Button asChild className="mt-5 w-full">
-              <Link to="/authenticated/documentos/central">
-                Ir para a Central Documental
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

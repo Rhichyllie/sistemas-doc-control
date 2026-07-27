@@ -78,13 +78,33 @@ const STATUS_LABELS: Record<ProjectStatus, string> = {
 };
 
 const TYPE_LABELS: Record<ProjectType, string> = {
-  project: "Projeto",
-  obra: "Obra",
-  contrato: "Contrato",
-  unidade: "Unidade",
-  frente_trabalho: "Frente de trabalho",
-  outro: "Outro",
+  project: "Conceitual",
+  obra: "Básico",
+  contrato: "Executivo",
+  unidade: "Executivo",
+  frente_trabalho: "Executivo",
+  outro: "Executivo",
 };
+
+// Create a map from label to list of ProjectType
+const LABEL_TO_TYPES: Record<string, ProjectType[]> = Object.entries(TYPE_LABELS).reduce(
+  (acc, [type, label]) => {
+    if (!acc[label]) {
+      acc[label] = [];
+    }
+    acc[label].push(type as ProjectType);
+    return acc;
+  },
+  {} as Record<string, ProjectType[]>
+);
+
+// Get unique labels for the filter
+export const PROJECT_TYPE_LABELS = Object.keys(LABEL_TO_TYPES);
+
+// Get all ProjectType values that correspond to a given label
+export function getProjectTypesByLabel(label: string): ProjectType[] {
+  return LABEL_TO_TYPES[label] || [];
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
