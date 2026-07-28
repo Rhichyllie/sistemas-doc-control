@@ -410,14 +410,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 )}
                 <div className="space-y-1">
                   {visibleItems.map((item) => {
-                    const resolvedTo = currentLibraryId
-                      ? toLibraryScopedPath(item.to, currentLibraryId)
-                      : item.to;
+                    const isLibraryScoped = item.scope === "library";
+                    const isDisabled = isLibraryScoped && !currentLibraryId;
+                    const resolvedTo =
+                      isLibraryScoped && currentLibraryId
+                        ? toLibraryScopedPath(item.to, currentLibraryId)
+                        : item.to;
                     const active =
-                      resolvedTo === "/authenticated/configuracoes"
+                      !isDisabled &&
+                      (resolvedTo === "/authenticated/configuracoes"
                         ? pathname === resolvedTo
                         : pathname === resolvedTo ||
-                          pathname.startsWith(`${resolvedTo}/`);
+                          pathname.startsWith(`${resolvedTo}/`));
                     const Icon = item.icon;
                     const pendingCount =
                       item.badge === "approval"
@@ -425,6 +429,36 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                         : item.badge === "activities"
                           ? unreadCount
                           : 0;
+
+                    if (isDisabled) {
+                      return (
+                        <div
+                          key={item.to}
+                          title={`${item.label} — crie ou selecione uma biblioteca`}
+                          aria-disabled="true"
+                          className={`flex items-center rounded-lg opacity-45 ${
+                            sidebarCollapsed
+                              ? "h-11 w-11 justify-center mx-auto"
+                              : "h-11 px-3.5 justify-start"
+                          } text-blue-100/70 cursor-not-allowed`}
+                        >
+                          <Icon
+                            className={`shrink-0 text-blue-300/60 ${
+                              sidebarCollapsed ? "h-5 w-5" : "h-[18px] w-[18px]"
+                            }`}
+                          />
+                          <span
+                            className={`${
+                              sidebarCollapsed
+                                ? "hidden"
+                                : "hidden md:inline ml-3 text-sm font-medium"
+                            }`}
+                          >
+                            {item.label}
+                          </span>
+                        </div>
+                      );
+                    }
 
                     return (
                       <Link

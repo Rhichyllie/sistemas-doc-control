@@ -23,22 +23,6 @@ export function toLibraryScopedPath(basePath: string, libraryId: string) {
       `/authenticated/biblioteca/${libraryId}/indicadores`,
     "/authenticated/auditoria/relatorios":
       `/authenticated/biblioteca/${libraryId}/auditoria/relatorios`,
-    "/authenticated/configuracoes":
-      `/authenticated/biblioteca/${libraryId}/configuracoes`,
-    "/authenticated/configuracoes/projetos":
-      `/authenticated/biblioteca/${libraryId}/configuracoes/projetos`,
-    "/authenticated/configuracoes/equipe":
-      `/authenticated/biblioteca/${libraryId}/configuracoes/equipe`,
-    "/authenticated/configuracoes/grupos-aprovacao":
-      `/authenticated/biblioteca/${libraryId}/configuracoes/grupos-aprovacao`,
-    "/authenticated/configuracoes/regras-documentais":
-      `/authenticated/biblioteca/${libraryId}/configuracoes/regras-documentais`,
-    "/authenticated/configuracoes/codificacao-documental":
-      `/authenticated/biblioteca/${libraryId}/configuracoes/codificacao-documental`,
-    "/authenticated/configuracoes/calendario":
-      `/authenticated/biblioteca/${libraryId}/configuracoes/calendario`,
-    "/authenticated/configuracoes/trilha-de-auditoria":
-      `/authenticated/biblioteca/${libraryId}/configuracoes/trilha-de-auditoria`,
   };
 
   return map[basePath] ?? basePath;
