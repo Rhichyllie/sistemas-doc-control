@@ -38,6 +38,7 @@ export interface ApprovalGroupMemberRecord {
   group_id: string
   user_id: string
   role: string
+  substitute_for_user_id: string | null
   is_active: boolean
   created_at: string
 }
@@ -85,6 +86,7 @@ interface ApprovalGroupMemberCompatibilityRow {
   profile_id?: string | null
   role?: string | null
   role_in_group?: string | null
+  substitute_for_user_id?: string | null
   is_active?: boolean | null
   active?: boolean | null
   created_at: string
@@ -127,6 +129,7 @@ function normalizeGroupMember(
     group_id: member.group_id,
     user_id: userId,
     role: member.role ?? member.role_in_group ?? 'member',
+    substitute_for_user_id: member.substitute_for_user_id ?? null,
     is_active: member.is_active ?? member.active ?? true,
     created_at: member.created_at,
   }
@@ -199,6 +202,17 @@ function groupDiagnosticMessage(
 
 const LOCAL_APPROVAL_GROUPS_KEY = 'tramita.approval_groups'
 const LOCAL_APPROVAL_MEMBERS_KEY = 'tramita.approval_members'
+const LOCAL_APPROVAL_MEMBER_SUBSTITUTES_KEY = 'tramita.approval_member_substitutes'
+const LOCAL_TEAM_MEMBERS_STORAGE_PREFIX = 'tramita.team.local.'
+
+function hasMissingSubstituteColumn(error: unknown) {
+  const text = errorText(error)
+  return (
+    errorCode(error) === '42703'
+    || (text.includes('substitute_for_user_id') && text.includes('does not exist'))
+    || (text.includes('substitute_for_user_id') && text.includes('schema cache'))
+  )
+}
 
 function loadLocalGroups(orgId: string) {
   if (typeof window === 'undefined') return []
@@ -238,6 +252,90 @@ function saveLocalMembers(orgId: string, members: ApprovalGroupMemberRecord[]) {
     data[orgId] = members
     window.localStorage.setItem(LOCAL_APPROVAL_MEMBERS_KEY, JSON.stringify(data))
   } catch { /* ignore */ }
+}
+
+function loadLocalMemberSubstitutes(orgId: string) {
+  if (typeof window === 'undefined') return {} as Record<string, string | null>
+  try {
+    const raw = window.localStorage.getItem(LOCAL_APPROVAL_MEMBER_SUBSTITUTES_KEY)
+    if (!raw) return {} as Record<string, string | null>
+    const data = JSON.parse(raw) as Record<string, Record<string, string | null>>
+    return data[orgId] ?? {}
+  } catch {
+    return {} as Record<string, string | null>
+  }
+}
+
+function saveLocalMemberSubstitutes(
+  orgId: string,
+  substitutes: Record<string, string | null>,
+) {
+  if (typeof window === 'undefined') return
+  try {
+    const raw = window.localStorage.getItem(LOCAL_APPROVAL_MEMBER_SUBSTITUTES_KEY)
+    const data = raw ? JSON.parse(raw) : {}
+    data[orgId] = substitutes
+    window.localStorage.setItem(
+      LOCAL_APPROVAL_MEMBER_SUBSTITUTES_KEY,
+      JSON.stringify(data),
+    )
+  } catch { /* ignore */ }
+}
+
+function getLocalTeamStorageKey(orgId: string) {
+  return `${LOCAL_TEAM_MEMBERS_STORAGE_PREFIX}${orgId}`
+}
+
+function loadLocalTeamUsers(orgId: string): ApprovalGroupUser[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(getLocalTeamStorageKey(orgId))
+    if (!raw) return []
+    const data = JSON.parse(raw) as Array<Record<string, unknown>>
+    if (!Array.isArray(data)) return []
+    return data
+      .map((member) => {
+        const id = typeof member.id === 'string' ? member.id : null
+        const full_name =
+          typeof member.full_name === 'string' ? member.full_name : null
+        if (!id || !full_name) return null
+        return {
+          id,
+          full_name,
+          email: typeof member.email === 'string' ? member.email : null,
+          role: typeof member.role === 'string' ? member.role : 'member',
+          active: member.active !== false,
+        } satisfies ApprovalGroupUser
+      })
+      .filter((member): member is ApprovalGroupUser => Boolean(member))
+  } catch {
+    return []
+  }
+}
+
+function mergeApprovalUsers(
+  remoteUsers: ApprovalGroupUser[],
+  localUsers: ApprovalGroupUser[],
+) {
+  const merged = new Map<string, ApprovalGroupUser>()
+  remoteUsers.forEach((user) => {
+    merged.set(user.id, user)
+  })
+  localUsers.forEach((user) => {
+    if (!merged.has(user.id)) {
+      merged.set(user.id, user)
+    }
+  })
+  return [...merged.values()]
+    .filter((user) => user.active)
+    .sort((left, right) => left.full_name.localeCompare(right.full_name, 'pt-BR'))
+}
+
+function substituteStorageKeys(groupId: string, userId: string, memberId?: string | null) {
+  return [
+    memberId,
+    groupId && userId ? `${groupId}:${userId}` : null,
+  ].filter((value): value is string => Boolean(value))
 }
 
 export function useApprovalGroups(enabled = true) {
@@ -374,17 +472,65 @@ export function useApprovalGroups(enabled = true) {
         setGroups(normalizedGroups)
         setGroupSchema(loadedGroups.schema)
         setCanCreateGroups(supportsCode)
+        const localSubstitutes = loadLocalMemberSubstitutes(currentProfile.org_id)
 
         const enterpriseMembersResult = await supabase
           .from('approval_group_members')
-          .select('id, org_id, group_id, user_id, role, is_active, created_at')
+          .select('id, org_id, group_id, user_id, role, substitute_for_user_id, is_active, created_at')
           .eq('org_id', currentProfile.org_id)
           .order('created_at', { ascending: true })
 
         let memberData = enterpriseMembersResult.data as ApprovalGroupMemberCompatibilityRow[] | null
         let resolvedMemberSchema: ApprovalGroupMemberSchema = 'enterprise'
 
-        if (enterpriseMembersResult.error && isWorkflowFoundationUnavailable(enterpriseMembersResult.error)) {
+        if (enterpriseMembersResult.error && hasMissingSubstituteColumn(enterpriseMembersResult.error)) {
+          const fallbackMembersResult = await supabase
+            .from('approval_group_members')
+            .select('id, org_id, group_id, user_id, role, is_active, created_at')
+            .eq('org_id', currentProfile.org_id)
+            .order('created_at', { ascending: true })
+
+          if (!fallbackMembersResult.error) {
+            memberData = fallbackMembersResult.data as ApprovalGroupMemberCompatibilityRow[] | null
+            resolvedMemberSchema = 'enterprise'
+          } else if (isWorkflowFoundationUnavailable(fallbackMembersResult.error)) {
+            const legacyMembersResult = await supabase
+              .from('approval_group_members')
+              .select('id, org_id, group_id, profile_id, role_in_group, active, created_at')
+              .eq('org_id', currentProfile.org_id)
+              .order('created_at', { ascending: true })
+
+            if (!legacyMembersResult.error) {
+              memberData = legacyMembersResult.data as ApprovalGroupMemberCompatibilityRow[] | null
+              resolvedMemberSchema = 'legacy'
+            } else if (isRlsOrPermissionError(legacyMembersResult.error)) {
+              setMembers([])
+              setCanUseGroups(false)
+              setCanManageMembers(false)
+              setSchemaStatus('rls_blocked')
+              setCompatibilityMessage(groupDiagnosticMessage('rls_blocked'))
+              return
+            } else if (isWorkflowFoundationUnavailable(legacyMembersResult.error)) {
+              setMembers([])
+              setCanUseGroups(false)
+              setCanManageMembers(false)
+              setSchemaStatus('schema_partial')
+              setCompatibilityMessage(groupDiagnosticMessage('schema_partial'))
+              return
+            } else {
+              throw legacyMembersResult.error
+            }
+          } else if (isRlsOrPermissionError(fallbackMembersResult.error)) {
+            setMembers([])
+            setCanUseGroups(false)
+            setCanManageMembers(false)
+            setSchemaStatus('rls_blocked')
+            setCompatibilityMessage(groupDiagnosticMessage('rls_blocked'))
+            return
+          } else {
+            throw fallbackMembersResult.error
+          }
+        } else if (enterpriseMembersResult.error && isWorkflowFoundationUnavailable(enterpriseMembersResult.error)) {
           const legacyMembersResult = await supabase
             .from('approval_group_members')
             .select('id, org_id, group_id, profile_id, role_in_group, active, created_at')
@@ -426,6 +572,18 @@ export function useApprovalGroups(enabled = true) {
         setMembers(
           (memberData ?? [])
             .map(normalizeGroupMember)
+            .map((member) =>
+              member
+                ? {
+                    ...member,
+                    substitute_for_user_id:
+                      member.substitute_for_user_id
+                      ?? localSubstitutes[member.id]
+                      ?? localSubstitutes[`${member.group_id}:${member.user_id}`]
+                      ?? null,
+                  }
+                : member,
+            )
             .filter((member): member is ApprovalGroupMemberRecord => Boolean(member)),
         )
         setMemberSchema(resolvedMemberSchema)
@@ -455,11 +613,12 @@ export function useApprovalGroups(enabled = true) {
         .eq('org_id', currentProfile.org_id)
         .eq('active', true)
         .order('full_name', { ascending: true })
+      const localTeamUsers = loadLocalTeamUsers(currentProfile.org_id)
 
       if (usersError) {
-        setUsers([])
+        setUsers(localTeamUsers)
         // Don't show an error for users if we're using local storage
-        if (!useLocalStorage) {
+        if (!useLocalStorage && localTeamUsers.length === 0) {
           setError(
             isRlsOrPermissionError(usersError)
               ? 'Os grupos foram carregados, mas a lista de usuários foi bloqueada por política de acesso.'
@@ -467,7 +626,12 @@ export function useApprovalGroups(enabled = true) {
           )
         }
       } else {
-        setUsers((userData ?? []) as ApprovalGroupUser[])
+        setUsers(
+          mergeApprovalUsers(
+            (userData ?? []) as ApprovalGroupUser[],
+            localTeamUsers,
+          ),
+        )
       }
     } catch (err: unknown) {
       setGroups([])
@@ -662,7 +826,12 @@ export function useApprovalGroups(enabled = true) {
     return updateGroup(groupId, { is_active: false })
   }
 
-  async function addMember(groupId: string, userId: string, role = 'member') {
+  async function addMember(
+    groupId: string,
+    userId: string,
+    role = 'member',
+    substituteForUserId: string | null = null,
+  ) {
     const orgId = requireOrganization()
     if (!orgId || !canManageMembers) return false
 
@@ -673,7 +842,12 @@ export function useApprovalGroups(enabled = true) {
 
     if (useLocalStorage) {
       if (existingMember) {
-        const updatedMember = { ...existingMember, role, is_active: true }
+        const updatedMember = {
+          ...existingMember,
+          role,
+          substitute_for_user_id: role === 'backup' ? substituteForUserId : null,
+          is_active: true,
+        }
         const nextMembers = members.map(m => m.id === existingMember.id ? updatedMember : m)
         saveLocalMembers(orgId, nextMembers)
         setMembers(nextMembers)
@@ -684,6 +858,7 @@ export function useApprovalGroups(enabled = true) {
           group_id: groupId,
           user_id: userId,
           role,
+          substitute_for_user_id: role === 'backup' ? substituteForUserId : null,
           is_active: true,
           created_at: new Date().toISOString(),
         }
@@ -694,12 +869,17 @@ export function useApprovalGroups(enabled = true) {
       return true
     }
 
-    const result = existingMember
+    const enterprisePayload = {
+      role,
+      substitute_for_user_id: role === 'backup' ? substituteForUserId : null,
+      is_active: true,
+    }
+    let result = existingMember
       ? await supabase
           .from('approval_group_members')
           .update(
             memberSchema === 'enterprise'
-              ? { role, is_active: true }
+              ? enterprisePayload
               : { role_in_group: role, active: true },
           )
           .eq('id', existingMember.id)
@@ -710,8 +890,7 @@ export function useApprovalGroups(enabled = true) {
                 org_id: orgId,
                 group_id: groupId,
                 user_id: userId,
-                role,
-                is_active: true,
+                ...enterprisePayload,
               }
             : {
                 org_id: orgId,
@@ -722,9 +901,34 @@ export function useApprovalGroups(enabled = true) {
               },
         )
 
+    if (result.error && hasMissingSubstituteColumn(result.error) && memberSchema === 'enterprise') {
+      result = existingMember
+        ? await supabase
+            .from('approval_group_members')
+            .update({ role, is_active: true })
+            .eq('id', existingMember.id)
+            .eq('org_id', orgId)
+        : await supabase.from('approval_group_members').insert({
+            org_id: orgId,
+            group_id: groupId,
+            user_id: userId,
+            role,
+            is_active: true,
+          })
+    }
+
     if (result.error) {
       handleMutationError(result.error, 'Erro ao adicionar membro ao grupo')
       return false
+    }
+
+    if (role === 'backup') {
+      const substitutes = loadLocalMemberSubstitutes(orgId)
+      const nextSubstitutes = { ...substitutes }
+      substituteStorageKeys(groupId, userId, existingMember?.id).forEach((key) => {
+        nextSubstitutes[key] = substituteForUserId
+      })
+      saveLocalMemberSubstitutes(orgId, nextSubstitutes)
     }
 
     await refresh()
@@ -761,7 +965,11 @@ export function useApprovalGroups(enabled = true) {
     return true
   }
 
-  async function updateMemberRole(memberId: string, role: string) {
+  async function updateMemberRole(
+    memberId: string,
+    role: string,
+    substituteForUserId: string | null = null,
+  ) {
     const orgId = requireOrganization()
     if (!orgId || !canManageMembers) return false
 
@@ -769,7 +977,13 @@ export function useApprovalGroups(enabled = true) {
 
     if (useLocalStorage) {
       const nextMembers = members.map(m => 
-        m.id === memberId ? { ...m, role } : m
+        m.id === memberId
+          ? {
+              ...m,
+              role,
+              substitute_for_user_id: role === 'backup' ? substituteForUserId : null,
+            }
+          : m
       )
       saveLocalMembers(orgId, nextMembers)
       setMembers(nextMembers)
@@ -778,12 +992,107 @@ export function useApprovalGroups(enabled = true) {
 
     const { error: mutationError } = await supabase
       .from('approval_group_members')
-      .update(memberSchema === 'enterprise' ? { role } : { role_in_group: role })
+      .update(
+        memberSchema === 'enterprise'
+          ? {
+              role,
+              substitute_for_user_id: role === 'backup' ? substituteForUserId : null,
+            }
+          : { role_in_group: role },
+      )
+      .eq('id', memberId)
+      .eq('org_id', orgId)
+
+    if (mutationError && hasMissingSubstituteColumn(mutationError) && memberSchema === 'enterprise') {
+      const fallbackResult = await supabase
+        .from('approval_group_members')
+        .update({ role })
+        .eq('id', memberId)
+        .eq('org_id', orgId)
+
+      if (fallbackResult.error) {
+        handleMutationError(fallbackResult.error, 'Erro ao alterar papel do membro')
+        return false
+      }
+
+      const substitutes = loadLocalMemberSubstitutes(orgId)
+      const currentMember = members.find((member) => member.id === memberId)
+      const nextSubstitutes = { ...substitutes }
+      substituteStorageKeys(
+        currentMember?.group_id ?? '',
+        currentMember?.user_id ?? '',
+        memberId,
+      ).forEach((key) => {
+        nextSubstitutes[key] = role === 'backup' ? substituteForUserId : null
+      })
+      saveLocalMemberSubstitutes(orgId, nextSubstitutes)
+      await refresh()
+      return true
+    }
+
+    if (mutationError) {
+      handleMutationError(mutationError, 'Erro ao alterar papel do membro')
+      return false
+    }
+
+    await refresh()
+    return true
+  }
+
+  async function updateMemberSubstitute(
+    memberId: string,
+    substituteForUserId: string | null,
+  ) {
+    const orgId = requireOrganization()
+    if (!orgId || !canManageMembers) return false
+
+    setError(null)
+
+    if (useLocalStorage) {
+      const nextMembers = members.map((member) =>
+        member.id === memberId
+          ? { ...member, substitute_for_user_id: substituteForUserId }
+          : member,
+      )
+      saveLocalMembers(orgId, nextMembers)
+      setMembers(nextMembers)
+      return true
+    }
+
+    if (memberSchema !== 'enterprise') {
+      setError('O schema atual não permite salvar substitutos do grupo.')
+      return false
+    }
+
+    const { error: mutationError } = await supabase
+      .from('approval_group_members')
+      .update({ substitute_for_user_id: substituteForUserId })
       .eq('id', memberId)
       .eq('org_id', orgId)
 
     if (mutationError) {
-      handleMutationError(mutationError, 'Erro ao alterar papel do membro')
+      if (hasMissingSubstituteColumn(mutationError)) {
+        const substitutes = loadLocalMemberSubstitutes(orgId)
+        const currentMember = members.find((member) => member.id === memberId)
+        const nextSubstitutes = { ...substitutes }
+        substituteStorageKeys(
+          currentMember?.group_id ?? '',
+          currentMember?.user_id ?? '',
+          memberId,
+        ).forEach((key) => {
+          nextSubstitutes[key] = substituteForUserId
+        })
+        saveLocalMemberSubstitutes(orgId, nextSubstitutes)
+        setMembers((current) =>
+          current.map((member) =>
+            member.id === memberId
+              ? { ...member, substitute_for_user_id: substituteForUserId }
+              : member,
+          ),
+        )
+        return true
+      }
+      handleMutationError(mutationError, 'Erro ao definir substituto do membro')
       return false
     }
 
@@ -808,6 +1117,7 @@ export function useApprovalGroups(enabled = true) {
     addMember,
     removeMember,
     updateMemberRole,
+    updateMemberSubstitute,
     clearError,
     refresh,
   }

@@ -30,6 +30,15 @@ interface DocumentTramiteInspectorProps {
   onRemove: () => void;
 }
 
+function getSelectedAnalystIds(node: DocumentTramiteNode) {
+  const raw = node.metadata?.assignee_user_ids;
+  if (Array.isArray(raw)) {
+    const ids = raw.filter((value): value is string => typeof value === "string");
+    if (ids.length > 0) return ids;
+  }
+  return node.assignee_user_id ? [node.assignee_user_id] : [];
+}
+
 export function DocumentTramiteInspector({
   node,
   users,
@@ -51,9 +60,26 @@ export function DocumentTramiteInspector({
     );
   }
 
+  const currentNode = node;
   const canAssign = !["start", "end", "decision", "publication"].includes(
-    node.node_type,
+    currentNode.node_type,
   );
+  const isReviewNode = currentNode.node_type === "review";
+  const selectedAnalystIds =
+    currentNode.assignment_type === "specific_user" && isReviewNode
+      ? getSelectedAnalystIds(currentNode)
+      : [];
+
+  function updateAnalystIds(nextIds: string[]) {
+    onChange({
+      assignee_user_id: nextIds[0] ?? null,
+      metadata: {
+        ...currentNode.metadata,
+        assignee_user_ids: nextIds,
+        review_assignment_mode: nextIds.length > 1 ? "multi_user" : "single_user",
+      },
+    });
+  }
 
   return (
     <aside className="space-y-4 rounded-xl border bg-background p-4">
@@ -78,6 +104,18 @@ export function DocumentTramiteInspector({
           rows={2}
         />
       </div>
+      {node.node_type === "decision" && (
+        <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+          <p className="font-medium">Condições da decisão</p>
+          <p>
+            <strong>Aprovado:</strong> segue para a próxima análise de revisão
+            técnica ou para publicação.
+          </p>
+          <p>
+            <strong>Reprovado:</strong> encerra o fluxo sem publicar o documento.
+          </p>
+        </div>
+      )}
       {canAssign && (
         <>
           <div className="space-y-2">
@@ -89,6 +127,11 @@ export function DocumentTramiteInspector({
                   assignment_type: value as DocumentTramiteAssignmentType,
                   assignee_user_id: null,
                   assignee_group_id: null,
+                  metadata: {
+                    ...node.metadata,
+                    assignee_user_ids: [],
+                    review_assignment_mode: null,
+                  },
                 })
               }
             >
@@ -102,19 +145,21 @@ export function DocumentTramiteInspector({
                   Dono do documento
                 </SelectItem>
                 <SelectItem value="specific_user">
-                  Usuário específico
+                  {isReviewNode
+                    ? "Analistas específicos"
+                    : "Usuário específico"}
                 </SelectItem>
                 <SelectItem
                   value="approval_group"
                   disabled={!canUseGroups || groups.length === 0}
                 >
-                  Grupo de aprovação
+                  {isReviewNode ? "Grupo de análise" : "Grupo de aprovação"}
                 </SelectItem>
                 <SelectItem value="role">Papel</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          {node.assignment_type === "specific_user" && (
+          {node.assignment_type === "specific_user" && !isReviewNode && (
             <div className="space-y-2">
               <Label>Usuário</Label>
               <Select
@@ -132,6 +177,52 @@ export function DocumentTramiteInspector({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          )}
+          {node.assignment_type === "specific_user" && isReviewNode && (
+            <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+              <div>
+                <Label>Analistas da etapa</Label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Selecione um ou mais analistas para esta revisão técnica.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {users.length > 0 ? (
+                  users.map((user) => {
+                    const checked = selectedAnalystIds.includes(user.id);
+                    return (
+                      <label
+                        key={user.id}
+                        className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(value) => {
+                            const nextIds =
+                              value === true
+                                ? [...selectedAnalystIds, user.id]
+                                : selectedAnalystIds.filter((id) => id !== user.id);
+                            updateAnalystIds(Array.from(new Set(nextIds)));
+                          }}
+                        />
+                        {user.full_name}
+                      </label>
+                    );
+                  })
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum analista disponível.
+                  </p>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {selectedAnalystIds.length > 1
+                  ? `Esta etapa está com ${selectedAnalystIds.length} analistas configurados.`
+                  : selectedAnalystIds.length === 1
+                    ? "Esta etapa está com 1 analista configurado."
+                    : "Selecione pelo menos um analista ou troque para grupo de análise."}
+              </p>
             </div>
           )}
           {node.assignment_type === "approval_group" && (

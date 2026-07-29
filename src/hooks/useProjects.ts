@@ -29,6 +29,13 @@ interface UseProjectsOptions {
   loadPeople?: boolean;
 }
 
+type ProjectRowLike =
+  | ProjectOperationalContext
+  | (Record<string, unknown> & {
+      id?: unknown;
+      library_id?: unknown;
+    });
+
 const LOCAL_PROJECTS_STORAGE_PREFIX = "tramita.projects.local.";
 
 const ENTERPRISE_COLUMNS = `
@@ -176,7 +183,7 @@ export function useProjects(options: UseProjectsOptions = {}) {
       .match(libraryId ? { library_id: libraryId } : {})
       .order("name", { ascending: true });
 
-    let rows: unknown[] = [];
+    let rows: ProjectRowLike[] = [];
     let mode: ProjectSchemaMode = "enterprise";
     if (!enterpriseResult.error) {
       rows = enterpriseResult.data ?? [];
@@ -204,7 +211,9 @@ export function useProjects(options: UseProjectsOptions = {}) {
     if (mode === "missing") {
       rows = loadLocalProjects(profile.org_id);
       if (libraryId) {
-        rows = rows.filter((project) => project.library_id === libraryId);
+        rows = (rows as ProjectOperationalContext[]).filter(
+          (project) => project.library_id === libraryId,
+        );
       }
     }
 

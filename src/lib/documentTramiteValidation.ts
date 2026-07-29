@@ -104,12 +104,20 @@ function issue(
   return { code, message, severity, ...reference };
 }
 
+function getMetadataAssigneeUserIds(node: DocumentTramiteNode) {
+  const raw = node.metadata?.assignee_user_ids;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((value): value is string => typeof value === "string");
+}
+
 function hasActor(node: DocumentTramiteNode) {
   if (node.assignment_type === "approval_group") {
     return Boolean(node.assignee_group_id);
   }
   if (node.assignment_type === "specific_user") {
-    return Boolean(node.assignee_user_id);
+    return (
+      Boolean(node.assignee_user_id) || getMetadataAssigneeUserIds(node).length > 0
+    );
   }
   if (node.assignment_type === "role") return Boolean(node.required_role);
   return ["author", "document_owner"].includes(node.assignment_type);
@@ -370,7 +378,10 @@ function selectSimulationEdge(
 function responsibleLabel(node: DocumentTramiteNode) {
   if (node.assignment_type === "author") return "Autor do documento";
   if (node.assignment_type === "document_owner") return "Dono do documento";
-  if (node.assignment_type === "specific_user") return "Usuário específico";
+  if (node.assignment_type === "specific_user") {
+    const count = getMetadataAssigneeUserIds(node).length;
+    return count > 1 ? `${count} analistas` : "Usuário específico";
+  }
   if (node.assignment_type === "approval_group") return "Grupo de aprovação";
   if (node.assignment_type === "role") {
     return `Papel: ${node.required_role || "não definido"}`;

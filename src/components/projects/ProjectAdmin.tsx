@@ -1,27 +1,12 @@
 import { useMemo, useState } from "react";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   FolderKanban,
   Loader2,
-  Pencil,
-  Plus,
   RefreshCw,
   Search,
   ShieldCheck,
-  Trash2,
 } from "lucide-react";
-import { toast } from "sonner";
 import { ProjectEmptyState } from "@/components/projects/ProjectEmptyState";
-import { ProjectForm } from "@/components/projects/ProjectForm";
 import { ProjectStatusBadge } from "@/components/projects/ProjectStatusBadge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -57,8 +42,6 @@ import {
   getProjectStatusLabel,
   getProjectTypeLabel,
   getProjectTypesByLabel,
-  type ProjectInput,
-  type ProjectOperationalContext,
 } from "@/lib/projectOperationalContext";
 
 function dateLabel(value: string | null) {
@@ -70,14 +53,9 @@ function dateLabel(value: string | null) {
 
 export function ProjectAdmin() {
   const catalog = useProjects();
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<ProjectOperationalContext | null>(
-    null,
-  );
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
-  const [deleting, setDeleting] = useState<ProjectOperationalContext | null>(null);
 
   const filteredProjects = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
@@ -93,36 +71,6 @@ export function ProjectAdmin() {
     });
   }, [catalog.projects, search, statusFilter, typeFilter]);
 
-  function openNew() {
-    catalog.clearError();
-    setEditing(null);
-    setFormOpen(true);
-  }
-
-  function openEdit(project: ProjectOperationalContext) {
-    catalog.clearError();
-    setEditing(project);
-    setFormOpen(true);
-  }
-
-  async function saveProject(input: ProjectInput) {
-    const success = editing
-      ? await catalog.updateProject(editing.id, input)
-      : await catalog.createProject(input);
-    if (success) {
-      toast.success(editing ? "Projeto atualizado." : "Projeto criado.");
-    }
-    return success;
-  }
-
-  async function updateState(
-    action: () => Promise<boolean>,
-    successMessage: string,
-  ) {
-    const success = await action();
-    if (success) toast.success(successMessage);
-  }
-
   const hasFilters =
     Boolean(search.trim()) || statusFilter !== "all" || typeFilter !== "all";
 
@@ -135,8 +83,9 @@ export function ProjectAdmin() {
             <h1 className="text-3xl font-bold tracking-tight">Projetos</h1>
           </div>
           <p className="mt-2 max-w-3xl text-muted-foreground">
-            Organize projetos, obras, contratos, unidades e frentes de trabalho
-            usados por documentos e códigos.
+            Cada biblioteca representa um projeto operacional. Esta tela mostra
+            os projetos gerados automaticamente a partir das bibliotecas da fase
+            atual.
           </p>
         </div>
         <div className="flex gap-2">
@@ -150,15 +99,6 @@ export function ProjectAdmin() {
             />
             Atualizar
           </Button>
-          {catalog.canManage && (
-            <Button
-              onClick={openNew}
-              disabled={!catalog.canUseEnterpriseProjects}
-            >
-              <Plus className="h-4 w-4" />
-              Novo projeto
-            </Button>
-          )}
         </div>
       </div>
 
@@ -192,8 +132,20 @@ export function ProjectAdmin() {
           <ShieldCheck className="h-4 w-4" />
           <AlertTitle>Consulta operacional</AlertTitle>
           <AlertDescription>
-            Você pode visualizar os projetos. Criação e alterações são
-            exclusivas para administradores e gestores.
+            Você pode visualizar os projetos vinculados à biblioteca. O cadastro
+            manual deixou de ser necessário neste fluxo.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {catalog.canManage && (
+        <Alert>
+          <ShieldCheck className="h-4 w-4" />
+          <AlertTitle>Projetos vinculados à biblioteca</AlertTitle>
+          <AlertDescription>
+            Ao criar uma biblioteca, o sistema registra automaticamente o
+            projeto correspondente. O cadastro manual de projetos foi desativado
+            para manter essa relação 1:1.
           </AlertDescription>
         </Alert>
       )}
@@ -304,21 +256,19 @@ export function ProjectAdmin() {
         </Card>
       ) : filteredProjects.length === 0 ? (
         <ProjectEmptyState
-          canManage={catalog.canManage && catalog.canUseEnterpriseProjects}
           filtered={hasFilters}
-          onCreate={openNew}
         />
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Projetos cadastrados</CardTitle>
+            <CardTitle className="text-lg">Projetos vinculados</CardTitle>
             <CardDescription>
-              Visualize e gerencie os projetos no mesmo formato tabular usado em
-              documentos.
+              Cada linha corresponde a uma biblioteca já criada e ao projeto que
+              foi registrado automaticamente para ela.
             </CardDescription>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            <Table className="min-w-[1100px] table-fixed">
+            <Table className="min-w-[900px] table-fixed">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[130px] whitespace-nowrap">Código</TableHead>
@@ -327,23 +277,12 @@ export function ProjectAdmin() {
                   <TableHead className="w-[230px] whitespace-nowrap">Cliente</TableHead>
                   <TableHead className="w-[180px] whitespace-nowrap">Responsável</TableHead>
                   <TableHead className="w-[150px] whitespace-nowrap">Status</TableHead>
-                  <TableHead className="w-[320px] whitespace-nowrap text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredProjects.map((project) => {
-                  const isClosed = ["closed", "archived", "cancelled"].includes(
-                    project.status,
-                  );
                   return (
-                    <TableRow 
-                      key={project.id} 
-                      className="cursor-pointer hover:bg-muted/50 transition-colors"
-                      onClick={() => {
-                        // Prevent clicks from bubbling when clicking action buttons
-                        openEdit(project);
-                      }}
-                    >
+                    <TableRow key={project.id} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-mono font-medium whitespace-nowrap">
                         {project.code}
                       </TableCell>
@@ -395,76 +334,6 @@ export function ProjectAdmin() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">
-                        <div className="flex justify-end gap-2 whitespace-nowrap">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="whitespace-nowrap"
-                            disabled={catalog.isSaving}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEdit(project);
-                            }}
-                          >
-                            <Pencil className="h-4 w-4" />
-                            Editar
-                          </Button>
-                          {!isClosed && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="whitespace-nowrap"
-                              disabled={catalog.isSaving}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void updateState(
-                                  () =>
-                                    catalog.setProjectActive(
-                                      project,
-                                      !project.is_active,
-                                    ),
-                                  project.is_active
-                                    ? "Projeto pausado."
-                                    : "Projeto reativado.",
-                                )
-                              }}
-                            >
-                              {project.is_active ? "Pausar" : "Reativar"}
-                            </Button>
-                          )}
-                          {!isClosed && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="whitespace-nowrap"
-                              disabled={catalog.isSaving}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void updateState(
-                                  () => catalog.closeProject(project),
-                                  "Projeto encerrado.",
-                                )
-                              }}
-                            >
-                              Encerrar
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            className="whitespace-nowrap"
-                            disabled={catalog.isSaving}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleting(project);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Excluir
-                          </Button>
-                        </div>
-                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -473,54 +342,6 @@ export function ProjectAdmin() {
           </CardContent>
         </Card>
       )}
-
-      <ProjectForm
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        project={editing}
-        existingCodes={catalog.projects
-          .filter((project) => project.has_explicit_code)
-          .map((project) => project.code)}
-        users={catalog.users}
-        isSaving={catalog.isSaving}
-        submissionError={catalog.error}
-        onSubmit={saveProject}
-      />
-
-      <AlertDialog
-        open={Boolean(deleting)}
-        onOpenChange={(open) => {
-          if (!open) setDeleting(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir projeto</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleting
-                ? `O projeto "${deleting.name}" será removido definitivamente. Essa ação não pode ser desfeita.`
-                : "Confirme a exclusão do projeto."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={async () => {
-                if (!deleting) return;
-                const project = deleting;
-                setDeleting(null);
-                const success = await catalog.deleteProject(project);
-                if (success) {
-                  toast.success("Projeto excluído.");
-                }
-              }}
-            >
-              Excluir projeto
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

@@ -36,7 +36,6 @@ import { FloatingMessagesWidget } from "@/components/messages/FloatingMessagesWi
 import { Badge } from "@/components/ui/badge";
 import { navigationSections } from "@/app/navigation/navigation-items";
 import { canViewNavigationItem } from "@/app/navigation/navigation-permissions";
-import { USER_ROLES } from "@/lib/constants";
 import { getLibraryIdFromPath, toLibraryScopedPath } from "@/lib/library-routing";
 import { toast } from "sonner";
 
@@ -50,6 +49,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { unreadCount } = notificationState;
   const { queue } = useApprovalQueue();
   const currentLibraryId = getLibraryIdFromPath(pathname);
+  const isOrganizationHome =
+    pathname === "/authenticated/organizacao" ||
+    pathname.startsWith("/authenticated/organizacao/");
 
   // Company settings
   const [openSettings, setOpenSettings] = useState(false);
@@ -147,6 +149,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen flex bg-background">
+      {!isOrganizationHome && (
       <aside
         data-app-sidebar
         className={`${
@@ -159,7 +162,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             sidebarCollapsed ? "p-4 pb-2" : "p-6 md:p-8 pb-4"
           }`}
         >
-          <div className={`flex items-center gap-3 ${sidebarCollapsed ? "justify-center" : "justify-start"}`}>
+          <Link
+            to="/authenticated/organizacao"
+            className={`flex items-center gap-3 rounded-2xl transition hover:bg-white/6 ${
+              sidebarCollapsed ? "justify-center p-1" : "justify-start -mx-2 px-2 py-1"
+            }`}
+            title="Abrir página principal de bibliotecas"
+          >
             {logoUrl ? (
               <img
                 src={logoUrl}
@@ -194,7 +203,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 Document Control
               </div>
             </div>
-          </div>
+          </Link>
           <div
             className={`mt-5 justify-start ${
               sidebarCollapsed ? "hidden" : "hidden md:flex"
@@ -579,23 +588,73 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </Button>
         </div>
       </aside>
+      )}
 
       <main data-app-main className="min-w-0 flex-1 overflow-auto">
-          <header className="sticky top-0 z-20 bg-white border-b border-slate-200 px-6 lg:px-8 py-3 flex items-center gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <header
+            className={`sticky top-0 z-20 flex items-center gap-4 border-b px-6 py-3 lg:px-8 ${
+              isOrganizationHome
+                ? "border-[#123765] bg-[#071d3d] text-white"
+                : "border-slate-200 bg-white"
+            }`}
+          >
+            {isOrganizationHome && (
+              <Link
+                to="/authenticated/organizacao"
+                className="hidden min-w-0 items-center gap-3 lg:flex"
+              >
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt="Logo da Empresa"
+                    className="h-9 w-9 rounded-xl object-cover"
+                  />
+                ) : (
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-sky-300">
+                    <FileStack className="h-4 w-4" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-white">
+                    {companyName}
+                  </div>
+                  <div className="truncate text-[10px] uppercase tracking-[0.14em] text-blue-200/70">
+                    Document Control
+                  </div>
+                </div>
+              </Link>
+            )}
+
+            <div className={`relative flex-1 ${isOrganizationHome ? "max-w-2xl" : "max-w-md"}`}>
+              <Search
+                className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
+                  isOrganizationHome ? "text-blue-200/60" : "text-slate-400"
+                }`}
+              />
               <Input
-                placeholder="Buscar documento, projeto ou código..."
-                className="pl-10 bg-slate-50 border-slate-200 shadow-none focus:bg-white"
+                placeholder={
+                  isOrganizationHome
+                    ? "Buscar documentos, bibliotecas e mais..."
+                    : "Buscar documento, projeto ou código..."
+                }
+                className={`pl-10 shadow-none ${
+                  isOrganizationHome
+                    ? "border-[#1d4e89] bg-white/6 text-white placeholder:text-blue-100/45 focus-visible:ring-[#2f7cf6]"
+                    : "border-slate-200 bg-slate-50 focus:bg-white"
+                }`}
               />
             </div>
-            <div className="flex items-center justify-end gap-2 ml-auto">
+            <div className="ml-auto flex items-center justify-end gap-2">
             <Dialog open={openSettings} onOpenChange={setOpenSettings}>
               <DialogTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                  className={
+                    isOrganizationHome
+                      ? "text-blue-100/80 hover:bg-white/10 hover:text-white"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                  }
                 >
                   <Palette className="h-5 w-5" />
                 </Button>
@@ -799,26 +858,49 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
             <Link
               to="/authenticated/meu-perfil"
-              className="shrink-0"
+              className={`flex shrink-0 items-center gap-3 rounded-full ${
+                isOrganizationHome ? "pl-2 pr-1.5 py-1 hover:bg-white/8" : ""
+              }`}
             >
               {profile?.avatar_url ? (
                 <img
                   src={profile.avatar_url}
                   alt="Foto do perfil"
-                  className="h-9 w-9 rounded-full object-cover border border-gray-200"
+                  className={`h-9 w-9 rounded-full object-cover ${
+                    isOrganizationHome ? "border border-white/20" : "border border-gray-200"
+                  }`}
                 />
               ) : (
                 <div
-                  className="h-9 w-9 rounded-full flex items-center justify-center font-semibold text-sm border border-gray-200"
+                  className={`flex h-9 w-9 items-center justify-center rounded-full font-semibold text-sm ${
+                    isOrganizationHome ? "border border-white/20" : "border border-gray-200"
+                  }`}
                   style={{ backgroundColor: theme.button, color: theme.text }}
                 >
                   {getInitials(profile?.full_name || user?.user_metadata?.full_name || user?.email || "User")}
                 </div>
               )}
+              {isOrganizationHome && (
+                <div className="hidden text-left lg:block">
+                  <div className="max-w-[9rem] truncate text-sm font-semibold text-white">
+                    {profile?.full_name || user?.user_metadata?.full_name || "Usuário"}
+                  </div>
+                  <div className="text-xs text-blue-100/70">
+                    {profile?.role === "admin" ? "Administrador" : "Colaborador"}
+                  </div>
+                </div>
+              )}
             </Link>
             </div>
           </header>
-        <div data-app-content className="p-6 lg:p-8 max-w-[1600px] mx-auto">
+        <div
+          data-app-content
+          className={`mx-auto ${
+            isOrganizationHome
+              ? "max-w-[1420px] px-6 py-8 lg:px-8"
+              : "max-w-[1600px] p-6 lg:p-8"
+          }`}
+        >
           {children}
         </div>
         <FloatingMessagesWidget />

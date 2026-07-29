@@ -1,20 +1,27 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
+  ArrowRight,
   Building2,
+  FileStack,
   FolderOpen,
   Plus,
+  ShieldCheck,
+  Settings,
   Sparkles,
+  Users,
   Workflow,
 } from "lucide-react";
+import { OrganizationPublicationCard } from "@/components/organization/OrganizationPublicationCard";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -34,7 +41,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { useAuthContext } from "@/contexts/AuthContext";
+import { setStoredActiveLibraryId } from "@/contexts/library-context";
 import { useLibraries, type LibraryPhaseCode } from "@/hooks/useLibraries";
+import { usePublications, type PublicationRecord } from "@/hooks/usePublications";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/authenticated/organizacao")({
@@ -48,9 +58,34 @@ function phaseBadgeClass(code: LibraryPhaseCode | undefined) {
   return "border-teal-200 bg-teal-50 text-teal-700";
 }
 
+function formatLongDate(dateIso: string) {
+  const date = new Date(dateIso);
+  if (Number.isNaN(date.getTime())) return "Data indisponível";
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+function buildHeroImageUrl(publication: PublicationRecord | null) {
+  if (publication?.imagem_url) return publication.imagem_url;
+
+  const prompt =
+    publication?.categoria === "seguranca_saude"
+      ? "modern industrial engineering complex with landscaped foreground, realistic corporate editorial photography, blue hour, architectural glass facade, premium lighting"
+      : "modern corporate engineering headquarters building with glass facade and landscaped entrance, realistic editorial architecture photo, blue sky, premium business atmosphere";
+
+  return `https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=${encodeURIComponent(
+    prompt,
+  )}&image_size=landscape_16_9`;
+}
+
 function OrganizationLibrariesPage() {
   const navigate = useNavigate();
+  const { profile, user } = useAuthContext();
   const catalog = useLibraries();
+  const publications = usePublications({ limit: 4 });
   const [open, setOpen] = useState(false);
   const [enterpriseMode, setEnterpriseMode] = useState<"existing" | "new">(
     "existing",
@@ -67,6 +102,28 @@ function OrganizationLibrariesPage() {
         : newEnterpriseName.trim().length >= 3;
     return hasEnterprise && Boolean(phaseCode) && libraryName.trim().length >= 3;
   }, [enterpriseId, enterpriseMode, libraryName, newEnterpriseName, phaseCode]);
+
+  const featuredPublication = publications.latestPublications[0] ?? null;
+  const newsroomPublications =
+    publications.latestPublications.length > 1
+      ? publications.latestPublications.slice(1, 5)
+      : publications.latestPublications;
+
+  const accessibleLibraries = useMemo(
+    () =>
+      catalog.groupedByEnterprise.flatMap(({ enterprise, libraries }) =>
+        libraries.map((library) => ({
+          ...library,
+          enterpriseName: enterprise.name,
+        })),
+      ),
+    [catalog.groupedByEnterprise],
+  );
+
+  const firstName =
+    profile?.full_name?.split(" ")[0] ||
+    user?.user_metadata?.full_name?.split(" ")[0] ||
+    "Ana";
 
   async function handleCreateLibrary() {
     if (!canSubmit || !phaseCode) return;
@@ -91,31 +148,53 @@ function OrganizationLibrariesPage() {
     setNewEnterpriseName("");
     setPhaseCode("");
     setLibraryName("");
+    setStoredActiveLibraryId(libraryId);
     await navigate({
       to: "/authenticated/biblioteca/$bibliotecaId/dashboard",
       params: { bibliotecaId: libraryId },
     });
   }
 
+  async function handleOpenPublication(publication: PublicationRecord) {
+    if (publication.documento_id && publication.documento?.library_id) {
+      setStoredActiveLibraryId(publication.documento.library_id);
+      await navigate({
+        to: "/authenticated/biblioteca/$bibliotecaId/documentos/$documentId",
+        params: {
+          bibliotecaId: publication.documento.library_id,
+          documentId: publication.documento_id,
+        },
+      });
+      return;
+    }
+
+    await navigate({ to: "/authenticated/organizacao/noticias" });
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-gradient-to-r from-[#061d3d] via-[#0b2f63] to-[#0f766e] p-6 text-white lg:flex-row lg:items-center lg:justify-between">
-        <div className="space-y-2">
-          <Badge className="border-white/15 bg-white/10 text-white hover:bg-white/10">
-            Organização Tramita
-          </Badge>
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Bibliotecas documentais
-          </h1>
-          <p className="max-w-2xl text-sm text-blue-100/80">
-            Cada biblioteca representa um ambiente isolado do empreendimento,
-            provisionado por fase e governado por um template fixo da plataforma.
+    <div className="space-y-10 pb-10">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-slate-500">
+            Bem-vinda, {firstName}.{" "}
+            <span aria-hidden="true" className="align-middle">
+              👋
+            </span>
           </p>
+          <div className="space-y-2">
+            <h1 className="text-4xl font-semibold tracking-tight text-slate-950">
+              Bibliotecas documentais
+            </h1>
+            <p className="max-w-3xl text-sm leading-6 text-slate-600">
+              Cada biblioteca representa um ambiente documental do empreendimento,
+              provisionado por fase e governado por um template fixo da plataforma.
+            </p>
+          </div>
         </div>
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2 bg-white text-slate-900 hover:bg-slate-100">
+            <Button className="h-12 gap-2 rounded-xl bg-[#2f7cf6] px-5 text-white hover:bg-[#1f6ce6]">
               <Plus className="h-4 w-4" />
               Nova biblioteca
             </Button>
@@ -218,9 +297,20 @@ function OrganizationLibrariesPage() {
                     onValueChange={(value) =>
                       setPhaseCode(value as LibraryPhaseCode)
                     }
+                    disabled={
+                      catalog.loading ||
+                      catalog.saving ||
+                      catalog.phaseTemplates.length === 0
+                    }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione a fase" />
+                      <SelectValue
+                        placeholder={
+                          catalog.loading
+                            ? "Carregando fases..."
+                            : "Selecione a fase"
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {catalog.phaseTemplates.map((template) => (
@@ -230,6 +320,13 @@ function OrganizationLibrariesPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {catalog.phaseTemplates.length === 0 && (
+                    <p className="text-xs text-slate-500">
+                      {catalog.loading
+                        ? "Carregando templates de fase..."
+                        : "Nenhum template de fase foi encontrado para sua organização."}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -273,109 +370,275 @@ function OrganizationLibrariesPage() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="border-slate-200 lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Bibliotecas por empreendimento</CardTitle>
-            <CardDescription>
-              Escolha a biblioteca que deseja abrir.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {catalog.groupedByEnterprise.map(({ enterprise, libraries }) => (
-              <div key={enterprise.id} className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-slate-500" />
-                  <h2 className="text-sm font-semibold text-slate-900">
-                    {enterprise.name}
-                  </h2>
-                </div>
+      <section className="overflow-hidden rounded-[30px] bg-[#071d3d] shadow-[0_24px_60px_-28px_rgba(7,29,61,0.65)]">
+        <div className="grid min-h-[360px] lg:grid-cols-[1.02fr_0.98fr]">
+          <div className="relative flex flex-col justify-between gap-8 p-8 text-white lg:p-10">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(88,168,255,0.32),transparent_42%)]" />
+            <div className="relative space-y-5">
+              <Badge className="w-fit rounded-full border-cyan-400/35 bg-cyan-500/10 px-3 text-[11px] uppercase tracking-[0.14em] text-cyan-200 hover:bg-cyan-500/10">
+                Destaque
+              </Badge>
+              <p className="text-sm text-blue-100/75">
+                {formatLongDate(
+                  featuredPublication?.data_publicacao ?? new Date().toISOString(),
+                )}
+              </p>
+              <div className="max-w-xl space-y-4">
+                <h2 className="text-3xl font-semibold leading-tight tracking-tight lg:text-[2.55rem]">
+                  {featuredPublication?.titulo ??
+                    "Nova matriz de segregação de funções e permissões"}
+                </h2>
+                <p className="max-w-lg text-sm leading-7 text-blue-100/80">
+                  {featuredPublication?.resumo ??
+                    "Atualizamos a matriz para reforçar a segurança da informação e garantir maior rastreabilidade nos processos de aprovação."}
+                </p>
+              </div>
+            </div>
 
-                <div className="grid gap-3 md:grid-cols-2">
-                  {libraries.map((library) => (
-                    <Link
-                      key={library.id}
-                      to="/authenticated/biblioteca/$bibliotecaId/dashboard"
-                      params={{ bibliotecaId: library.id }}
-                      className="group rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-sky-200 hover:shadow-sm"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <FolderOpen className="h-4 w-4 text-slate-500" />
-                            <p className="font-semibold text-slate-900">
-                              {library.name}
-                            </p>
-                          </div>
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "rounded-full",
-                              phaseBadgeClass(library.phase_template?.code),
-                            )}
-                          >
-                            {library.phase_template?.display_name ?? "Fase"}
-                          </Badge>
-                          <p className="text-xs text-slate-500">
-                            {library.phase_template?.reference_standard ?? "Template gerenciado pela Tramita"}
-                          </p>
-                        </div>
+            <div className="relative flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                className="h-11 rounded-xl bg-white px-5 text-slate-900 hover:bg-slate-100"
+                onClick={() => {
+                  if (featuredPublication) {
+                    void handleOpenPublication(featuredPublication);
+                  }
+                }}
+              >
+                Acessar documento
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+              <div className="ml-auto hidden items-center gap-2 lg:flex">
+                <span className="h-2 w-2 rounded-full bg-white" />
+                <span className="h-2 w-2 rounded-full bg-white/40" />
+                <span className="h-2 w-2 rounded-full bg-white/40" />
+              </div>
+            </div>
+          </div>
 
-                        <Sparkles className="h-4 w-4 text-slate-300 transition group-hover:text-sky-500" />
+          <div className="relative min-h-[280px]">
+            <img
+              src={buildHeroImageUrl(featuredPublication)}
+              alt={featuredPublication?.titulo ?? "Destaque das bibliotecas"}
+              className="h-full w-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#071d3d]/65 via-[#071d3d]/18 to-transparent lg:bg-gradient-to-l lg:from-transparent lg:via-[#071d3d]/10 lg:to-[#071d3d]/5" />
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+              Últimas notícias e publicações
+            </h2>
+            <p className="text-sm text-slate-500">
+              Acompanhe as publicações mais recentes da organização.
+            </p>
+          </div>
+          <Button asChild variant="ghost" className="gap-2 px-0 text-sky-700 hover:text-sky-800">
+            <Link to="/authenticated/organizacao/noticias">
+              Ver todas as notícias
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+
+        {newsroomPublications.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {newsroomPublications.map((publication) => (
+              <OrganizationPublicationCard
+                key={publication.id}
+                publication={publication}
+                onOpen={() => {
+                  void handleOpenPublication(publication);
+                }}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-[26px] border border-dashed border-slate-200 bg-white p-6 text-sm text-slate-500">
+            Ainda não há publicações recentes para esta organização.
+          </div>
+        )}
+      </section>
+
+      <section id="libraries" className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+              Suas bibliotecas
+            </h2>
+            <p className="text-sm text-slate-500">
+              Acesse rapidamente as bibliotecas às quais você tem permissão.
+            </p>
+          </div>
+          <div className="text-sm font-medium text-sky-700">
+            {accessibleLibraries.length} biblioteca{accessibleLibraries.length === 1 ? "" : "s"} ativa{accessibleLibraries.length === 1 ? "" : "s"}
+          </div>
+        </div>
+
+        {accessibleLibraries.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {accessibleLibraries.map((library) => (
+              <div key={library.id} className="group relative">
+                <Link
+                  to="/authenticated/biblioteca/$bibliotecaId/dashboard"
+                  params={{ bibliotecaId: library.id }}
+                  onClick={() => setStoredActiveLibraryId(library.id)}
+                  className="block rounded-[22px] border border-slate-200 bg-white p-5 pr-14 transition-all hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-lg"
+                >
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={cn(
+                          "flex h-11 w-11 items-center justify-center rounded-2xl",
+                          library.phase_template?.code === "project"
+                            ? "bg-sky-100 text-sky-700"
+                            : "bg-violet-100 text-violet-700",
+                        )}
+                      >
+                        <FolderOpen className="h-5 w-5" />
                       </div>
-                    </Link>
-                  ))}
-
-                  {libraries.length === 0 && (
-                    <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                      Ainda não há bibliotecas neste empreendimento.
+                      <div className="min-w-0">
+                        <p className="truncate text-base font-semibold text-slate-900">
+                          {library.name}
+                        </p>
+                        <p className="truncate text-xs text-slate-500">
+                          {library.enterpriseName}
+                        </p>
+                      </div>
                     </div>
-                  )}
-                </div>
+
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "rounded-full",
+                        phaseBadgeClass(library.phase_template?.code),
+                      )}
+                    >
+                      {library.phase_template?.display_name ?? "Ativa"}
+                    </Badge>
+
+                    <p className="min-h-[44px] text-sm leading-6 text-slate-500">
+                      {library.phase_template?.reference_standard ??
+                        "Biblioteca corporativa com políticas, procedimentos e documentos geridos pela plataforma."}
+                    </p>
+
+                    <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
+                      <div className="flex items-center gap-1.5">
+                        <FileStack className="h-3.5 w-3.5" />
+                        Template fixo
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Users className="h-3.5 w-3.5" />
+                        Escopo ativo
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm font-medium text-sky-700">
+                      Abrir biblioteca
+                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+                  </div>
+                </Link>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-3 top-3 h-9 w-9 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                      onClick={(event) => event.stopPropagation()}
+                      aria-label="Opções da biblioteca"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Edição da biblioteca</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem disabled>Editar nome da biblioteca</DropdownMenuItem>
+                    <DropdownMenuItem disabled>Editar empreendimento</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             ))}
+          </div>
+        ) : (
+          <div className="rounded-[26px] border border-dashed border-slate-200 bg-white p-6 text-sm text-slate-500">
+            Nenhuma biblioteca encontrada ainda. Crie a primeira biblioteca para começar.
+          </div>
+        )}
+      </section>
 
-            {!catalog.loading && catalog.groupedByEnterprise.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
-                Nenhum empreendimento encontrado ainda. Crie a primeira biblioteca
-                para começar.
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+            Entenda como funciona
+          </h2>
+          <p className="text-sm text-slate-500">
+            Organize, controle e compartilhe documentos com segurança e eficiência.
+          </p>
+        </div>
 
-        <Card className="border-slate-200">
-          <CardHeader>
-            <CardTitle>Provisionamento</CardTitle>
-            <CardDescription>
-              A fase controla a base normativa e o comportamento do workflow.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm text-slate-600">
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <div className="mb-2 flex items-center gap-2 font-medium text-slate-900">
-                <Workflow className="h-4 w-4 text-slate-500" />
-                Projeto
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {[
+            {
+              icon: Building2,
+              title: "Organização inteligente",
+              description:
+                "Estruture bibliotecas por projeto, área ou processo sem perder rastreabilidade.",
+              iconClass: "bg-sky-100 text-sky-700",
+            },
+            {
+              icon: ShieldCheck,
+              title: "Segurança e controle",
+              description:
+                "Defina permissões, acompanhe acessos e garanta a integridade das informações.",
+              iconClass: "bg-emerald-100 text-emerald-700",
+            },
+            {
+              icon: Workflow,
+              title: "Fluxos eficientes",
+              description:
+                "Padronize processos de aprovação, revisão e publicação de documentos.",
+              iconClass: "bg-violet-100 text-violet-700",
+            },
+            {
+              icon: Sparkles,
+              title: "Informação na hora certa",
+              description:
+                "Encontre o que precisa com rapidez e tome decisões com mais confiança.",
+              iconClass: "bg-amber-100 text-amber-700",
+            },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <div
+                key={item.title}
+                className="rounded-[22px] border border-slate-200 bg-white p-5"
+              >
+                <div className="space-y-4">
+                  <div className={cn("flex h-11 w-11 items-center justify-center rounded-2xl", item.iconClass)}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-base font-semibold text-slate-900">
+                      {item.title}
+                    </h3>
+                    <p className="text-sm leading-6 text-slate-500">
+                      {item.description}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <p>
-                Fluxo linear e finito, preparado para emissão e aprovações
-                formais.
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <div className="mb-2 flex items-center gap-2 font-medium text-slate-900">
-                <Workflow className="h-4 w-4 text-slate-500" />
-                Operação / O&amp;M
-              </div>
-              <p>
-                Fluxo contínuo para documentos vivos, manutenção e revisões
-                recorrentes.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }

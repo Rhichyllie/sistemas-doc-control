@@ -18,6 +18,7 @@ import {
   useApprovalGroups,
 } from '@/hooks/useApprovalGroups'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
+import { useProjectMembers } from '@/hooks/useProjectMembers'
 import {
   describeApprovalGroupScope,
   normalizeApprovalGroupCode,
@@ -67,6 +68,7 @@ export function ApprovalGroupsPage() {
   const { profile } = useAuthContext()
   const canManage = profile?.role === 'admin' || profile?.role === 'manager'
   const { projects } = useProjectOptions()
+  const { getProfilesForProject } = useProjectMembers()
   const {
     groups,
     members,
@@ -83,6 +85,7 @@ export function ApprovalGroupsPage() {
     addMember,
     removeMember,
     updateMemberRole,
+    updateMemberSubstitute,
     clearError,
     refresh,
   } = useApprovalGroups(Boolean(canManage))
@@ -93,6 +96,7 @@ export function ApprovalGroupsPage() {
   const [memberGroup, setMemberGroup] = useState<ApprovalGroupRecord | null>(null)
   const [memberUserId, setMemberUserId] = useState('')
   const [memberRole, setMemberRole] = useState('member')
+  const [memberSubstituteForUserId, setMemberSubstituteForUserId] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -100,6 +104,45 @@ export function ApprovalGroupsPage() {
     () => new Map(users.map((user) => [user.id, user])),
     [users],
   )
+  const availableUsersForMemberGroup = useMemo(() => {
+    if (!memberGroup) return []
+    const assignedProfileIds =
+      memberGroup.scope === 'project' && memberGroup.project_id
+        ? new Set(getProfilesForProject(memberGroup.project_id))
+        : null
+
+    return users.filter((user) => {
+      if (
+        members.some(
+          (member) =>
+            member.group_id === memberGroup.id
+            && member.user_id === user.id
+            && member.is_active,
+        )
+      ) {
+        return false
+      }
+      if (assignedProfileIds && assignedProfileIds.size > 0) {
+        return assignedProfileIds.has(user.id)
+      }
+      return assignedProfileIds === null
+    })
+  }, [getProfilesForProject, memberGroup, members, users])
+  const substituteCandidatesForMemberGroup = useMemo(() => {
+    if (!memberGroup || memberRole !== 'backup') return []
+    return members
+      .filter(
+        (member) =>
+          member.group_id === memberGroup.id
+          && member.is_active
+          && member.user_id !== memberUserId
+          && member.role !== 'backup',
+      )
+      .map((member) => ({
+        ...member,
+        user: usersById.get(member.user_id) ?? null,
+      }))
+  }, [memberGroup, memberRole, memberUserId, members, usersById])
 
   if (!canManage) {
     return (
@@ -173,6 +216,7 @@ export function ApprovalGroupsPage() {
     setMemberGroup(group)
     setMemberUserId('')
     setMemberRole('member')
+    setMemberSubstituteForUserId('')
     setValidationError(null)
     clearError()
   }
@@ -182,9 +226,18 @@ export function ApprovalGroupsPage() {
       setValidationError('Selecione um usuário.')
       return
     }
+    if (memberRole === 'backup' && !memberSubstituteForUserId) {
+      setValidationError('Selecione quem o suplente irá substituir.')
+      return
+    }
 
     setSaving(true)
-    const success = await addMember(memberGroup.id, memberUserId, memberRole)
+    const success = await addMember(
+      memberGroup.id,
+      memberUserId,
+      memberRole,
+      memberRole === 'backup' ? memberSubstituteForUserId : null,
+    )
     setSaving(false)
     if (success) {
       toast.success('Membro adicionado ao grupo')
@@ -335,6 +388,7 @@ export function ApprovalGroupsPage() {
                           <TableHead>Membro</TableHead>
                           <TableHead>Papel no sistema</TableHead>
                           <TableHead>Papel no grupo</TableHead>
+                          <TableHead>Substitui</TableHead>
                           <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -352,7 +406,13 @@ export function ApprovalGroupsPage() {
                                 <Select
                                   value={member.role}
                                   onValueChange={async (role) => {
-                                    const success = await updateMemberRole(member.id, role)
+                                    const success = await updateMemberRole(
+                                      member.id,
+                                      role,
+                                      role === 'backup'
+                                        ? member.substitute_for_user_id
+                                        : null,
+                                    )
                                     if (success) toast.success('Papel do membro atualizado')
                                   }}
                                 >
@@ -365,6 +425,46 @@ export function ApprovalGroupsPage() {
                                     ))}
                                   </SelectContent>
                                 </Select>
+                              </TableCell>
+                              <TableCell className="w-56">
+                                {member.role === 'backup' ? (
+                                  <Select
+                                    value={member.substitute_for_user_id ?? 'none'}
+                                    onValueChange={async (value) => {
+                                      const success = await updateMemberSubstitute(
+                                        member.id,
+                                        value === 'none' ? null : value,
+                                      )
+                                      if (success) toast.success('Suplência atualizada')
+                                    }}
+                                  >
+                                    <SelectTrigger aria-label={`Substituição de ${user?.full_name ?? 'membro'}`}>
+                                      <SelectValue placeholder="Selecione o titular" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="none">Selecione o titular</SelectItem>
+                                      {groupMembers
+                                        .filter(
+                                          (candidate) =>
+                                            candidate.id !== member.id
+                                            && candidate.role !== 'backup',
+                                        )
+                                        .map((candidate) => {
+                                          const candidateUser = usersById.get(candidate.user_id)
+                                          return (
+                                            <SelectItem
+                                              key={candidate.id}
+                                              value={candidate.user_id}
+                                            >
+                                              {candidateUser?.full_name ?? 'Usuário não encontrado'}
+                                            </SelectItem>
+                                          )
+                                        })}
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">—</span>
+                                )}
                               </TableCell>
                               <TableCell className="text-right">
                                 <Button size="sm" variant="ghost" onClick={() => handleRemoveMember(member.id)}>
@@ -522,24 +622,27 @@ export function ApprovalGroupsPage() {
               }}>
                 <SelectTrigger><SelectValue placeholder="Selecione um usuário" /></SelectTrigger>
                 <SelectContent>
-                  {users
-                    .filter((user) => !members.some(
-                      (member) =>
-                        member.group_id === memberGroup?.id
-                        && member.user_id === user.id
-                        && member.is_active,
-                    ))
-                    .map((user) => (
+                  {availableUsersForMemberGroup.map((user) => (
                       <SelectItem key={user.id} value={user.id}>
                         {user.full_name}{user.email ? ` · ${user.email}` : ''}
                       </SelectItem>
-                    ))}
+                  ))}
                 </SelectContent>
               </Select>
+              {memberGroup?.scope === 'project' && memberGroup.project_id && (
+                <p className="text-xs text-muted-foreground">
+                  São exibidos apenas os usuários cadastrados no projeto vinculado a este grupo.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Papel no grupo</Label>
-              <Select value={memberRole} onValueChange={setMemberRole}>
+              <Select value={memberRole} onValueChange={(value) => {
+                setMemberRole(value)
+                if (value !== 'backup') {
+                  setMemberSubstituteForUserId('')
+                }
+              }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {MEMBER_ROLES.map((role) => (
@@ -548,6 +651,33 @@ export function ApprovalGroupsPage() {
                 </SelectContent>
               </Select>
             </div>
+            {memberRole === 'backup' && (
+              <div className="space-y-2">
+                <Label>Substitui quem?</Label>
+                <Select
+                  value={memberSubstituteForUserId || 'none'}
+                  onValueChange={(value) => {
+                    setMemberSubstituteForUserId(value === 'none' ? '' : value)
+                    setValidationError(null)
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o titular" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Selecione o titular</SelectItem>
+                    {substituteCandidatesForMemberGroup.map((candidate) => (
+                      <SelectItem key={candidate.id} value={candidate.user_id}>
+                        {candidate.user?.full_name ?? 'Usuário não encontrado'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Use esta opção quando o titular estiver de férias, licença médica ou outro afastamento.
+                </p>
+              </div>
+            )}
             {validationError && <p className="text-sm text-destructive">{validationError}</p>}
             {error && <p className="text-sm text-destructive">{error}</p>}
           </div>

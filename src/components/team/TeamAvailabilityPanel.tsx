@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarOff,
+  Plus,
   Loader2,
   RefreshCw,
   ShieldAlert,
@@ -30,6 +31,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { useAuthContext } from "@/contexts/AuthContext";
 import type { TeamMember } from "@/hooks/useTeam";
+import { useApprovalGroups } from "@/hooks/useApprovalGroups";
 import { useProjectOptions } from "@/hooks/useProjectOptions";
 import { useTeamAvailability } from "@/hooks/useTeamAvailability";
 import {
@@ -92,6 +94,7 @@ export function TeamAvailabilityPanel({
     enabled: !availabilityState,
   });
   const availability = availabilityState ?? internalAvailability;
+  const approvalGroups = useApprovalGroups(Boolean(profile));
   const projectOptions = useProjectOptions();
   const [absenceUserId, setAbsenceUserId] = useState(profile?.id ?? "");
   const [absenceType, setAbsenceType] = useState<TeamAbsenceType>("vacation");
@@ -99,6 +102,7 @@ export function TeamAvailabilityPanel({
   const [absenceEnd, setAbsenceEnd] = useState(localDateTime(7, 18));
   const [absenceReason, setAbsenceReason] = useState("");
   const [absenceSubstitute, setAbsenceSubstitute] = useState("none");
+  const [absenceFormOpen, setAbsenceFormOpen] = useState(!compact);
   const [ownerUserId, setOwnerUserId] = useState(profile?.id ?? "");
   const [delegateUserId, setDelegateUserId] = useState("");
   const [delegationScope, setDelegationScope] =
@@ -114,20 +118,49 @@ export function TeamAvailabilityPanel({
   );
   const selectableMembers = members.filter((member) => member.active);
   const canChooseOwner = availability.canManage;
+  const autoBackupCandidates = useMemo(
+    () =>
+      approvalGroups.members
+        .filter(
+          (member) =>
+            member.is_active &&
+            member.role === "backup" &&
+            member.substitute_for_user_id ===
+              (canChooseOwner ? absenceUserId : profile?.id),
+        )
+        .map((member) => {
+          const substituteMember = members.find(
+            (candidate) => candidate.id === member.user_id && candidate.active,
+          );
+          return {
+            ...member,
+            substituteMember,
+          };
+        })
+        .filter(
+          (
+            candidate,
+          ): candidate is typeof candidate & { substituteMember: TeamMember } =>
+            Boolean(candidate.substituteMember),
+        ),
+    [
+      approvalGroups.members,
+      canChooseOwner,
+      absenceUserId,
+      members,
+      profile?.id,
+    ],
+  );
+  const autoBackupCandidate = autoBackupCandidates[0] ?? null;
+  const isAvailabilityNotInstalled = availability.status === "not_installed";
 
-  if (availability.status === "not_installed") {
-    return (
-      <Alert>
-        <CalendarOff className="h-4 w-4" />
-        <AlertTitle>Ausências e substituições não instaladas</AlertTitle>
-        <AlertDescription>
-          Aplique o ciclo 22_TRAMITA_calendar_enterprise_hardening para
-          habilitar disponibilidade da equipe. Usuários continuam ativos pelo
-          contrato atual até essa configuração existir.
-        </AlertDescription>
-      </Alert>
-    );
-  }
+  useEffect(() => {
+    if (!autoBackupCandidate) {
+      setAbsenceSubstitute("none");
+      return;
+    }
+    setAbsenceSubstitute(autoBackupCandidate.user_id);
+  }, [autoBackupCandidate, setAbsenceSubstitute]);
 
   if (availability.isLoading) {
     return (
@@ -149,6 +182,7 @@ export function TeamAvailabilityPanel({
     });
     if (saved) {
       setAbsenceReason("");
+      setAbsenceFormOpen(false);
       toast.success("Ausência registrada.");
     }
   }
@@ -236,15 +270,25 @@ export function TeamAvailabilityPanel({
             Registre indisponibilidade sem alterar responsáveis ou etapas.
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void availability.refresh()}
-        >
-          <RefreshCw className="h-4 w-4" />
-          Atualizar
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setAbsenceFormOpen((current) => !current)}
+          >
+            <Plus className="h-4 w-4" />
+            {absenceFormOpen ? "Fechar cadastro" : "Cadastrar ausência"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void availability.refresh()}
+          >
+            <RefreshCw className="h-4 w-4" />
+            Atualizar
+          </Button>
+        </div>
       </div>
 
       {availability.error && (
@@ -252,6 +296,18 @@ export function TeamAvailabilityPanel({
           <ShieldAlert className="h-4 w-4" />
           <AlertTitle>Disponibilidade indisponível</AlertTitle>
           <AlertDescription>{availability.error}</AlertDescription>
+        </Alert>
+      )}
+
+      {isAvailabilityNotInstalled && (
+        <Alert>
+          <CalendarOff className="h-4 w-4" />
+          <AlertTitle>Ausências e substituições não instaladas</AlertTitle>
+          <AlertDescription>
+            Aplique o ciclo 22_TRAMITA_calendar_enterprise_hardening para
+            habilitar disponibilidade da equipe. O botão de cadastro fica
+            visível, mas o registro só poderá ser feito depois da instalação.
+          </AlertDescription>
         </Alert>
       )}
 
@@ -284,234 +340,259 @@ export function TeamAvailabilityPanel({
         </Card>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Nova ausência</CardTitle>
-            <CardDescription>
-              Férias, licença, viagem, treinamento ou indisponibilidade.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Pessoa</Label>
-                <Select
-                  value={canChooseOwner ? absenceUserId : profile?.id}
-                  onValueChange={setAbsenceUserId}
-                  disabled={!canChooseOwner}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {selectableMembers.map((member) => (
-                      <SelectItem key={member.id} value={member.id}>
-                        {member.full_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Tipo</Label>
-                <Select
-                  value={absenceType}
-                  onValueChange={(value) =>
-                    setAbsenceType(value as TeamAbsenceType)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ABSENCE_TYPES.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Início</Label>
-                <Input
-                  type="datetime-local"
-                  value={absenceStart}
-                  onChange={(event) => setAbsenceStart(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Fim</Label>
-                <Input
-                  type="datetime-local"
-                  value={absenceEnd}
-                  onChange={(event) => setAbsenceEnd(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label>Substituto</Label>
-                <Select
-                  value={absenceSubstitute}
-                  onValueChange={setAbsenceSubstitute}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sem substituto</SelectItem>
-                    {selectableMembers
-                      .filter(
-                        (member) =>
-                          member.id !==
-                          (canChooseOwner ? absenceUserId : profile?.id),
-                      )
-                      .map((member) => (
+      {absenceFormOpen ? (
+        <div className="grid gap-5 xl:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Nova ausência</CardTitle>
+              <CardDescription>
+                Férias, licença, viagem, treinamento ou indisponibilidade.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Pessoa</Label>
+                  <Select
+                    value={canChooseOwner ? absenceUserId : profile?.id}
+                    onValueChange={setAbsenceUserId}
+                    disabled={!canChooseOwner}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectableMembers.map((member) => (
                         <SelectItem key={member.id} value={member.id}>
                           {member.full_name}
                         </SelectItem>
                       ))}
-                  </SelectContent>
-                </Select>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipo</Label>
+                  <Select
+                    value={absenceType}
+                    onValueChange={(value) =>
+                      setAbsenceType(value as TeamAbsenceType)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ABSENCE_TYPES.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Início</Label>
+                  <Input
+                    type="datetime-local"
+                    value={absenceStart}
+                    onChange={(event) => setAbsenceStart(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fim</Label>
+                  <Input
+                    type="datetime-local"
+                    value={absenceEnd}
+                    onChange={(event) => setAbsenceEnd(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Substituto</Label>
+                  <Select
+                    value={absenceSubstitute}
+                    onValueChange={setAbsenceSubstitute}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sem substituto</SelectItem>
+                      {selectableMembers
+                        .filter(
+                          (member) =>
+                            member.id !==
+                            (canChooseOwner ? absenceUserId : profile?.id),
+                        )
+                        .map((member) => (
+                          <SelectItem key={member.id} value={member.id}>
+                            {member.full_name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  {autoBackupCandidate ? (
+                    <p className="text-xs text-muted-foreground">
+                      Suplente do grupo de aprovação sugerido automaticamente:{" "}
+                      <strong>{autoBackupCandidate.substituteMember.full_name}</strong>
+                      {autoBackupCandidates.length > 1
+                        ? " (primeiro suplente compatível encontrado)."
+                        : "."}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Se houver um suplente vinculado ao membro em grupo de
+                      aprovação, ele será sugerido automaticamente aqui.
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Motivo da ausência</Label>
+                  <Input
+                    value={absenceReason}
+                    onChange={(event) => setAbsenceReason(event.target.value)}
+                    placeholder="Ex.: férias, licença médica, treinamento"
+                  />
+                </div>
               </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label>Motivo</Label>
-                <Input
-                  value={absenceReason}
-                  onChange={(event) => setAbsenceReason(event.target.value)}
-                  placeholder="Contexto opcional"
-                />
-              </div>
-            </div>
-            <Button
-              onClick={createAbsence}
-              disabled={
-                availability.isSaving || !availability.canUseAvailability
-              }
-            >
-              Registrar ausência
-            </Button>
-          </CardContent>
-        </Card>
+              <Button
+                onClick={createAbsence}
+                disabled={
+                  availability.isSaving || !availability.canUseAvailability
+                }
+              >
+                Registrar ausência
+              </Button>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Nova regra de delegação</CardTitle>
-            <CardDescription>
-              Define o substituto por contexto, sem reatribuição automática.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Titular</Label>
-                <Select
-                  value={canChooseOwner ? ownerUserId : profile?.id}
-                  onValueChange={setOwnerUserId}
-                  disabled={!canChooseOwner}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {selectableMembers.map((member) => (
-                      <SelectItem key={member.id} value={member.id}>
-                        {member.full_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Substituto</Label>
-                <Select
-                  value={delegateUserId}
-                  onValueChange={setDelegateUserId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {selectableMembers
-                      .filter(
-                        (member) =>
-                          member.id !==
-                          (canChooseOwner ? ownerUserId : profile?.id),
-                      )
-                      .map((member) => (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Nova regra de delegação</CardTitle>
+              <CardDescription>
+                Define o substituto por contexto, sem reatribuição automática.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Titular</Label>
+                  <Select
+                    value={canChooseOwner ? ownerUserId : profile?.id}
+                    onValueChange={setOwnerUserId}
+                    disabled={!canChooseOwner}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectableMembers.map((member) => (
                         <SelectItem key={member.id} value={member.id}>
                           {member.full_name}
                         </SelectItem>
                       ))}
-                  </SelectContent>
-                </Select>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Substituto</Label>
+                  <Select
+                    value={delegateUserId}
+                    onValueChange={setDelegateUserId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectableMembers
+                        .filter(
+                          (member) =>
+                            member.id !==
+                            (canChooseOwner ? ownerUserId : profile?.id),
+                        )
+                        .map((member) => (
+                          <SelectItem key={member.id} value={member.id}>
+                            {member.full_name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Escopo</Label>
+                  <Select
+                    value={delegationScope}
+                    onValueChange={(value) => {
+                      setDelegationScope(value as TeamDelegationScope);
+                      setDelegationContext("");
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DELEGATION_SCOPES.map((scope) => (
+                        <SelectItem key={scope.value} value={scope.value}>
+                          {scope.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Contexto</Label>
+                  {contextControl() ?? (
+                    <Input disabled value="Toda a organização" />
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Início opcional</Label>
+                  <Input
+                    type="datetime-local"
+                    value={delegationStart}
+                    onChange={(event) => setDelegationStart(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fim opcional</Label>
+                  <Input
+                    type="datetime-local"
+                    value={delegationEnd}
+                    onChange={(event) => setDelegationEnd(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Prioridade</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={delegationPriority}
+                    onChange={(event) =>
+                      setDelegationPriority(event.target.value)
+                    }
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Escopo</Label>
-                <Select
-                  value={delegationScope}
-                  onValueChange={(value) => {
-                    setDelegationScope(value as TeamDelegationScope);
-                    setDelegationContext("");
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DELEGATION_SCOPES.map((scope) => (
-                      <SelectItem key={scope.value} value={scope.value}>
-                        {scope.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Contexto</Label>
-                {contextControl() ?? (
-                  <Input disabled value="Toda a organização" />
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label>Início opcional</Label>
-                <Input
-                  type="datetime-local"
-                  value={delegationStart}
-                  onChange={(event) => setDelegationStart(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Fim opcional</Label>
-                <Input
-                  type="datetime-local"
-                  value={delegationEnd}
-                  onChange={(event) => setDelegationEnd(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Prioridade</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={delegationPriority}
-                  onChange={(event) =>
-                    setDelegationPriority(event.target.value)
-                  }
-                />
-              </div>
-            </div>
-            <Button
-              onClick={createDelegation}
-              disabled={
-                availability.isSaving || !availability.canUseAvailability
-              }
-            >
-              Criar delegação
-            </Button>
+              <Button
+                onClick={createDelegation}
+                disabled={
+                  availability.isSaving || !availability.canUseAvailability
+                }
+              >
+                Criar delegação
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <Card className="border-dashed">
+          <CardContent className="flex min-h-40 flex-col items-center justify-center gap-3 p-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              Use o botão <strong>Cadastrar ausência</strong> para abrir os
+              cards de cadastro de ausência e delegação.
+            </p>
           </CardContent>
         </Card>
-      </div>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-2">
         <Card>

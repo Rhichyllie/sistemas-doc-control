@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, GitBranch, ShieldCheck } from "lucide-react";
+import { ArrowLeft, GitBranch, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentTramiteCanvas } from "@/components/tramites/DocumentTramiteCanvas";
 import { DocumentTramiteEdgeInspector } from "@/components/tramites/DocumentTramiteEdgeInspector";
@@ -9,6 +9,16 @@ import { DocumentTramitePublishDialog } from "@/components/tramites/DocumentTram
 import { DocumentTramiteSimulationPanel } from "@/components/tramites/DocumentTramiteSimulationPanel";
 import { DocumentTramiteToolbar } from "@/components/tramites/DocumentTramiteToolbar";
 import { DocumentTramiteValidationPanel } from "@/components/tramites/DocumentTramiteValidationPanel";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useDocumentTramiteBuilder } from "@/hooks/useDocumentTramiteBuilder";
@@ -42,6 +52,7 @@ export function DocumentTramiteModeler({
   );
   const simulation = useDocumentTramiteSimulation(builder.graph);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [showSimulation, setShowSimulation] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
 
@@ -76,6 +87,17 @@ export function DocumentTramiteModeler({
       toast.success("Modelo de trâmite publicado.");
     } else {
       toast.error(catalog.error || "Não foi possível publicar o trâmite.");
+    }
+  }
+
+  async function removeTemplate() {
+    const success = await catalog.deleteTemplate(template.id);
+    if (success) {
+      setDeleteOpen(false);
+      toast.success("Fluxo excluído com sucesso.");
+      onBack();
+    } else {
+      toast.error(catalog.error || "Não foi possível excluir o fluxo.");
     }
   }
 
@@ -153,6 +175,18 @@ export function DocumentTramiteModeler({
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+          {catalog.canManage && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={catalog.isSaving}
+              className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 className="h-4 w-4" />
+              Excluir fluxo
+            </Button>
+          )}
           <Badge variant="outline">{summary.nodesCount} etapas</Badge>
           <Badge variant="outline">{summary.edgesCount} conexões</Badge>
           <Badge variant="outline">
@@ -270,6 +304,31 @@ export function DocumentTramiteModeler({
         isPublishing={catalog.isSaving}
         onConfirm={() => void publish()}
       />
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir fluxo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação remove permanentemente o fluxo <strong>{template.name}</strong>{" "}
+              e suas versões de modelagem. Se este fluxo já tiver trâmites em
+              execução, a exclusão poderá ser bloqueada pelo sistema.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={catalog.isSaving}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-rose-600 text-white hover:bg-rose-700"
+              disabled={catalog.isSaving}
+              onClick={(event) => {
+                event.preventDefault();
+                void removeTemplate();
+              }}
+            >
+              Confirmar exclusão
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

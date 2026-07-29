@@ -53,6 +53,7 @@ import { useProjectOptions } from "@/hooks/useProjectOptions";
 import { useLocalData } from "@/hooks/use-local-data";
 import { useDocumentCodeOptions, type DocumentCodeOption } from "@/hooks/useDocumentCodeOptions";
 import { DocumentCodingControls } from "@/components/documents/DocumentCodingControls";
+import { useLibraryScope } from "@/contexts/library-context";
 import { useTheme } from "@/contexts/theme-context";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { addBusinessDaysLocal } from "@/lib/operationalCalendar";
@@ -243,8 +244,11 @@ function isValidExternalLink(value: string) {
 
 export function DocumentsPage() {
   const location = useLocation();
+  const isDocumentsIndexRoute =
+    location.pathname === "/authenticated/documents" ||
+    /^\/authenticated\/biblioteca\/[^/]+\/documentos$/.test(location.pathname);
 
-  if (location.pathname !== "/authenticated/documents") {
+  if (!isDocumentsIndexRoute) {
     return <Outlet />;
   }
 
@@ -255,6 +259,7 @@ function DocumentsListPage() {
   const navigate = useNavigate();
   const { theme } = useTheme();
   const { org, profile } = useAuthContext();
+  const { libraryId } = useLibraryScope();
   const { disciplines } = useLocalData();
   const codeOptions = useDocumentCodeOptions({ requireManagement: false });
   const documentTypeOptions = useMemo(() => {
@@ -347,6 +352,12 @@ function DocumentsListPage() {
     error: manageDocumentError,
   } = useManageDocuments();
   const projectOptions = useProjectOptions();
+  const selectedLibraryProject = useMemo(
+    () =>
+      projectOptions.projects.find((project) => project.library_id === libraryId) ??
+      (projectOptions.projects.length === 1 ? projectOptions.projects[0] : null),
+    [libraryId, projectOptions.projects],
+  );
   const operationalCalendar = useOperationalCalendar({
     enabled: openNewDoc || Boolean(editingDocument),
   });
@@ -431,6 +442,15 @@ function DocumentsListPage() {
         : { ...current, analysis_deadline: computedEditAnalysisDeadline },
     );
   }, [computedEditAnalysisDeadline]);
+
+  useEffect(() => {
+    if (!openNewDoc || !selectedLibraryProject?.id) return;
+    setForm((current) =>
+      current.project_id === selectedLibraryProject.id
+        ? current
+        : { ...current, project_id: selectedLibraryProject.id },
+    );
+  }, [openNewDoc, selectedLibraryProject?.id]);
 
   function openEditDialog(document: Document) {
     setEditingDocument(document);
@@ -542,7 +562,7 @@ function DocumentsListPage() {
       doc_type: "",
       area: "",
       description: "",
-      project_id: "",
+      project_id: selectedLibraryProject?.id ?? "",
       discipline_id: "",
       register_revision: "00",
       register_status: "Recebido",
@@ -652,6 +672,10 @@ function DocumentsListPage() {
           if (open) {
             setNewDocStep(0);
             setLinkedDocumentIds([]);
+            setForm((current) => ({
+              ...current,
+              project_id: selectedLibraryProject?.id ?? current.project_id,
+            }));
           } else {
             setLinkedDocumentIds([]);
           }
@@ -882,7 +906,11 @@ function DocumentsListPage() {
                                   project_id: value === "none" ? "" : value,
                                 })
                               }
-                              disabled={!projectOptions.canUseProjects && projectOptions.projects.length === 0}
+                              disabled={
+                                Boolean(selectedLibraryProject) ||
+                                (!projectOptions.canUseProjects &&
+                                  projectOptions.projects.length === 0)
+                              }
                             >
                               <SelectTrigger className="pl-9">
                                 <SelectValue
@@ -904,6 +932,11 @@ function DocumentsListPage() {
                               </SelectContent>
                             </Select>
                           </div>
+                          {selectedLibraryProject && (
+                            <p className="mt-1.5 text-[11px] text-muted-foreground">
+                              Projeto preenchido automaticamente pela biblioteca ativa.
+                            </p>
+                          )}
                           {projectOptions.compatibilityMessage && (
                             <p className="text-[11px] text-muted-foreground mt-1.5">
                               {projectOptions.compatibilityMessage}

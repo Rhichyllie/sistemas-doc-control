@@ -89,6 +89,20 @@ function isMissingRpc(error: unknown) {
   );
 }
 
+function isDeleteRestrictedByExecution(error: unknown) {
+  if (!isRecord(error)) return false;
+  const text = [error.code, error.message, error.details, error.hint]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+  return (
+    text.includes("foreign key") &&
+    (text.includes("document_tramite_instances") ||
+      text.includes("document_tramite_instance_steps") ||
+      text.includes("on delete restrict"))
+  );
+}
+
 function normalizeStatus(value: unknown): DocumentTramiteTemplateStatus {
   return value === "published" || value === "archived" ? value : "draft";
 }
@@ -880,6 +894,62 @@ export function useDocumentTramiteTemplates() {
     [updateTemplate],
   );
 
+  const deleteTemplate = useCallback(
+    async (templateId: string) => {
+      if (!profile?.id || !profile.org_id || !canManage) {
+        setError("Somente administradores e gestores podem excluir trâmites.");
+        return false;
+      }
+
+      if (isLocalMode) {
+        setIsSaving(true);
+        setError(null);
+        const nextTemplates = templates.filter((template) => template.id !== templateId);
+        const nextVersions = versions.filter((version) => version.template_id !== templateId);
+        saveLocalTramiteStore(profile.org_id, nextTemplates, nextVersions);
+        setTemplates(nextTemplates);
+        setVersions(nextVersions);
+        setSchemaStatus(nextTemplates.length ? "ready" : "empty");
+        setIsSaving(false);
+        return true;
+      }
+
+      setIsSaving(true);
+      setError(null);
+      const result = await supabase
+        .from("document_tramite_templates")
+        .delete()
+        .eq("id", templateId)
+        .eq("org_id", profile.org_id);
+
+      if (!result.error) {
+        setIsSaving(false);
+        await refresh();
+        return true;
+      }
+
+      setError(
+        isDeleteRestrictedByExecution(result.error)
+          ? "Este fluxo já possui execuções iniciadas e não pode ser excluído. Arquive-o ou encerre os trâmites vinculados antes de tentar novamente."
+          : getErrorMessage(
+              result.error,
+              "Não foi possível excluir o trâmite.",
+            ),
+      );
+      setIsSaving(false);
+      return false;
+    },
+    [
+      canManage,
+      isLocalMode,
+      profile?.id,
+      profile?.org_id,
+      refresh,
+      templates,
+      versions,
+    ],
+  );
+
   const duplicateTemplate = useCallback(
     async (template: DocumentTramiteTemplate) => {
       return createTemplate({
@@ -931,6 +1001,7 @@ export function useDocumentTramiteTemplates() {
     saveGraph,
     publishTemplate,
     archiveTemplate,
+    deleteTemplate,
     duplicateTemplate,
   };
 }

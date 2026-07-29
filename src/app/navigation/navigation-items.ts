@@ -4,7 +4,6 @@ import {
   CheckSquare,
   FileCheck2,
   FileStack,
-  FolderKanban,
   GitBranch,
   Hash,
   House,
@@ -21,7 +20,6 @@ import {
   LineChart,
   ShieldCheck,
   Bell,
-  Building2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -44,10 +42,8 @@ export const navigationSections: readonly NavigationSection[] = [
   {
     label: "PAINEL",
     items: [
-      { to: "/authenticated/organizacao", label: "Bibliotecas", icon: Building2, scope: "global" },
       { to: "/authenticated/dashboard", label: "Início", icon: House, scope: "library" },
       { to: "/authenticated/documents", label: "Documentos", icon: FileText, scope: "library" },
-      { to: "/authenticated/projetos", label: "Projetos", icon: FolderKanban, scope: "library" },
       { to: "/authenticated/documentos/tramites", label: "Modelos de tramitação", icon: GitBranch, managerOnly: true, scope: "library" },
       {
         to: "/authenticated/fluxo-de-aprovacao",

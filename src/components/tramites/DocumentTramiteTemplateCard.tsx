@@ -22,6 +22,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { DocumentTramiteTemplate } from "@/lib/documentTramiteModel";
 
@@ -106,6 +113,10 @@ function useFlowSummary(template: DocumentTramiteTemplate): FlowSummary {
 export function DocumentTramiteTemplateCard({
   template,
   selectedId,
+  selectedDocumentId,
+  selectedDocumentOptions,
+  selectedDocumentSummary,
+  onSelectedDocumentChange,
   onSelect,
   onEdit,
   onDuplicate,
@@ -114,6 +125,26 @@ export function DocumentTramiteTemplateCard({
 }: {
   template: DocumentTramiteTemplate;
   selectedId?: string | null;
+  selectedDocumentId?: string;
+  selectedDocumentOptions?: Array<{
+    id: string;
+    title: string;
+    code: string | null;
+  }>;
+  selectedDocumentSummary?: {
+    code: string | null;
+    title: string;
+    register_revision: string | null;
+    register_status: string | null;
+    project_name: string | null;
+    discipline_name: string | null;
+    received_at: string | null;
+    analysis_deadline: string | null;
+    analysis_days: number | null;
+    doc_type: string | null;
+    area: string | null;
+  } | null;
+  onSelectedDocumentChange?: (value: string) => void;
   onSelect: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
@@ -158,33 +189,37 @@ export function DocumentTramiteTemplateCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3
-              className={cn(
-                "truncate font-semibold text-slate-900",
-                isSelected ? "text-xl" : "text-base",
-              )}
-            >
-              {template.name}
-            </h3>
-            <Badge
-              className={cn(
-                "rounded-full border px-2 py-0 font-medium",
-                isSelected ? "text-xs" : "text-[11px]",
-                STATUS_STYLES[template.status],
-              )}
-            >
-              {statusLabel}
-            </Badge>
-          </div>
-          <p
-            className={cn(
-              "mt-1 truncate text-slate-500",
-              isSelected ? "text-sm" : "text-xs",
-            )}
-          >
-            {template.code} · Versão {version?.version_number ?? 1}
-          </p>
+          {!isSelected && (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3
+                  className={cn(
+                    "truncate font-semibold text-slate-900",
+                    isSelected ? "text-xl" : "text-base",
+                  )}
+                >
+                  {template.name}
+                </h3>
+                <Badge
+                  className={cn(
+                    "rounded-full border px-2 py-0 font-medium",
+                    isSelected ? "text-xs" : "text-[11px]",
+                    STATUS_STYLES[template.status],
+                  )}
+                >
+                  {statusLabel}
+                </Badge>
+              </div>
+              <p
+                className={cn(
+                  "mt-1 truncate text-slate-500",
+                  isSelected ? "text-sm" : "text-xs",
+                )}
+              >
+                {template.code} · Versão {version?.version_number ?? 1}
+              </p>
+            </>
+          )}
         </div>
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>
@@ -265,15 +300,90 @@ export function DocumentTramiteTemplateCard({
         </DropdownMenu>
       </div>
 
-      <p
-        className={cn(
-          "line-clamp-2 text-slate-500",
-          isSelected ? "mt-4 min-h-[3rem] text-base" : "mt-3 min-h-[2.5rem] text-sm",
-        )}
-      >
-        {template.description?.trim() ||
-          "Fluxo de aprovação modelado para o ciclo documental."}
-      </p>
+      {isSelected && selectedDocumentSummary && (
+        <div className="mt-5 rounded-2xl border border-sky-100 bg-sky-50/70 p-4">
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700/80">
+                Documento no fluxo
+              </p>
+              {selectedDocumentOptions && selectedDocumentOptions.length > 0 && (
+                <Select
+                  value={selectedDocumentId ?? selectedDocumentOptions[0]?.id}
+                  onValueChange={(value) => onSelectedDocumentChange?.(value)}
+                >
+                  <SelectTrigger
+                    className="border-sky-200 bg-white"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <SelectValue placeholder="Selecione o documento" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectedDocumentOptions.map((document) => (
+                      <SelectItem key={document.id} value={document.id}>
+                        {document.code ? `${document.code} · ` : ""}
+                        {document.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-start gap-2">
+              <p className="text-sm font-semibold text-slate-900">
+                {selectedDocumentSummary.code ?? "Sem código"}
+              </p>
+              <Badge
+                variant="outline"
+                className="rounded-full border-slate-200 bg-white text-slate-700"
+              >
+                Rev. {selectedDocumentSummary.register_revision ?? "—"}
+              </Badge>
+              <Badge
+                variant="outline"
+                className="rounded-full border-amber-200 bg-amber-50 text-amber-700"
+              >
+                {selectedDocumentSummary.register_status ?? "—"}
+              </Badge>
+            </div>
+            <p className="text-sm text-slate-700">{selectedDocumentSummary.title}</p>
+          </div>
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              ["Projeto", selectedDocumentSummary.project_name ?? "Sem projeto"],
+              ["Disciplina", selectedDocumentSummary.discipline_name ?? "—"],
+              ["Recebido em", selectedDocumentSummary.received_at ? new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(new Date(`${selectedDocumentSummary.received_at}T00:00:00`)) : "—"],
+              ["Prazo", selectedDocumentSummary.analysis_deadline ? new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(new Date(`${selectedDocumentSummary.analysis_deadline}T00:00:00`)) : "—"],
+              ["Dias de análise", selectedDocumentSummary.analysis_days !== null ? String(selectedDocumentSummary.analysis_days) : "Não definido"],
+              ["Tipo / Área", `${selectedDocumentSummary.doc_type ?? "—"} · ${selectedDocumentSummary.area ?? "—"}`],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-xl border border-white/80 bg-white/80 p-3"
+              >
+                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  {label}
+                </p>
+                <p className="mt-1 text-sm font-medium text-slate-800">{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!isSelected && (
+        <p
+          className={cn(
+            "line-clamp-2 text-slate-500",
+            isSelected ? "mt-4 min-h-[3rem] text-base" : "mt-3 min-h-[2.5rem] text-sm",
+          )}
+        >
+          {template.description?.trim() ||
+            "Fluxo de aprovação modelado para o ciclo documental."}
+        </p>
+      )}
 
       {steps.length > 0 ? (
         <div
@@ -303,16 +413,18 @@ export function DocumentTramiteTemplateCard({
                       )}
                     />
                   </div>
-                  <p
-                    className={cn(
-                      "font-medium text-slate-700",
-                      isSelected
-                        ? "mt-2.5 max-w-[150px] text-xs text-center"
-                        : "mt-1.5 max-w-[76px] truncate text-[11px]",
-                    )}
-                  >
-                    {step.label}
-                  </p>
+                  {!isSelected && (
+                    <p
+                      className={cn(
+                        "font-medium text-slate-700",
+                        isSelected
+                          ? "mt-2.5 max-w-[150px] text-xs text-center"
+                          : "mt-1.5 max-w-[76px] truncate text-[11px]",
+                      )}
+                    >
+                      {step.label}
+                    </p>
+                  )}
                 </div>
                 {showConnector && (
                   <div

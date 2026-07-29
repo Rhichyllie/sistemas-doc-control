@@ -90,6 +90,7 @@ function normalizeLocalDocument(row: unknown): Document | null {
   return {
     id: row.id,
     org_id: typeof row.org_id === 'string' ? row.org_id : '',
+    library_id: typeof row.library_id === 'string' ? row.library_id : null,
     code: typeof row.code === 'string' ? row.code : null,
     title: typeof row.title === 'string' ? row.title : 'Documento sem título',
     project_id: typeof row.project_id === 'string' ? row.project_id : null,
