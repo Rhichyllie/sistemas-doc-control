@@ -17,6 +17,12 @@
     "repo:doctor": "node scripts/repo-doctor.mjs",
     "validate:structure": "node scripts/validate-structure.mjs",
     "verify": "bun run typecheck && bun run validate:structure && bun run build",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status",
+    "supabase:db:reset": "supabase db reset",
+    "supabase:db:push": "supabase db push",
+    "supabase:functions:serve": "supabase functions serve",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
     "electron:build": "npm run build && electron-builder",
     "electron:build:win": "npm run build && electron-builder --win --publish never"

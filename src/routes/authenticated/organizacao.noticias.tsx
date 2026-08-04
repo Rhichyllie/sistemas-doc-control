@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Newspaper } from "lucide-react";
 import { OrganizationPublicationCard } from "@/components/organization/OrganizationPublicationCard";
+import { CreatePublicationDialog } from "@/components/organization/CreatePublicationDialog";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -10,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { setStoredActiveLibraryId } from "@/contexts/library-context";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { usePublications, type PublicationRecord } from "@/hooks/usePublications";
 
 export const Route = createFileRoute("/authenticated/organizacao/noticias")({
@@ -18,7 +20,12 @@ export const Route = createFileRoute("/authenticated/organizacao/noticias")({
 
 function OrganizationNewsPage() {
   const navigate = useNavigate();
+  const { profile } = useAuthContext();
   const publications = usePublications();
+
+  // TODO: ajuste para o campo real de permissão do seu `profile`
+  // (mesma observação feita em organizacao.tsx)
+  const isAdmin = profile?.role === "admin";
 
   async function handleOpenPublication(publication: PublicationRecord) {
     if (publication.documento_id && publication.documento?.library_id) {
@@ -52,12 +59,17 @@ function OrganizationNewsPage() {
           </p>
         </div>
 
-        <Button asChild variant="secondary" className="gap-2">
-          <Link to="/authenticated/organizacao">
-            <ArrowLeft className="h-4 w-4" />
-            Voltar para bibliotecas
-          </Link>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
+            <CreatePublicationDialog onCreate={publications.createPublication} />
+          )}
+          <Button asChild variant="secondary" className="gap-2">
+            <Link to="/authenticated/organizacao">
+              <ArrowLeft className="h-4 w-4" />
+              Voltar para bibliotecas
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Card className="border-slate-200">
@@ -74,6 +86,7 @@ function OrganizationNewsPage() {
                 <OrganizationPublicationCard
                   key={publication.id}
                   publication={publication}
+                  isAdmin={isAdmin}
                   onOpen={() => {
                     void handleOpenPublication(publication);
                   }}

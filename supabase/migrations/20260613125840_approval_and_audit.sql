@@ -2,7 +2,7 @@
 
 -- ── APPROVAL FLOWS ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.approval_flows (
-  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   document_id     UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
   org_id          UUID NOT NULL REFERENCES public.organizations(id),
   step            INTEGER NOT NULL,
@@ -21,7 +21,7 @@ ALTER TABLE public.approval_flows ENABLE ROW LEVEL SECURITY;
 
 -- ── AUDIT TRAIL ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.audit_trail (
-  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   document_id  UUID NOT NULL REFERENCES public.documents(id),
   org_id       UUID NOT NULL REFERENCES public.organizations(id),
   user_id      UUID NOT NULL REFERENCES public.profiles(id),
@@ -37,7 +37,7 @@ ALTER TABLE public.audit_trail ENABLE ROW LEVEL SECURITY;
 
 -- ── NOTIFICATIONS ──────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.notifications (
-  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id       UUID NOT NULL REFERENCES public.organizations(id),
   user_id      UUID NOT NULL REFERENCES public.profiles(id),
   document_id  UUID REFERENCES public.documents(id),

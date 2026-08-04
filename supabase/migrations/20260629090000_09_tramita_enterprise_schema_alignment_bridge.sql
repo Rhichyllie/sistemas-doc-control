@@ -5,6 +5,37 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- ── FUNDAÇÃO DEFENSIVA PARA INSTALAÇÕES NOVAS ─────────────
+-- Em instalações limpas, os grupos enterprise ainda não existem quando esta
+-- migration roda. Criamos uma base compatível para que o alinhamento funcione
+-- antes da migration P-9A, que depois reforça índices, grants e policies.
+CREATE TABLE IF NOT EXISTS public.approval_groups (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id      UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  description TEXT,
+  scope       TEXT NOT NULL DEFAULT 'organization',
+  project_id  UUID REFERENCES public.projects(id) ON DELETE SET NULL,
+  is_active   BOOLEAN NOT NULL DEFAULT true,
+  metadata    JSONB NOT NULL DEFAULT '{}'::JSONB,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.approval_group_members (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id        UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  group_id      UUID NOT NULL REFERENCES public.approval_groups(id) ON DELETE CASCADE,
+  user_id       UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  profile_id    UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  role          TEXT NOT NULL DEFAULT 'member',
+  role_in_group TEXT NOT NULL DEFAULT 'member',
+  is_active     BOOLEAN NOT NULL DEFAULT true,
+  active        BOOLEAN NOT NULL DEFAULT true,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (group_id, user_id)
+);
+
 -- ── APPROVAL GROUP MEMBERS: ALIASES LEGADO/ENTERPRISE ─────
 ALTER TABLE public.approval_group_members
   ADD COLUMN IF NOT EXISTS profile_id UUID,

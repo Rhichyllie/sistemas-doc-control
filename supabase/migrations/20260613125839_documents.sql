@@ -59,7 +59,7 @@ ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
 
 -- ── DOCUMENT VERSIONS ──────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.document_versions (
-  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   document_id     UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
   org_id          UUID NOT NULL REFERENCES public.organizations(id),
   revision        INTEGER NOT NULL,

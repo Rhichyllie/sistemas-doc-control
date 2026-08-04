@@ -1,18 +1,24 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   Building2,
+  ChevronLeft,
+  ChevronRight,
   FileStack,
   FolderOpen,
+  ImagePlus,
+  Loader2,
   Plus,
   ShieldCheck,
   Settings,
   Sparkles,
   Users,
   Workflow,
+  X,
 } from "lucide-react";
 import { OrganizationPublicationCard } from "@/components/organization/OrganizationPublicationCard";
+import { CreatePublicationDialog } from "@/components/organization/CreatePublicationDialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -83,9 +89,11 @@ function buildHeroImageUrl(publication: PublicationRecord | null) {
 
 function OrganizationLibrariesPage() {
   const navigate = useNavigate();
-  const { profile, user } = useAuthContext();
+  const { profile, user, hasRole } = useAuthContext();
   const catalog = useLibraries();
-  const publications = usePublications({ limit: 4 });
+  // Busca 5: 1 vai para o card de destaque (hero) e as outras 4 preenchem
+  // completamente a grade "Últimas notícias e publicações" (xl:grid-cols-4).
+  const publications = usePublications({ limit: 5 });
   const [open, setOpen] = useState(false);
   const [enterpriseMode, setEnterpriseMode] = useState<"existing" | "new">(
     "existing",
@@ -94,6 +102,15 @@ function OrganizationLibrariesPage() {
   const [newEnterpriseName, setNewEnterpriseName] = useState("");
   const [phaseCode, setPhaseCode] = useState<LibraryPhaseCode | "">("");
   const [libraryName, setLibraryName] = useState("");
+
+  const isAdmin = hasRole(["admin"]);
+
+  const [heroImagePreview, setHeroImagePreview] = useState<string | null>(null);
+  const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
+  const heroFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Índice do slide ativo no carrossel do hero (dots/setas)
+  const [activeHeroSlide, setActiveHeroSlide] = useState(0);
 
   const canSubmit = useMemo(() => {
     const hasEnterprise =
@@ -108,6 +125,12 @@ function OrganizationLibrariesPage() {
     publications.latestPublications.length > 1
       ? publications.latestPublications.slice(1, 5)
       : publications.latestPublications;
+
+  // Publicações candidatas a aparecer no carrossel do hero (ajuste a fonte se tiver uma lista própria de "destaques")
+  const heroSlides = useMemo(
+    () => publications.latestPublications.slice(0, 3),
+    [publications.latestPublications],
+  );
 
   const accessibleLibraries = useMemo(
     () =>
@@ -124,6 +147,45 @@ function OrganizationLibrariesPage() {
     profile?.full_name?.split(" ")[0] ||
     user?.user_metadata?.full_name?.split(" ")[0] ||
     "Ana";
+
+  const heroImageUrl = heroImagePreview ?? buildHeroImageUrl(featuredPublication);
+
+  function handleHeroPrev() {
+    if (heroSlides.length === 0) return;
+    setActiveHeroSlide((prev) => (prev - 1 + heroSlides.length) % heroSlides.length);
+  }
+
+  function handleHeroNext() {
+    if (heroSlides.length === 0) return;
+    setActiveHeroSlide((prev) => (prev + 1) % heroSlides.length);
+  }
+
+  async function handleHeroImageSelect(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !featuredPublication) return;
+
+    const localPreview = URL.createObjectURL(file);
+    setHeroImagePreview(localPreview);
+    setUploadingHeroImage(true);
+
+    try {
+      // TODO: troque pela sua rotina real de upload (ex.: Supabase Storage)
+      // const uploadedUrl = await uploadPublicationImage(featuredPublication.id, file);
+      // await publications.updateImage(featuredPublication.id, uploadedUrl);
+    } catch (error) {
+      console.error("Falha ao enviar imagem de destaque", error);
+      setHeroImagePreview(null);
+    } finally {
+      setUploadingHeroImage(false);
+      event.target.value = "";
+    }
+  }
+
+  function handleRemoveHeroImage() {
+    setHeroImagePreview(null);
+    // TODO: se a imagem já estiver salva no backend, dispare aqui a chamada
+    // para limpar `imagem_url` na publicação (ex.: publications.updateImage(featuredPublication.id, null))
+  }
 
   async function handleCreateLibrary() {
     if (!canSubmit || !phaseCode) return;
@@ -370,11 +432,32 @@ function OrganizationLibrariesPage() {
         </Dialog>
       </div>
 
-      <section className="overflow-hidden rounded-[30px] bg-[#071d3d] shadow-[0_24px_60px_-28px_rgba(7,29,61,0.65)]">
-        <div className="grid min-h-[360px] lg:grid-cols-[1.02fr_0.98fr]">
-          <div className="relative flex flex-col justify-between gap-8 p-8 text-white lg:p-10">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(88,168,255,0.32),transparent_42%)]" />
-            <div className="relative space-y-5">
+      {/* ============================================================
+          HERO / CARD DE DESTAQUE
+          Reestruturado de grid 2-colunas para overlay full-bleed:
+          a imagem ocupa o card inteiro como plano de fundo, com
+          gradiente por cima para dar contraste ao texto. Isso resolve
+          o problema de a imagem "encolher" dentro de uma coluna fixa.
+      ============================================================ */}
+      <section className="relative overflow-hidden shadow-[0_24px_60px_-28px_rgba(7,29,61,0.65)]">
+        <div className="relative min-h-[600px] w-full bg-[#071d3d] lg:min-h-[680px]">
+          {/* Imagem de fundo cobrindo o card inteiro */}
+          <img
+            src={heroImageUrl}
+            alt={featuredPublication?.titulo ?? "Destaque das bibliotecas"}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+
+          {/* Gradiente da esquerda para a direita, garantindo contraste do texto sobre a foto */}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#071d3d] via-[#071d3d]/78 to-[#071d3d]/10" />
+          {/* Reforço sutil de baixo para cima, para o CTA e os dots não se perderem na foto */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" />
+          {/* Glow decorativo no canto superior direito, como no design original */}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(29, 128, 235, 0.28),transparent_55%)]" />
+
+          {/* Conteúdo textual sobreposto */}
+          <div className="relative flex h-full min-h-[600px] flex-col justify-between gap-8 p-8 text-white lg:min-h-[680px] lg:p-16">
+            <div className="max-w-2xl space-y-5">
               <Badge className="w-fit rounded-full border-cyan-400/35 bg-cyan-500/10 px-3 text-[11px] uppercase tracking-[0.14em] text-cyan-200 hover:bg-cyan-500/10">
                 Destaque
               </Badge>
@@ -383,22 +466,22 @@ function OrganizationLibrariesPage() {
                   featuredPublication?.data_publicacao ?? new Date().toISOString(),
                 )}
               </p>
-              <div className="max-w-xl space-y-4">
-                <h2 className="text-3xl font-semibold leading-tight tracking-tight lg:text-[2.55rem]">
+              <div className="space-y-4">
+                <h2 className="text-4xl font-semibold leading-tight tracking-tight lg:text-[3.25rem]">
                   {featuredPublication?.titulo ??
                     "Nova matriz de segregação de funções e permissões"}
                 </h2>
-                <p className="max-w-lg text-sm leading-7 text-blue-100/80">
+                <p className="max-w-xl text-base leading-7 text-blue-100/80 lg:text-lg">
                   {featuredPublication?.resumo ??
                     "Atualizamos a matriz para reforçar a segurança da informação e garantir maior rastreabilidade nos processos de aprovação."}
                 </p>
               </div>
             </div>
 
-            <div className="relative flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Button
                 type="button"
-                className="h-11 rounded-xl bg-white px-5 text-slate-900 hover:bg-slate-100"
+                className="h-14 rounded-2xl bg-white px-8 text-base font-semibold text-slate-900 shadow-[0_10px_24px_-8px_rgba(0,0,0,0.45)] transition-all hover:-translate-y-0.5 hover:bg-slate-100 hover:shadow-[0_14px_28px_-8px_rgba(0,0,0,0.5)]"
                 onClick={() => {
                   if (featuredPublication) {
                     void handleOpenPublication(featuredPublication);
@@ -406,24 +489,88 @@ function OrganizationLibrariesPage() {
                 }}
               >
                 Acessar documento
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
-              <div className="ml-auto hidden items-center gap-2 lg:flex">
-                <span className="h-2 w-2 rounded-full bg-white" />
-                <span className="h-2 w-2 rounded-full bg-white/40" />
-                <span className="h-2 w-2 rounded-full bg-white/40" />
-              </div>
+
+              {heroSlides.length > 1 && (
+                <div className="ml-auto hidden items-center gap-2 lg:flex">
+                  {heroSlides.map((slide, index) => (
+                    <button
+                      key={slide.id}
+                      type="button"
+                      aria-label={`Ir para destaque ${index + 1}`}
+                      onClick={() => setActiveHeroSlide(index)}
+                      className={cn(
+                        "h-2 rounded-full transition-all",
+                        index === activeHeroSlide ? "w-6 bg-white" : "w-2 bg-white/40 hover:bg-white/60",
+                      )}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="relative min-h-[280px]">
-            <img
-              src={buildHeroImageUrl(featuredPublication)}
-              alt={featuredPublication?.titulo ?? "Destaque das bibliotecas"}
-              className="h-full w-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#071d3d]/65 via-[#071d3d]/18 to-transparent lg:bg-gradient-to-l lg:from-transparent lg:via-[#071d3d]/10 lg:to-[#071d3d]/5" />
-          </div>
+          {/* Setas de navegação do carrossel */}
+          {heroSlides.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={handleHeroPrev}
+                aria-label="Destaque anterior"
+                className="absolute left-4 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm transition hover:bg-black/50 lg:flex"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleHeroNext}
+                aria-label="Próximo destaque"
+                className="absolute right-4 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm transition hover:bg-black/50 lg:flex"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </>
+          )}
+
+          {/* Controles de administrador para a imagem de destaque */}
+          {isAdmin && (
+            <div className="absolute right-4 top-4 flex gap-2">
+              {heroImagePreview && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="h-9 gap-1.5 rounded-lg bg-black/40 text-white backdrop-blur-sm hover:bg-black/55"
+                  onClick={handleRemoveHeroImage}
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Remover
+                </Button>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 gap-1.5 rounded-lg bg-white/95 text-slate-900 shadow-sm hover:bg-white"
+                disabled={uploadingHeroImage || !featuredPublication}
+                onClick={() => heroFileInputRef.current?.click()}
+              >
+                {uploadingHeroImage ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ImagePlus className="h-3.5 w-3.5" />
+                )}
+                {heroImagePreview ? "Trocar imagem" : "Inserir imagem"}
+              </Button>
+              <input
+                ref={heroFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleHeroImageSelect}
+              />
+            </div>
+          )}
         </div>
       </section>
 
@@ -445,12 +592,19 @@ function OrganizationLibrariesPage() {
           </Button>
         </div>
 
+        {isAdmin && (
+          <div className="flex justify-end">
+            <CreatePublicationDialog onCreate={publications.createPublication} />
+          </div>
+        )}
+
         {newsroomPublications.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {newsroomPublications.map((publication) => (
               <OrganizationPublicationCard
                 key={publication.id}
                 publication={publication}
+                isAdmin={isAdmin}
                 onOpen={() => {
                   void handleOpenPublication(publication);
                 }}

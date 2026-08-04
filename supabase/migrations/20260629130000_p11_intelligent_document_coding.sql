@@ -564,7 +564,7 @@ BEGIN
           'O código previsto já existe; a criação confirmará outro número livre.'
         )
         ELSE '[]'::JSONB
-      )
+      END
     );
   END IF;
 
@@ -631,7 +631,7 @@ BEGIN
         'O código previsto já existe; a alocação avançará até encontrar um código livre.'
       )
       ELSE '[]'::JSONB
-    )
+    END
   );
 END;
 $$;

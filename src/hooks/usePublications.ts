@@ -29,6 +29,16 @@ export interface PublicationRecord {
     | null;
 }
 
+/** Payload para criar uma nova publicação pela UI de administração. */
+export interface CreatePublicationInput {
+  titulo: string;
+  categoria: PublicationCategory;
+  resumo?: string | null;
+  imagem_url?: string | null;
+  documento_id?: string | null;
+  data_publicacao?: string;
+}
+
 const DEFAULT_PUBLICATIONS: Omit<
   PublicationRecord,
   "org_id" | "autor_id" | "documento_id" | "documento"
@@ -218,6 +228,47 @@ export function usePublications(options: { limit?: number } = {}) {
     [limit, publications],
   );
 
+  /**
+   * Cria uma nova publicação vinculada (opcionalmente) a um documento já
+   * cadastrado, e atualiza a lista local em seguida.
+   *
+   * TODO: confirme o nome da coluna de autor em `profiles` — assumi
+   * `profile.id` como `autor_id`. Ajuste se o seu AuthContext usar outro campo
+   * (ex.: `profile.user_id`).
+   */
+  const createPublication = useCallback(
+    async (input: CreatePublicationInput) => {
+      if (!profile?.org_id) {
+        throw new Error("Organização não identificada para criar a publicação.");
+      }
+
+      const { data, error: insertError } = await supabase
+        .from("publicacoes")
+        .insert({
+          org_id: profile.org_id,
+          titulo: input.titulo,
+          categoria: input.categoria,
+          resumo: input.resumo ?? null,
+          imagem_url: input.imagem_url ?? null,
+          documento_id: input.documento_id ?? null,
+          data_publicacao: input.data_publicacao ?? new Date().toISOString(),
+          autor_id: profile.id ?? null,
+        })
+        .select("id")
+        .single();
+
+      if (insertError) {
+        throw new Error(
+          getErrorMessage(insertError, "Não foi possível criar a publicação."),
+        );
+      }
+
+      await refresh();
+      return data?.id as string | undefined;
+    },
+    [profile, refresh],
+  );
+
   return {
     publications,
     latestPublications,
@@ -225,5 +276,6 @@ export function usePublications(options: { limit?: number } = {}) {
     error,
     usingFallback,
     refresh,
+    createPublication,
   };
 }

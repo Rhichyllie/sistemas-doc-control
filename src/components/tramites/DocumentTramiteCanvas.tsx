@@ -86,6 +86,7 @@ function FlowCanvas({
         id: edge.id,
         source: edge.source,
         target: edge.target,
+        type: "smoothstep", 
         label:
           edge.label ||
           (edge.condition_type === "always"

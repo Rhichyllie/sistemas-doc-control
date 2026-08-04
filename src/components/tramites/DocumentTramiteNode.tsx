@@ -84,18 +84,18 @@ export function DocumentTramiteNode({
     selected && "ring-2 ring-primary ring-offset-2",
     data.invalid && "ring-2 ring-destructive",
     isCircular
-      ? "h-32 w-32 rounded-full"
+      ? "h-20 w-20 rounded-full"
       : isDecision
-        ? "h-36 w-36 rotate-45 rounded-[1.75rem]"
+        ? "h-24 w-24  [clip-path:polygon(50%_0%,100%_50%,50%_100%,0%_50%)]"
         : "min-w-56 rounded-xl",
   );
 
   const contentClassName = cn(
     "relative z-10 h-full w-full",
     isCircular
-      ? "flex flex-col items-center justify-center gap-2 p-4 text-center"
+      ? "flex flex-col items-center justify-center gap-1.5 p-2 text-center"
       : isDecision
-        ? "flex h-full w-full -rotate-45 flex-col items-center justify-center gap-1.5 p-4 text-center"
+        ? "flex flex-col items-center justify-center gap-1 p-3 text-center"
         : "p-3",
   );
 
@@ -110,18 +110,31 @@ export function DocumentTramiteNode({
 
   return (
     <div className={rootClassName}>
-      {!isStart && (
-        <Handle
-          type="target"
-          position={Position.Left}
-          className="!h-3 !w-3 !border-2 !border-background !bg-primary"
-        />
+      {isDecision ? (
+        <>
+          <Handle type="target" id="top-target" position={Position.Top} className="!h-3 !w-3 !border-2 !border-background !bg-primary" />
+          <Handle type="source" id="top-source" position={Position.Top} className="!h-3 !w-3 !border-2 !border-background !bg-primary" />
+          <Handle type="target" id="right-target" position={Position.Right} className="!h-3 !w-3 !border-2 !border-background !bg-primary" />
+          <Handle type="source" id="right-source" position={Position.Right} className="!h-3 !w-3 !border-2 !border-background !bg-primary" />
+          <Handle type="target" id="bottom-target" position={Position.Bottom} className="!h-3 !w-3 !border-2 !border-background !bg-primary" />
+          <Handle type="source" id="bottom-source" position={Position.Bottom} className="!h-3 !w-3 !border-2 !border-background !bg-primary" />
+          <Handle type="target" id="left-target" position={Position.Left} className="!h-3 !w-3 !border-2 !border-background !bg-primary" />
+          <Handle type="source" id="left-source" position={Position.Left} className="!h-3 !w-3 !border-2 !border-background !bg-primary" />
+        </>
+      ) : (
+        !isStart && (
+          <Handle
+            type="target"
+            position={Position.Left}
+            className="!h-3 !w-3 !border-2 !border-background !bg-primary"
+          />
+        )
       )}
       <div className={contentClassName}>
         {isCircular || isDecision ? (
           <>
             <div className={iconShellClassName}>
-              <Icon className="h-5 w-5 text-current" />
+              <Icon className="h-4 w-4 text-current" />
             </div>
             <div className="space-y-0.5">
               <p className="line-clamp-2 text-sm font-semibold leading-tight">

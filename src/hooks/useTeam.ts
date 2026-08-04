@@ -22,9 +22,56 @@ function loadLocalTeam(orgId: string) {
   }
 }
 
+function mergeTeamMembers(remoteMembers: TeamMember[], localMembers: TeamMember[]) {
+  const merged = new Map<string, TeamMember>();
+
+  remoteMembers.forEach((member) => {
+    merged.set(member.id, member);
+  });
+
+  localMembers.forEach((member) => {
+    if (!merged.has(member.id)) {
+      merged.set(member.id, member);
+    }
+  });
+
+  return [...merged.values()].sort((left, right) =>
+    left.full_name.localeCompare(right.full_name, "pt-BR"),
+  );
+}
+
 function saveLocalTeam(orgId: string, members: TeamMember[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(getLocalTeamStorageKey(orgId), JSON.stringify(members));
+}
+
+/**
+ * Classifies a Supabase error/exception as one of:
+ * - "missing-schema": the `profiles` table/columns don't exist yet. Legitimate
+ *   reason to fall back to the local team store.
+ * - "permission": RLS or role denied the operation. NOT a reason to fall back
+ *   to local — it's a real error the user needs to see.
+ * - "other": anything else (network blip, constraint violation, bad payload,
+ *   etc). Also NOT a reason to fall back to local.
+ */
+function classifySupabaseError(err: unknown): "missing-schema" | "permission" | "other" {
+  const code = String((err as any)?.code ?? "").toUpperCase()
+  const message = String((err as any)?.message ?? "").toLowerCase()
+
+  if (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    (message.includes("profiles") &&
+      (message.includes("does not exist") || message.includes("schema cache")))
+  ) {
+    return "missing-schema"
+  }
+
+  if (code === "42501" || code === "PGRST301" || message.includes("permission denied")) {
+    return "permission"
+  }
+
+  return "other"
 }
 
 /*
@@ -37,6 +84,10 @@ function saveLocalTeam(orgId: string, members: TeamMember[]) {
  * - app-layout.tsx currently links Dashboard, Documentos, Projetos, Disciplinas, Projetistas,
  *   Equipe, Fluxo de Aprovação, and Trilha de Auditoria; P-7 narrows this to the presentable
  *   enterprise navigation and adds role-aware Configurações plus a footer Meu Perfil link.
+ * - P-8 fix: every mutation used to do "try Supabase, catch ANY error, silently fall back
+ *   to localStorage and return true". That masked real failures (RLS denials, bad payloads,
+ *   network errors) as success. Now only a genuinely missing schema falls back to local;
+ *   every other error surfaces via `mutationError` and the function returns false.
  */
 
 export interface TeamMember {
@@ -55,6 +106,7 @@ export function useTeam() {
   const [members, setMembers] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [mutationError, setMutationError] = useState<string | null>(null)
   const [schemaMode, setSchemaMode] = useState<"enterprise" | "missing" | "denied" | "error">("enterprise")
 
   const fetchTeam = useCallback(async () => {
@@ -75,25 +127,19 @@ export function useTeam() {
         .order('full_name', { ascending: true })
 
       if (!queryError) {
-        setMembers((data ?? []) as TeamMember[])
+        setMembers(
+          mergeTeamMembers(
+            (data ?? []) as TeamMember[],
+            loadLocalTeam(profile.org_id),
+          ),
+        )
         setSchemaMode("enterprise")
       } else {
-        // Check schema errors
-        const code = String((queryError as any)?.code ?? "").toUpperCase()
-        const message = String((queryError as any)?.message ?? "").toLowerCase()
-        if (
-          code === "42P01" ||
-          code === "PGRST205" ||
-          (message.includes("profiles") &&
-            (message.includes("does not exist") || message.includes("schema cache")))
-        ) {
+        const kind = classifySupabaseError(queryError)
+        if (kind === "missing-schema") {
           setMembers(loadLocalTeam(profile.org_id))
           setSchemaMode("missing")
-        } else if (
-          code === "42501" ||
-          code === "PGRST301" ||
-          message.includes("permission denied")
-        ) {
+        } else if (kind === "permission") {
           setSchemaMode("denied")
           setError("Acesso negado ao carregar equipe.")
         } else {
@@ -102,6 +148,9 @@ export function useTeam() {
         }
       }
     } catch (err: unknown) {
+      // Network-level exceptions on the initial load are treated the same
+      // way the old code did (fall back to local so the page isn't blank),
+      // but we still surface that we're in a degraded mode via schemaMode.
       setMembers(loadLocalTeam(profile.org_id))
       setSchemaMode("missing")
     } finally {
@@ -114,7 +163,12 @@ export function useTeam() {
   }, [fetchTeam])
 
   async function updateMemberRole(memberId: string, newRole: UserProfile['role']): Promise<boolean> {
-    if (!profile || profile.role !== 'admin') return false
+    if (!profile || profile.role !== 'admin') {
+      setMutationError("Apenas administradores podem alterar o papel de um membro.")
+      return false
+    }
+
+    setMutationError(null)
 
     if (schemaMode === "missing") {
       const local = loadLocalTeam(profile.org_id)
@@ -124,7 +178,6 @@ export function useTeam() {
       return true
     }
 
-    // Try Supabase first, fallback to local on error
     try {
       const { error: updateError } = await supabase
         .from('profiles')
@@ -136,21 +189,32 @@ export function useTeam() {
         await fetchTeam()
         return true
       }
-    } catch {
-      // ignore
-    }
 
-    // Fallback to local
-    const local = loadLocalTeam(profile.org_id)
-    const next = local.map(m => m.id === memberId ? { ...m, role: newRole } : m)
-    saveLocalTeam(profile.org_id, next)
-    setMembers(next)
-    setSchemaMode("missing")
-    return true
+      const kind = classifySupabaseError(updateError)
+      if (kind === "missing-schema") {
+        setSchemaMode("missing")
+        const local = loadLocalTeam(profile.org_id)
+        const next = local.map(m => m.id === memberId ? { ...m, role: newRole } : m)
+        saveLocalTeam(profile.org_id, next)
+        setMembers(next)
+        return true
+      }
+
+      setMutationError(`Erro ao atualizar papel: ${getErrorMessage(updateError, "Erro desconhecido")}`)
+      return false
+    } catch (err: unknown) {
+      setMutationError(`Erro ao atualizar papel: ${getErrorMessage(err, "Erro de conexão")}`)
+      return false
+    }
   }
 
   async function toggleMemberActive(memberId: string, active: boolean): Promise<boolean> {
-    if (!profile || profile.role !== 'admin') return false
+    if (!profile || profile.role !== 'admin') {
+      setMutationError("Apenas administradores podem ativar ou desativar um membro.")
+      return false
+    }
+
+    setMutationError(null)
 
     if (schemaMode === "missing") {
       const local = loadLocalTeam(profile.org_id)
@@ -160,7 +224,6 @@ export function useTeam() {
       return true
     }
 
-    // Try Supabase first, fallback to local on error
     try {
       const { error: updateError } = await supabase
         .from('profiles')
@@ -172,17 +235,23 @@ export function useTeam() {
         await fetchTeam()
         return true
       }
-    } catch {
-      // ignore
-    }
 
-    // Fallback to local
-    const local = loadLocalTeam(profile.org_id)
-    const next = local.map(m => m.id === memberId ? { ...m, active } : m)
-    saveLocalTeam(profile.org_id, next)
-    setMembers(next)
-    setSchemaMode("missing")
-    return true
+      const kind = classifySupabaseError(updateError)
+      if (kind === "missing-schema") {
+        setSchemaMode("missing")
+        const local = loadLocalTeam(profile.org_id)
+        const next = local.map(m => m.id === memberId ? { ...m, active } : m)
+        saveLocalTeam(profile.org_id, next)
+        setMembers(next)
+        return true
+      }
+
+      setMutationError(`Erro ao atualizar status: ${getErrorMessage(updateError, "Erro desconhecido")}`)
+      return false
+    } catch (err: unknown) {
+      setMutationError(`Erro ao atualizar status: ${getErrorMessage(err, "Erro de conexão")}`)
+      return false
+    }
   }
 
   async function addMember(memberData: {
@@ -192,10 +261,32 @@ export function useTeam() {
     email?: string
   }): Promise<boolean> {
     if (!profile || profile.role !== 'admin') return false
+    if (!memberData.email) {
+      setError('Email é obrigatório para criar acesso ao sistema.')
+      return false
+    }
 
+    setMutationError(null)
     const now = new Date().toISOString()
 
-    // First try Supabase, if any error (RLS or schema) fall back to local
+    if (schemaMode === "missing") {
+      const local = loadLocalTeam(profile.org_id)
+      const newMember: TeamMember = {
+        id: `local-tm-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
+        full_name: memberData.full_name,
+        role: memberData.role,
+        department: memberData.department ?? null,
+        avatar_url: null,
+        active: true,
+        created_at: now,
+        email: memberData.email,
+      }
+      const next = [...local, newMember]
+      saveLocalTeam(profile.org_id, next)
+      setMembers(next)
+      return true
+    }
+
     try {
       const { error: insertError } = await supabase
         .from('profiles')
@@ -215,32 +306,41 @@ export function useTeam() {
         return true
       }
 
-      // If error, fall back to local
-    } catch {
-      // ignore and go to local
-    }
+      const kind = classifySupabaseError(insertError)
+      if (kind === "missing-schema") {
+        setSchemaMode("missing")
+        const local = loadLocalTeam(profile.org_id)
+        const newMember: TeamMember = {
+          id: `local-tm-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
+          full_name: memberData.full_name,
+          role: memberData.role,
+          department: memberData.department ?? null,
+          avatar_url: null,
+          active: true,
+          created_at: now,
+          email: memberData.email,
+        }
+        const next = [...local, newMember]
+        saveLocalTeam(profile.org_id, next)
+        setMembers(next)
+        return true
+      }
 
-    // Local fallback
-    const local = loadLocalTeam(profile.org_id)
-    const newMember: TeamMember = {
-      id: `local-tm-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
-      full_name: memberData.full_name,
-      role: memberData.role,
-      department: memberData.department ?? null,
-      avatar_url: null,
-      active: true,
-      created_at: now,
-      email: memberData.email,
+      setMutationError(`Erro ao adicionar membro: ${getErrorMessage(insertError, "Erro desconhecido")}`)
+      return false
+    } catch (err: unknown) {
+      setMutationError(`Erro ao adicionar membro: ${getErrorMessage(err, "Erro de conexão")}`)
+      return false
     }
-    const next = [...local, newMember]
-    saveLocalTeam(profile.org_id, next)
-    setMembers(next)
-    setSchemaMode("missing") // Set to missing to use local for future operations
-    return true
   }
 
   async function updateMyProfile(updates: { full_name?: string; department?: string; avatar_url?: string | null }): Promise<boolean> {
-    if (!profile) return false
+    if (!profile) {
+      setMutationError("Usuário não autenticado.")
+      return false
+    }
+
+    setMutationError(null)
 
     if (schemaMode === "missing") {
       const local = loadLocalTeam(profile.org_id)
@@ -250,7 +350,6 @@ export function useTeam() {
       return true
     }
 
-    // Try Supabase first, fallback to local on error
     try {
       const { error: updateError } = await supabase
         .from('profiles')
@@ -261,28 +360,35 @@ export function useTeam() {
         await fetchTeam()
         return true
       }
-    } catch {
-      // ignore
-    }
 
-    // Fallback to local
-    const local = loadLocalTeam(profile.org_id)
-    const next = local.map(m => m.id === profile.id ? { ...m, ...updates } : m)
-    saveLocalTeam(profile.org_id, next)
-    setMembers(next)
-    setSchemaMode("missing")
-    return true
+      const kind = classifySupabaseError(updateError)
+      if (kind === "missing-schema") {
+        setSchemaMode("missing")
+        const local = loadLocalTeam(profile.org_id)
+        const next = local.map(m => m.id === profile.id ? { ...m, ...updates } : m)
+        saveLocalTeam(profile.org_id, next)
+        setMembers(next)
+        return true
+      }
+
+      setMutationError(`Erro ao atualizar perfil: ${getErrorMessage(updateError, "Erro desconhecido")}`)
+      return false
+    } catch (err: unknown) {
+      setMutationError(`Erro ao atualizar perfil: ${getErrorMessage(err, "Erro de conexão")}`)
+      return false
+    }
   }
 
-  return { 
-    members, 
-    loading, 
-    error, 
-    refetch: fetchTeam, 
-    updateMemberRole, 
-    toggleMemberActive, 
-    updateMyProfile, 
+  return {
+    members,
+    loading,
+    error,
+    mutationError,
+    refetch: fetchTeam,
+    updateMemberRole,
+    toggleMemberActive,
+    updateMyProfile,
     addMember,
-    schemaMode 
+    schemaMode
   }
 }

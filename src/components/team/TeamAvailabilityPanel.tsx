@@ -32,6 +32,7 @@ import { Switch } from "@/components/ui/switch";
 import { useAuthContext } from "@/contexts/AuthContext";
 import type { TeamMember } from "@/hooks/useTeam";
 import { useApprovalGroups } from "@/hooks/useApprovalGroups";
+import { useDocumentCodeOptions } from "@/hooks/useDocumentCodeOptions";
 import { useProjectOptions } from "@/hooks/useProjectOptions";
 import { useTeamAvailability } from "@/hooks/useTeamAvailability";
 import {
@@ -60,6 +61,16 @@ const DELEGATION_SCOPES: Array<{
   { value: "document_type", label: "Tipo documental" },
   { value: "area", label: "Área" },
   { value: "step_type", label: "Tipo de etapa" },
+];
+
+const STEP_TYPE_OPTIONS = [
+  { value: "review", label: "Análise" },
+  { value: "approval", label: "Aprovação" },
+  { value: "decision", label: "Decisão" },
+  { value: "correction", label: "Correção" },
+  { value: "publication", label: "Publicação" },
+  { value: "mandatory_reading", label: "Leitura obrigatória" },
+  { value: "evidence", label: "Evidência" },
 ];
 
 function localDateTime(daysFromNow: number, hour: number) {
@@ -96,6 +107,10 @@ export function TeamAvailabilityPanel({
   const availability = availabilityState ?? internalAvailability;
   const approvalGroups = useApprovalGroups(Boolean(profile));
   const projectOptions = useProjectOptions();
+  const documentCodeOptions = useDocumentCodeOptions({
+    enabled: Boolean(profile?.org_id),
+    requireManagement: false,
+  });
   const [absenceUserId, setAbsenceUserId] = useState(profile?.id ?? "");
   const [absenceType, setAbsenceType] = useState<TeamAbsenceType>("vacation");
   const [absenceStart, setAbsenceStart] = useState(localDateTime(1, 8));
@@ -118,6 +133,9 @@ export function TeamAvailabilityPanel({
   );
   const selectableMembers = members.filter((member) => member.active);
   const canChooseOwner = availability.canManage;
+  const selectableDelegates = selectableMembers.filter(
+    (member) => member.id !== (canChooseOwner ? ownerUserId : profile?.id),
+  );
   const autoBackupCandidates = useMemo(
     () =>
       approvalGroups.members
@@ -153,6 +171,55 @@ export function TeamAvailabilityPanel({
   );
   const autoBackupCandidate = autoBackupCandidates[0] ?? null;
   const isAvailabilityNotInstalled = availability.status === "not_installed";
+  const delegationContextSuggestions = useMemo(() => {
+    if (delegationScope === "project") {
+      return projectOptions.projects.map((project) => ({
+        value: project.id,
+        label: `${project.code ? `${project.code} · ` : ""}${project.name}`,
+      }));
+    }
+    if (delegationScope === "document_type") {
+      return DOC_TYPES.map((type) => ({
+        value: type.value,
+        label: type.label,
+      }));
+    }
+    if (delegationScope === "area") {
+      return documentCodeOptions.areas.map((area) => ({
+        value: area.code || area.label,
+        label: `${area.code ? `${area.code} · ` : ""}${area.label}`,
+      }));
+    }
+    if (delegationScope === "step_type") {
+      return STEP_TYPE_OPTIONS;
+    }
+    return [];
+  }, [
+    delegationScope,
+    documentCodeOptions.areas,
+    projectOptions.projects,
+  ]);
+  const allContextSuggestions = useMemo(
+    () => [
+      ...projectOptions.projects.map((project) => ({
+        key: `project-${project.id}`,
+        label: `${project.code ? `${project.code} · ` : ""}${project.name}`,
+      })),
+      ...DOC_TYPES.map((type) => ({
+        key: `document-type-${type.value}`,
+        label: type.label,
+      })),
+      ...documentCodeOptions.areas.map((area) => ({
+        key: `area-${area.id}`,
+        label: `${area.code ? `${area.code} · ` : ""}${area.label}`,
+      })),
+      ...STEP_TYPE_OPTIONS.map((step) => ({
+        key: `step-type-${step.value}`,
+        label: step.label,
+      })),
+    ],
+    [documentCodeOptions.areas, projectOptions.projects],
+  );
 
   useEffect(() => {
     if (!autoBackupCandidate) {
@@ -225,31 +292,32 @@ export function TeamAvailabilityPanel({
         </Select>
       );
     }
-    if (delegationScope === "document_type") {
+    if (
+      delegationScope === "document_type" ||
+      delegationScope === "area" ||
+      delegationScope === "step_type"
+    ) {
       return (
         <Select value={delegationContext} onValueChange={setDelegationContext}>
           <SelectTrigger>
-            <SelectValue placeholder="Tipo documental" />
+            <SelectValue
+              placeholder={
+                delegationScope === "document_type"
+                  ? "Tipo documental"
+                  : delegationScope === "area"
+                    ? "Selecione a área"
+                    : "Selecione o tipo de etapa"
+              }
+            />
           </SelectTrigger>
           <SelectContent>
-            {DOC_TYPES.map((type) => (
-              <SelectItem key={type.value} value={type.value}>
-                {type.label}
+            {delegationContextSuggestions.map((suggestion) => (
+              <SelectItem key={suggestion.value} value={suggestion.value}>
+                {suggestion.label}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-      );
-    }
-    if (["area", "step_type"].includes(delegationScope)) {
-      return (
-        <Input
-          value={delegationContext}
-          onChange={(event) => setDelegationContext(event.target.value)}
-          placeholder={
-            delegationScope === "area" ? "Código da área" : "Ex.: approval"
-          }
-        />
       );
     }
     return null;
@@ -503,19 +571,19 @@ export function TeamAvailabilityPanel({
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
                     <SelectContent>
-                      {selectableMembers
-                        .filter(
-                          (member) =>
-                            member.id !==
-                            (canChooseOwner ? ownerUserId : profile?.id),
-                        )
-                        .map((member) => (
-                          <SelectItem key={member.id} value={member.id}>
-                            {member.full_name}
-                          </SelectItem>
-                        ))}
+                      {selectableDelegates.map((member) => (
+                        <SelectItem key={member.id} value={member.id}>
+                          {member.full_name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
+                  {selectableDelegates.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Cadastre ou ative mais membros em <strong>Equipe</strong>{" "}
+                      para selecionar um suplente.
+                    </p>
+                  ) : null}
                 </div>
                 <div className="space-y-2">
                   <Label>Escopo</Label>
@@ -543,6 +611,47 @@ export function TeamAvailabilityPanel({
                   {contextControl() ?? (
                     <Input disabled value="Toda a organização" />
                   )}
+                  {delegationScope === "all" ? (
+                    <div className="flex flex-wrap gap-2 rounded-md border border-dashed p-2">
+                      {allContextSuggestions.length === 0 ? (
+                        <span className="text-xs text-muted-foreground">
+                          O suplente assumirá todos os contextos cadastrados para
+                          o titular ausente.
+                        </span>
+                      ) : (
+                        allContextSuggestions.map((suggestion) => (
+                          <Badge
+                            key={suggestion.key}
+                            variant="outline"
+                            className="text-[11px]"
+                          >
+                            {suggestion.label}
+                          </Badge>
+                        ))
+                      )}
+                    </div>
+                  ) : delegationContextSuggestions.length > 0 ? (
+                    <div className="flex flex-wrap gap-2 rounded-md border border-dashed p-2">
+                      {delegationContextSuggestions.map((suggestion) => (
+                        <Badge
+                          key={suggestion.value}
+                          variant={
+                            suggestion.value === delegationContext
+                              ? "default"
+                              : "outline"
+                          }
+                          className="text-[11px]"
+                        >
+                          {suggestion.label}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : null}
+                  <p className="text-xs text-muted-foreground">
+                    {delegationScope === "all"
+                      ? "Ao usar todos os contextos, o suplente poderá substituir o ausente em qualquer projeto, área, tipo documental ou etapa."
+                      : "Escolha um dos itens sugeridos para definir exatamente onde o suplente atuará."}
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Início opcional</Label>

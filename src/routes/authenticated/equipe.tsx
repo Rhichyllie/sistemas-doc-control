@@ -35,8 +35,8 @@ import { useProjectOptions } from "@/hooks/useProjectOptions";
 import { useProjectMembers } from "@/hooks/useProjectMembers";
 import { USER_ROLES } from "@/lib/constants";
 import { TeamAvailabilityPanel } from "@/components/team/TeamAvailabilityPanel";
-import { Users, UserPlus } from "lucide-react";
-import { useState } from "react";
+import { Users, UserPlus, AlertTriangle } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/authenticated/equipe")({
@@ -54,6 +54,13 @@ const roleBadgeClass: Record<Role, string> = {
   viewer: "bg-muted text-muted-foreground",
 };
 
+const schemaModeLabel: Record<string, { label: string; className: string }> = {
+  enterprise: { label: "Conectado ao Supabase", className: "bg-emerald-600 text-white" },
+  missing: { label: "Modo local (schema não configurado)", className: "bg-amber-500 text-white" },
+  denied: { label: "Acesso negado pelo Supabase (RLS)", className: "bg-destructive text-white" },
+  error: { label: "Erro ao conectar ao Supabase", className: "bg-destructive text-white" },
+};
+
 function getRoleLabel(role: string) {
   return USER_ROLES.find((item) => item.value === role)?.label ?? role;
 }
@@ -68,8 +75,16 @@ function formatMemberSince(value: string) {
 
 export function EquipePage() {
   const { profile, org } = useAuthContext();
-  const { members, loading, error, updateMemberRole, toggleMemberActive, addMember } =
-    useTeam();
+  const {
+    members,
+    loading,
+    error,
+    mutationError,
+    schemaMode,
+    updateMemberRole,
+    toggleMemberActive,
+    addMember,
+  } = useTeam();
   const { projects, isLoading: projectsLoading } = useProjectOptions();
   const {
     members: projectMembers,
@@ -89,11 +104,19 @@ export function EquipePage() {
   const [newMemberRole, setNewMemberRole] = useState<Role>("viewer");
   const [newMemberDepartment, setNewMemberDepartment] = useState("");
 
+  // Reage à mudança de mutationError em vez de ler a variável dentro do
+  // handler logo após o await — evita pegar o valor "stale" da closure
+  // (o setState do hook re-renderiza, mas não durante a função em execução).
+  useEffect(() => {
+    if (mutationError) {
+      toast.error(mutationError);
+    }
+  }, [mutationError]);
+
   async function handleRoleChange(memberId: string, role: Role) {
     const ok = await updateMemberRole(memberId, role);
-    toast[ok ? "success" : "error"](
-      ok ? "Perfil atualizado" : "Não foi possível atualizar o perfil",
-    );
+    if (ok) toast.success("Perfil atualizado");
+    // erro real é exibido pelo useEffect acima via mutationError
   }
 
   async function handleToggleActive(memberId: string, active: boolean) {
@@ -103,11 +126,9 @@ export function EquipePage() {
     }
 
     const ok = await toggleMemberActive(memberId, active);
-    toast[ok ? "success" : "error"](
-      ok
-        ? `Usuário ${active ? "reativado" : "desativado"}`
-        : "Não foi possível alterar o usuário",
-    );
+    if (ok) {
+      toast.success(`Usuário ${active ? "reativado" : "desativado"}`);
+    }
   }
 
   async function handleProjectToggle(
@@ -136,16 +157,21 @@ export function EquipePage() {
       department: newMemberDepartment || null,
     });
     if (ok) {
-      toast.success("Membro adicionado com sucesso!");
+      toast.success(
+        schemaMode === "missing"
+          ? "Membro adicionado localmente (Supabase ainda não configurado)"
+          : "Membro adicionado com sucesso!",
+      );
       setNewMemberDialogOpen(false);
       setNewMemberName("");
       setNewMemberEmail("");
       setNewMemberRole("viewer");
       setNewMemberDepartment("");
-    } else {
-      toast.error("Não foi possível adicionar o membro");
     }
+    // erro real (RLS, coluna faltando, etc.) é exibido pelo useEffect acima
   }
+
+  const modeInfo = schemaModeLabel[schemaMode] ?? schemaModeLabel.error;
 
   return (
     <div className="space-y-6">
@@ -233,6 +259,25 @@ export function EquipePage() {
         </div>
       </div>
 
+      {schemaMode !== "enterprise" && (
+        <Card className="border-amber-500/50">
+          <CardContent className="p-4 flex items-center gap-2 text-sm">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <Badge className={modeInfo.className}>{modeInfo.label}</Badge>
+            {schemaMode === "missing" && (
+              <span className="text-muted-foreground">
+                Os dados abaixo estão salvos apenas neste navegador (localStorage), não no banco de dados.
+              </span>
+            )}
+            {schemaMode === "denied" && (
+              <span className="text-muted-foreground">
+                O Supabase recusou a leitura/escrita por política de RLS. Verifique as policies da tabela.
+              </span>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         {countsByRole.map((role) => (
           <Card key={role.value}>
@@ -251,6 +296,12 @@ export function EquipePage() {
           <CardContent className="p-4 text-sm text-muted-foreground">
             Apenas administradores podem alterar perfis de acesso.
           </CardContent>
+        </Card>
+      )}
+
+      {error && (
+        <Card className="border-destructive/50">
+          <CardContent className="p-4 text-sm text-destructive">{error}</CardContent>
         </Card>
       )}
 
