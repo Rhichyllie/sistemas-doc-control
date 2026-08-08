@@ -305,20 +305,13 @@ export function OperationalIndicatorsDashboard() {
           ) : (
             <>
               <ExecutiveSummaryCard report={report} />
-
-              {viewMode === "management" && (
-                <OperationalHealthHero
-                  report={report}
-                  primaryRecommendation={recommendations[0]}
-                />
-              )}
-
               <MetricCardGrid metrics={getKpiCards(report)} />
 
               {viewMode === "analysis" ? (
                 <AnalysisCockpit
                   report={report}
                   recommendations={recommendations}
+                  primaryRecommendation={recommendations[0]}
                 />
               ) : (
                 <ExecutiveCockpit
@@ -376,29 +369,24 @@ function ExecutiveCockpit({
         aria-label="Gargalos e concentração de risco"
         className="grid gap-4 xl:grid-cols-2"
       >
-        <BottleneckBarChart report={report} />
         <ResponsibleRiskPanel report={report} />
+        <OperationalFlowPanel report={report} />
       </section>
 
       <section
-        aria-label="Fluxo e intensidade operacional"
-        className="grid gap-4 2xl:grid-cols-[1.35fr_0.65fr]"
+        aria-label="Comparação e matriz de risco"
+        className="grid gap-4 xl:grid-cols-2"
       >
-        <OperationalFlowPanel report={report} />
+        <TrendComparisonPanel report={report} />
+        <RiskMatrixPanel report={report} />
+      </section>
+
+      <section
+        aria-label="Intensidade operacional"
+        className="grid gap-4"
+      >
         <OperationalHeatmapPanel report={report} />
       </section>
-
-      <section
-        data-print-page-break-before
-        aria-label="Sinais operacionais complementares"
-        className="grid gap-4 2xl:grid-cols-3"
-      >
-        <NotificationSignalPanel report={report} />
-        <DelegationImpactPanel report={report} />
-        <DocumentQualityRadar report={report} />
-      </section>
-
-      <OperationalRecommendations recommendations={recommendations} />
     </>
   );
 }
@@ -406,12 +394,19 @@ function ExecutiveCockpit({
 function AnalysisCockpit({
   report,
   recommendations,
+  primaryRecommendation,
 }: {
   report: OperationalIndicatorsReport;
   recommendations: OperationalIndicatorsReport["recommendations"];
+  primaryRecommendation?: OperationalIndicatorsReport["recommendations"][number];
 }) {
   return (
     <>
+      <OperationalHealthHero
+        report={report}
+        primaryRecommendation={primaryRecommendation}
+      />
+
       <section
         aria-label="Comparação e matriz de risco"
         className="grid gap-4 xl:grid-cols-2"
@@ -426,6 +421,16 @@ function AnalysisCockpit({
       >
         <BottleneckBarChart report={report} />
         <OperationalHeatmapPanel report={report} />
+      </section>
+
+      <section
+        data-print-page-break-before
+        aria-label="Sinais operacionais complementares"
+        className="grid gap-4 2xl:grid-cols-3"
+      >
+        <NotificationSignalPanel report={report} />
+        <DelegationImpactPanel report={report} />
+        <DocumentQualityRadar report={report} />
       </section>
 
       <IndicatorSectionTabs report={report} />
