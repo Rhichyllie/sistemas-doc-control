@@ -18,10 +18,20 @@ export interface DashboardMetrics {
   recent_created: number
   by_type: { doc_type: string; count: number }[]
   by_area: { area: string; count: number }[]
+  monthly_trend: {
+    month: string
+    label: string
+    created: number
+    published: number
+    review_due: number
+  }[]
 }
 
 interface TypeRow { doc_type: string }
 interface AreaRow { area: string }
+interface CreatedRow { created_at: string }
+interface PublishedRow { published_at: string | null }
+interface ReviewRow { next_review_at: string | null }
 
 function aggregate<T extends string>(rows: Record<T, string>[], key: T) {
   const map: Record<string, number> = {}
@@ -31,6 +41,62 @@ function aggregate<T extends string>(rows: Record<T, string>[], key: T) {
   return Object.entries(map)
     .map(([value, count]) => ({ value, count }))
     .sort((a, b) => b.count - a.count)
+}
+
+function getMonthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+function formatMonthLabel(date: Date) {
+  return new Intl.DateTimeFormat('pt-BR', { month: 'short' })
+    .format(date)
+    .replace('.', '')
+}
+
+function buildMonthlyTrend(
+  createdRows: CreatedRow[],
+  publishedRows: PublishedRow[],
+  reviewRows: ReviewRow[],
+) {
+  const months = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date()
+    date.setDate(1)
+    date.setMonth(date.getMonth() - (5 - index))
+    return {
+      month: getMonthKey(date),
+      label: formatMonthLabel(date),
+      created: 0,
+      published: 0,
+      review_due: 0,
+    }
+  })
+
+  const monthMap = Object.fromEntries(months.map((item) => [item.month, item]))
+
+  for (const row of createdRows) {
+    const date = new Date(row.created_at)
+    if (Number.isNaN(date.getTime())) continue
+    const month = monthMap[getMonthKey(date)]
+    if (month) month.created += 1
+  }
+
+  for (const row of publishedRows) {
+    if (!row.published_at) continue
+    const date = new Date(row.published_at)
+    if (Number.isNaN(date.getTime())) continue
+    const month = monthMap[getMonthKey(date)]
+    if (month) month.published += 1
+  }
+
+  for (const row of reviewRows) {
+    if (!row.next_review_at) continue
+    const date = new Date(`${row.next_review_at}T00:00:00`)
+    if (Number.isNaN(date.getTime())) continue
+    const month = monthMap[getMonthKey(date)]
+    if (month) month.review_due += 1
+  }
+
+  return months
 }
 
 export function useDashboard() {
@@ -62,6 +128,9 @@ export function useDashboard() {
         in7.setDate(in7.getDate() + 7)
         const ago30 = new Date(now)
         ago30.setDate(ago30.getDate() - 30)
+        const lastSixMonths = new Date(now)
+        lastSixMonths.setDate(1)
+        lastSixMonths.setMonth(lastSixMonths.getMonth() - 5)
 
         let myQueueQuery = supabase
           .from('approval_flows')
@@ -113,6 +182,9 @@ export function useDashboard() {
           recentNewRes,
           byTypeRes,
           byAreaRes,
+          createdTrendRes,
+          publishedTrendRes,
+          reviewTrendRes,
         ] = await Promise.all([
           supabase.from('documents').select('id', { count: 'exact', head: true }).eq('org_id', orgId),
           supabase.from('documents').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'draft'),
@@ -135,12 +207,20 @@ export function useDashboard() {
             .eq('org_id', orgId).gte('created_at', ago30.toISOString()),
           supabase.from('documents').select('doc_type').eq('org_id', orgId),
           supabase.from('documents').select('area').eq('org_id', orgId),
+          supabase.from('documents').select('created_at').eq('org_id', orgId).gte('created_at', lastSixMonths.toISOString()),
+          supabase.from('documents').select('published_at').eq('org_id', orgId).not('published_at', 'is', null).gte('published_at', lastSixMonths.toISOString()),
+          supabase.from('documents').select('next_review_at').eq('org_id', orgId).eq('status', 'published').not('next_review_at', 'is', null).gte('next_review_at', lastSixMonths.toISOString().split('T')[0]),
         ])
 
         const byType = aggregate((byTypeRes.data ?? []) as TypeRow[], 'doc_type')
           .map(({ value, count }) => ({ doc_type: value, count }))
         const byArea = aggregate((byAreaRes.data ?? []) as AreaRow[], 'area')
           .map(({ value, count }) => ({ area: value, count }))
+        const monthlyTrend = buildMonthlyTrend(
+          (createdTrendRes.data ?? []) as CreatedRow[],
+          (publishedTrendRes.data ?? []) as PublishedRow[],
+          (reviewTrendRes.data ?? []) as ReviewRow[],
+        )
 
         if (!cancelled) {
           setMetrics({
@@ -159,6 +239,7 @@ export function useDashboard() {
             recent_created: recentNewRes.count ?? 0,
             by_type: byType,
             by_area: byArea,
+            monthly_trend: monthlyTrend,
           })
         }
       } catch (err: unknown) {

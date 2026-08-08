@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import {
   Activity,
   AlertTriangle,
@@ -15,6 +15,7 @@ import { ExecutiveSummaryCard } from "@/components/indicators/ExecutiveSummaryCa
 import { IndicatorExportBar } from "@/components/indicators/IndicatorExportBar";
 import { IndicatorFilterBar } from "@/components/indicators/IndicatorFilterBar";
 import { IndicatorSectionTabs } from "@/components/indicators/IndicatorSectionTabs";
+import { IndicatorsVisualOverview } from "@/components/indicators/IndicatorsVisualOverview";
 import { MeetingModeLayout } from "@/components/indicators/MeetingModeLayout";
 import { MetricCardGrid } from "@/components/indicators/MetricCardGrid";
 import { NotificationSignalPanel } from "@/components/indicators/NotificationSignalPanel";
@@ -63,8 +64,17 @@ export function OperationalIndicatorsDashboard() {
   const indicators = useOperationalIndicators();
   const report = indicators.report;
   const [viewMode, setViewMode] = useState<IndicatorViewMode>("management");
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const isLibraryIndicatorsRoute = /^\/authenticated\/biblioteca\/[^/]+\/indicadores\/?$/.test(
+    pathname,
+  );
 
   useEffect(() => {
+    if (isLibraryIndicatorsRoute) {
+      setViewMode("management");
+      return;
+    }
+
     try {
       const stored = localStorage.getItem(VIEW_MODE_KEY);
       if (
@@ -77,7 +87,7 @@ export function OperationalIndicatorsDashboard() {
     } catch {
       // Estado local é opcional; o modo Gestão permanece como fallback.
     }
-  }, []);
+  }, [isLibraryIndicatorsRoute]);
 
   const recommendations = useMemo(
     () =>
@@ -104,6 +114,15 @@ export function OperationalIndicatorsDashboard() {
   }
 
   const hasData = report ? hasOperationalIndicatorData(report) : false;
+  const showManagementOverview = Boolean(
+    report && viewMode === "management",
+  );
+  const showAdvancedEmptyState = Boolean(
+    report && !hasData && !showManagementOverview,
+  );
+  const showFallbackNoticeBelowOverview = Boolean(
+    report && !hasData && showManagementOverview,
+  );
 
   return (
     <MeetingModeLayout mode={viewMode} report={report}>
@@ -211,34 +230,49 @@ export function OperationalIndicatorsDashboard() {
 
       {!report ? (
         <EmptyIndicatorsState source={indicators.source} />
-      ) : !hasData ? (
-        <EmptyIndicatorsState
-          source={indicators.source === "fallback" ? "fallback" : "empty"}
-          hasFallbackReport={indicators.source === "fallback"}
-        />
       ) : (
         <>
-          <ExecutiveSummaryCard report={report} />
-
-          {viewMode === "management" && (
-            <OperationalHealthHero
-              report={report}
-              primaryRecommendation={recommendations[0]}
-            />
+          {showManagementOverview && (
+            <IndicatorsVisualOverview report={report} />
           )}
 
-          <MetricCardGrid metrics={getKpiCards(report)} />
-
-          {viewMode === "analysis" ? (
-            <AnalysisCockpit
-              report={report}
-              recommendations={recommendations}
+          {showAdvancedEmptyState ? (
+            <EmptyIndicatorsState
+              source={indicators.source === "fallback" ? "fallback" : "empty"}
+              hasFallbackReport={indicators.source === "fallback"}
             />
           ) : (
-            <ExecutiveCockpit
-              report={report}
-              recommendations={recommendations}
-              presentation={viewMode === "presentation"}
+            <>
+              <ExecutiveSummaryCard report={report} />
+
+              {viewMode === "management" && (
+                <OperationalHealthHero
+                  report={report}
+                  primaryRecommendation={recommendations[0]}
+                />
+              )}
+
+              <MetricCardGrid metrics={getKpiCards(report)} />
+
+              {viewMode === "analysis" ? (
+                <AnalysisCockpit
+                  report={report}
+                  recommendations={recommendations}
+                />
+              ) : (
+                <ExecutiveCockpit
+                  report={report}
+                  recommendations={recommendations}
+                  presentation={viewMode === "presentation"}
+                />
+              )}
+            </>
+          )}
+
+          {showFallbackNoticeBelowOverview && (
+            <EmptyIndicatorsState
+              source={indicators.source === "fallback" ? "fallback" : "empty"}
+              hasFallbackReport={indicators.source === "fallback"}
             />
           )}
 
