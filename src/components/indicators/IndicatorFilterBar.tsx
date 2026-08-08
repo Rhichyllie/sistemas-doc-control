@@ -7,7 +7,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -19,6 +18,42 @@ import type {
   OperationalIndicatorFilters,
   OperationalIndicatorOption,
 } from "@/lib/operationalIndicators";
+
+const MONTH_OPTIONS = [
+  { value: "01", label: "Janeiro" },
+  { value: "02", label: "Fevereiro" },
+  { value: "03", label: "Março" },
+  { value: "04", label: "Abril" },
+  { value: "05", label: "Maio" },
+  { value: "06", label: "Junho" },
+  { value: "07", label: "Julho" },
+  { value: "08", label: "Agosto" },
+  { value: "09", label: "Setembro" },
+  { value: "10", label: "Outubro" },
+  { value: "11", label: "Novembro" },
+  { value: "12", label: "Dezembro" },
+];
+
+function buildMonthRange(year: string, month: string) {
+  const safeYear = Number.parseInt(year, 10);
+  const safeMonth = Number.parseInt(month, 10);
+  const from = new Date(safeYear, safeMonth - 1, 1);
+  const to = new Date(safeYear, safeMonth, 0);
+  return {
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10),
+  };
+}
+
+function getMonthFromDate(value: string) {
+  const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(value);
+  return match?.[2] ?? String(new Date().getMonth() + 1).padStart(2, "0");
+}
+
+function getYearFromDate(value: string) {
+  const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(value);
+  return match?.[1] ?? String(new Date().getFullYear());
+}
 
 interface IndicatorFilterBarProps {
   filters: OperationalIndicatorFilters;
@@ -44,7 +79,7 @@ function fromSelect(value: string) {
 export function IndicatorFilterBar({
   filters,
   onChange,
-  canViewOrganization,
+  canViewOrganization: _canViewOrganization,
   dimensions,
 }: IndicatorFilterBarProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -56,25 +91,25 @@ export function IndicatorFilterBar({
     onChange({ ...filters, [key]: value });
   }
 
-  function applyPeriod(days: number) {
-    const to = new Date();
-    const from = new Date(to);
-    from.setDate(from.getDate() - days + 1);
+  function updateMonthYear(month: string, year: string) {
+    const period = buildMonthRange(year, month);
     onChange({
       ...filters,
-      from: from.toISOString().slice(0, 10),
-      to: to.toISOString().slice(0, 10),
+      from: period.from,
+      to: period.to,
     });
   }
 
   function clearFilters() {
-    const to = new Date();
-    const from = new Date(to);
-    from.setDate(from.getDate() - 29);
+    const today = new Date();
+    const period = buildMonthRange(
+      String(today.getFullYear()),
+      String(today.getMonth() + 1).padStart(2, "0"),
+    );
     onChange({
       ...filters,
-      from: from.toISOString().slice(0, 10),
-      to: to.toISOString().slice(0, 10),
+      from: period.from,
+      to: period.to,
       projectId: "",
       area: "",
       docType: "",
@@ -84,12 +119,12 @@ export function IndicatorFilterBar({
     });
   }
 
-  const activePeriod = useMemo(() => {
-    const to = new Date(`${filters.to}T12:00:00`);
-    const from = new Date(`${filters.from}T12:00:00`);
-    if (Number.isNaN(to.getTime()) || Number.isNaN(from.getTime())) return null;
-    return Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1;
-  }, [filters.from, filters.to]);
+  const selectedMonth = useMemo(() => getMonthFromDate(filters.from), [filters.from]);
+  const selectedYear = useMemo(() => getYearFromDate(filters.from), [filters.from]);
+  const yearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: 6 }, (_, index) => String(currentYear - index));
+  }, []);
 
   const activeFilters = useMemo(() => {
     const label = (
@@ -98,9 +133,6 @@ export function IndicatorFilterBar({
       fallback: string,
     ) => options.find((option) => option.value === value)?.label ?? fallback;
     return [
-      filters.projectId
-        ? label(dimensions.projects, filters.projectId, "Projeto selecionado")
-        : null,
       filters.area ? `Área: ${filters.area}` : null,
       filters.docType ? `Tipo: ${filters.docType}` : null,
       filters.responsibleUserId
@@ -127,40 +159,38 @@ export function IndicatorFilterBar({
             <CalendarRange className="h-4 w-4 text-primary" />
             Período
           </span>
-          {[7, 30, 90].map((days) => (
-            <Button
-              key={days}
-              size="sm"
-              variant={activePeriod === days ? "default" : "outline"}
-              aria-pressed={activePeriod === days}
-              onClick={() => applyPeriod(days)}
-            >
-              {days}d
-            </Button>
-          ))}
           <Select
-            value={filters.scope}
-            onValueChange={(value) =>
-              update("scope", value === "org" ? "org" : "mine")
-            }
+            value={selectedMonth}
+            onValueChange={(value) => updateMonthYear(value, selectedYear)}
           >
-            <SelectTrigger className="h-9 w-[180px]" aria-label="Escopo">
+            <SelectTrigger className="h-9 w-[160px]" aria-label="Mês">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="mine">Minha operação</SelectItem>
-              {canViewOrganization && (
-                <SelectItem value="org">Toda a organização</SelectItem>
-              )}
+              {MONTH_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={selectedYear}
+            onValueChange={(value) => updateMonthYear(selectedMonth, value)}
+          >
+            <SelectTrigger className="h-9 w-[120px]" aria-label="Ano">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {yearOptions.map((year) => (
+                <SelectItem key={year} value={year}>
+                  {year}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {!canViewOrganization && (
-            <span className="text-xs text-muted-foreground">
-              Você está vendo apenas sua operação pessoal.
-            </span>
-          )}
           <CollapsibleTrigger asChild>
             <Button size="sm" variant="outline">
               <Filter className="mr-2 h-4 w-4" />
@@ -191,30 +221,32 @@ export function IndicatorFilterBar({
 
       <CollapsibleContent>
         <div className="grid gap-3 border-t bg-muted/20 p-4 md:grid-cols-2 xl:grid-cols-4">
-          <Input
-            aria-label="Data inicial"
-            type="date"
-            value={filters.from}
-            onChange={(event) => update("from", event.target.value)}
-          />
-          <Input
-            aria-label="Data final"
-            type="date"
-            value={filters.to}
-            onChange={(event) => update("to", event.target.value)}
-          />
           <Select
-            value={selectValue(filters.projectId)}
-            onValueChange={(value) => update("projectId", fromSelect(value))}
+            value={selectedMonth}
+            onValueChange={(value) => updateMonthYear(value, selectedYear)}
           >
-            <SelectTrigger aria-label="Projeto">
-              <SelectValue placeholder="Todos os projetos" />
+            <SelectTrigger aria-label="Mês de referência">
+              <SelectValue placeholder="Selecione o mês" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os projetos</SelectItem>
-              {dimensions.projects.map((option) => (
+              {MONTH_OPTIONS.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={selectedYear}
+            onValueChange={(value) => updateMonthYear(selectedMonth, value)}
+          >
+            <SelectTrigger aria-label="Ano de referência">
+              <SelectValue placeholder="Selecione o ano" />
+            </SelectTrigger>
+            <SelectContent>
+              {yearOptions.map((year) => (
+                <SelectItem key={year} value={year}>
+                  {year}
                 </SelectItem>
               ))}
             </SelectContent>

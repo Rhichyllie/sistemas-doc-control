@@ -120,10 +120,6 @@ export function OperationalIndicatorsDashboard() {
   const showAdvancedEmptyState = Boolean(
     report && !hasData && !showManagementOverview,
   );
-  const showFallbackNoticeBelowOverview = Boolean(
-    report && !hasData && showManagementOverview,
-  );
-
   return (
     <MeetingModeLayout mode={viewMode} report={report}>
       <header
@@ -212,17 +208,15 @@ export function OperationalIndicatorsDashboard() {
         </div>
       )}
 
-      {(indicators.warning || (indicators.error && report)) && (
+      {indicators.error && report && (
         <Alert
           data-print-break-inside
-          variant={indicators.error ? "destructive" : "default"}
+          variant="destructive"
         >
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>
-            {indicators.error ? "Leitura parcial" : "Modo de compatibilidade"}
-          </AlertTitle>
+          <AlertTitle>Leitura parcial</AlertTitle>
           <AlertDescription>
-            {indicators.error ?? indicators.warning}{" "}
+            {indicators.error}{" "}
             {getIndicatorsSourceMessage(indicators.source)}
           </AlertDescription>
         </Alert>
@@ -267,13 +261,6 @@ export function OperationalIndicatorsDashboard() {
                 />
               )}
             </>
-          )}
-
-          {showFallbackNoticeBelowOverview && (
-            <EmptyIndicatorsState
-              source={indicators.source === "fallback" ? "fallback" : "empty"}
-              hasFallbackReport={indicators.source === "fallback"}
-            />
           )}
 
           <Alert data-print-break-inside className="border-dashed">

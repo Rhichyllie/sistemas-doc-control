@@ -108,71 +108,50 @@ function GaugeCard({ report }: { report: OperationalIndicatorsReport }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex justify-center">
+        <div className="flex flex-col items-center">
           <svg viewBox="0 0 240 150" className="h-44 w-full max-w-[260px]">
             <path
-              d="M 30 120 A 90 90 0 0 1 120 30"
+              d="M 42 120 A 78 78 0 0 1 84 53"
               fill="none"
               stroke="#ef4444"
               strokeWidth="18"
               strokeLinecap="round"
             />
             <path
-              d="M 120 30 A 90 90 0 0 1 210 120"
-              fill="none"
-              stroke="#22c55e"
-              strokeWidth="18"
-              strokeLinecap="round"
-              strokeDasharray="140 170"
-              strokeDashoffset="-18"
-            />
-            <path
-              d="M 58 79 A 60 60 0 0 1 182 79"
+              d="M 84 53 A 78 78 0 0 1 156 53"
               fill="none"
               stroke="#facc15"
               strokeWidth="18"
               strokeLinecap="round"
-              strokeDasharray="46 190"
-              strokeDashoffset="-74"
+            />
+            <path
+              d="M 156 53 A 78 78 0 0 1 198 120"
+              fill="none"
+              stroke="#22c55e"
+              strokeWidth="18"
+              strokeLinecap="round"
             />
             <g transform={`rotate(${angle} 120 120)`}>
               <line
                 x1="120"
                 y1="120"
                 x2="120"
-                y2="48"
+                y2="56"
                 stroke="#0f172a"
                 strokeWidth="4"
                 strokeLinecap="round"
               />
             </g>
             <circle cx="120" cy="120" r="8" fill="#0f172a" />
-            <text
-              x="120"
-              y="108"
-              textAnchor="middle"
-              className="fill-slate-900 text-[24px] font-semibold"
-            >
-              {flowValue === null ? "—" : `${Math.round(safeValue)}%`}
-            </text>
-            <text
-              x="120"
-              y="128"
-              textAnchor="middle"
-              className={`text-[12px] font-medium ${toneClass(tone)}`}
-            >
-              {toneLabel}
-            </text>
-            <text x="36" y="138" className="fill-rose-600 text-[11px]">
-              Crítico
-            </text>
-            <text x="97" y="26" className="fill-amber-600 text-[11px]">
-              Atenção
-            </text>
-            <text x="182" y="138" className="fill-emerald-600 text-[11px]">
-              Bom
-            </text>
           </svg>
+          <div className="mt-[-8px] flex w-full max-w-[240px] items-center justify-between px-2 text-[11px] font-medium">
+            <span className="text-rose-600">Crítico</span>
+            <span className="text-amber-600">Atenção</span>
+            <span className="text-emerald-600">Bom</span>
+          </div>
+          <div className={cn("mt-2 text-sm font-semibold", toneClass(tone))}>
+            {flowValue === null ? "Sem base" : `${Math.round(safeValue)}% · ${toneLabel}`}
+          </div>
         </div>
         <div className="grid grid-cols-3 gap-2 text-center text-xs text-slate-500">
           <div className="rounded-xl bg-rose-50 px-2 py-2 text-rose-700">
