@@ -18,6 +18,7 @@ import {
   CalendarDays,
   FolderTree,
   LineChart,
+  Rows3,
   ShieldCheck,
   Bell,
 } from "lucide-react";
@@ -30,6 +31,7 @@ export interface NavigationItem {
   scope?: "global" | "library";
   managerOnly?: boolean;
   badge?: "activities" | "approval";
+  search?: Record<string, string>;
   children?: readonly Omit<NavigationItem, "children" | "badge">[];
 }
 
@@ -113,6 +115,13 @@ export const navigationSections: readonly NavigationSection[] = [
     label: "ANÁLISE",
     items: [
       { to: "/authenticated/indicadores", label: "Indicadores", icon: ChartNoAxesCombined, scope: "library" },
+      {
+        to: "/authenticated/indicadores",
+        label: "Análise",
+        icon: Rows3,
+        scope: "library",
+        search: { view: "analysis" },
+      },
       { to: "/authenticated/auditoria/relatorios", label: "Relatórios", icon: LineChart, scope: "library" },
     ],
   },

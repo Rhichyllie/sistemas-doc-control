@@ -13,12 +13,21 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   getExecutiveInsights,
   getGovernanceScore,
   getMeetingSummary,
   type IndicatorViewMode,
   type OperationalIndicatorsReport,
 } from "@/lib/operationalIndicators";
+
+export type IndicatorPrintOrientation = "landscape" | "portrait";
 
 const MODES: Array<{
   id: IndicatorViewMode;
@@ -46,10 +55,14 @@ export function IndicatorExportBar({
   report,
   mode,
   onModeChange,
+  printOrientation,
+  onPrintOrientationChange,
 }: {
   report: OperationalIndicatorsReport;
   mode: IndicatorViewMode;
   onModeChange: (mode: IndicatorViewMode) => void;
+  printOrientation: IndicatorPrintOrientation;
+  onPrintOrientationChange: (orientation: IndicatorPrintOrientation) => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -150,6 +163,25 @@ export function IndicatorExportBar({
 
       <div className="flex flex-wrap items-center gap-2">
         <Separator orientation="vertical" className="hidden h-7 xl:block" />
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Impressão
+          </span>
+          <Select
+            value={printOrientation}
+            onValueChange={(value: IndicatorPrintOrientation) =>
+              onPrintOrientationChange(value)
+            }
+          >
+            <SelectTrigger className="h-9 w-[140px]" aria-label="Orientação da impressão">
+              <SelectValue placeholder="Orientação" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="landscape">Paisagem</SelectItem>
+              <SelectItem value="portrait">Retrato</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <Button
           type="button"
           size="sm"

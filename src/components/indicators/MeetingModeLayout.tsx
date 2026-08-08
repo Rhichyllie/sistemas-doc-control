@@ -3,6 +3,7 @@ import type {
   IndicatorViewMode,
   OperationalIndicatorsReport,
 } from "@/lib/operationalIndicators";
+import type { IndicatorPrintOrientation } from "@/components/indicators/IndicatorExportBar";
 
 function formatGeneratedAt(value: string) {
   const date = new Date(value);
@@ -16,16 +17,19 @@ function formatGeneratedAt(value: string) {
 export function MeetingModeLayout({
   mode,
   report,
+  printOrientation,
   children,
 }: {
   mode: IndicatorViewMode;
   report: OperationalIndicatorsReport | null;
+  printOrientation: IndicatorPrintOrientation;
   children: ReactNode;
 }) {
   return (
     <div
       data-indicator-cockpit
       data-view-mode={mode}
+      data-print-orientation={printOrientation}
       className={
         mode === "presentation"
           ? "mx-auto max-w-[1800px] space-y-6"

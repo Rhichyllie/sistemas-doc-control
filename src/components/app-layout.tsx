@@ -40,7 +40,14 @@ import { getLibraryIdFromPath, toLibraryScopedPath } from "@/lib/library-routing
 import { toast } from "sonner";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const location = useRouterState({
+    select: (s) => ({
+      pathname: s.location.pathname,
+      searchStr: s.location.searchStr,
+    }),
+  });
+  const pathname = location.pathname;
+  const currentView = new URLSearchParams(location.searchStr).get("view");
   const navigate = useNavigate();
   const { user, profile, signOut } = useAuthContext();
   const { theme, setTheme } = useTheme();
@@ -425,12 +432,21 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                       isLibraryScoped && currentLibraryId
                         ? toLibraryScopedPath(item.to, currentLibraryId)
                         : item.to;
-                    const active =
-                      !isDisabled &&
-                      (resolvedTo === "/authenticated/configuracoes"
+                    const matchesPath =
+                      resolvedTo === "/authenticated/configuracoes"
                         ? pathname === resolvedTo
                         : pathname === resolvedTo ||
-                          pathname.startsWith(`${resolvedTo}/`));
+                          pathname.startsWith(`${resolvedTo}/`);
+                    const activeSearchView = item.search?.view;
+                    const active =
+                      !isDisabled &&
+                      matchesPath &&
+                      (activeSearchView
+                        ? currentView === activeSearchView
+                        : !(
+                            resolvedTo.includes("/indicadores") &&
+                            currentView === "analysis"
+                          ));
                     const Icon = item.icon;
                     const pendingCount =
                       item.badge === "approval"
@@ -473,6 +489,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                       <Link
                         key={item.to}
                         to={resolvedTo}
+                        search={item.search}
                         title={item.label}
                         className={`flex items-center rounded-lg transition-all duration-150 ${
                           sidebarCollapsed

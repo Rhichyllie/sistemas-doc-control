@@ -38,14 +38,6 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const STATUS_COLORS = {
-  draft: "#94a3b8",
-  in_review: "#f59e0b",
-  pending_approval: "#22c55e",
-  published: "#3b82f6",
-  obsolete: "#ef4444",
-} as const;
-
 const MONTHLY_CHART_CONFIG = {
   created: { label: "Criados", color: "#22c55e" },
   published: { label: "Publicados", color: "#3b82f6" },
@@ -250,123 +242,6 @@ function DistributionList({
             Ainda não há dados suficientes para distribuir este indicador.
           </p>
         )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function StatusDonut({
-  total,
-  data,
-}: {
-  total: number;
-  data: Array<{ name: string; value: number; fill: string }>;
-}) {
-  return (
-    <Card className="border-slate-200 shadow-sm">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Status dos Documentos</CardTitle>
-        <CardDescription>
-          Distribuicao atual do acervo documental da organizacao.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4 md:grid-cols-[1.1fr_0.9fr] md:items-center">
-        <ChartContainer
-          config={{
-            draft: { label: "Rascunho", color: STATUS_COLORS.draft },
-            in_review: {
-              label: "Em analise",
-              color: STATUS_COLORS.in_review,
-            },
-            pending_approval: {
-              label: "Em aprovacao",
-              color: STATUS_COLORS.pending_approval,
-            },
-            published: { label: "Publicados", color: STATUS_COLORS.published },
-            obsolete: { label: "Obsoletos", color: STATUS_COLORS.obsolete },
-          }}
-          className="mx-auto h-[220px] max-w-[260px]"
-        >
-          <RechartsPrimitive.PieChart>
-            <ChartTooltip
-              content={
-                <ChartTooltipContent
-                  formatter={(value, name) => (
-                    <div className="flex w-full items-center justify-between gap-4">
-                      <span>{name}</span>
-                      <span className="font-semibold text-slate-900">
-                        {Number(value).toLocaleString("pt-BR")}
-                      </span>
-                    </div>
-                  )}
-                />
-              }
-            />
-            <RechartsPrimitive.Pie
-              data={data}
-              dataKey="value"
-              nameKey="name"
-              innerRadius={58}
-              outerRadius={86}
-              paddingAngle={3}
-              strokeWidth={0}
-            >
-              {data.map((entry) => (
-                <RechartsPrimitive.Cell key={entry.name} fill={entry.fill} />
-              ))}
-              <RechartsPrimitive.Label
-                content={({ viewBox }) => {
-                  if (!viewBox || !("cx" in viewBox) || !("cy" in viewBox)) {
-                    return null;
-                  }
-                  return (
-                    <text
-                      x={viewBox.cx}
-                      y={viewBox.cy}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                    >
-                      <tspan
-                        x={viewBox.cx}
-                        y={viewBox.cy}
-                        className="fill-slate-900 text-[26px] font-semibold"
-                      >
-                        {total}
-                      </tspan>
-                      <tspan
-                        x={viewBox.cx}
-                        y={(viewBox.cy ?? 0) + 22}
-                        className="fill-slate-500 text-[12px]"
-                      >
-                        Total
-                      </tspan>
-                    </text>
-                  );
-                }}
-                position="center"
-              />
-            </RechartsPrimitive.Pie>
-          </RechartsPrimitive.PieChart>
-        </ChartContainer>
-        <div className="space-y-3">
-          {data.map((item) => (
-            <div
-              key={item.name}
-              className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2"
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className="h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: item.fill }}
-                />
-                <span className="text-sm text-slate-700">{item.name}</span>
-              </div>
-              <span className="text-sm font-semibold text-slate-900">
-                {item.value}
-              </span>
-            </div>
-          ))}
-        </div>
       </CardContent>
     </Card>
   );
@@ -700,36 +575,6 @@ export function IndicatorsVisualOverview({
       ]
     : [];
 
-  const statusData = dashboard.metrics
-    ? [
-        {
-          name: "Rascunhos",
-          value: dashboard.metrics.draft,
-          fill: STATUS_COLORS.draft,
-        },
-        {
-          name: "Em analise",
-          value: dashboard.metrics.in_review,
-          fill: STATUS_COLORS.in_review,
-        },
-        {
-          name: "Em aprovacao",
-          value: dashboard.metrics.pending_approval,
-          fill: STATUS_COLORS.pending_approval,
-        },
-        {
-          name: "Publicados",
-          value: dashboard.metrics.published,
-          fill: STATUS_COLORS.published,
-        },
-        {
-          name: "Obsoletos",
-          value: dashboard.metrics.obsolete,
-          fill: STATUS_COLORS.obsolete,
-        },
-      ]
-    : [];
-
   const areaItems = dashboard.metrics?.by_area
     .slice(0, 5)
     .map((item) => ({
@@ -783,16 +628,14 @@ export function IndicatorsVisualOverview({
             ))}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.8fr_0.9fr]">
+      <section className="grid gap-4 xl:grid-cols-2">
         {dashboard.loading && !dashboard.metrics ? (
           <>
-            <Skeleton className="h-[340px] rounded-2xl" />
             <Skeleton className="h-[340px] rounded-2xl" />
             <Skeleton className="h-[340px] rounded-2xl" />
           </>
         ) : (
           <>
-            <StatusDonut total={dashboard.metrics?.total ?? 0} data={statusData} />
             <GaugeCard report={report} />
             <SlaSummary report={report} />
           </>

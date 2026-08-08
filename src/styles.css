@@ -142,6 +142,16 @@ body {
     margin: 10mm;
   }
 
+  @page indicator-landscape {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  @page indicator-portrait {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
   @page audit-report {
     size: A4 portrait;
     margin: 12mm;
@@ -177,6 +187,14 @@ body {
   [data-indicator-cockpit] {
     max-width: none !important;
     gap: 12px !important;
+  }
+
+  [data-indicator-cockpit][data-print-orientation="landscape"] {
+    page: indicator-landscape;
+  }
+
+  [data-indicator-cockpit][data-print-orientation="portrait"] {
+    page: indicator-portrait;
   }
 
   [data-indicator-cockpit] a,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Activity,
   AlertTriangle,
@@ -12,7 +12,10 @@ import { DelegationImpactPanel } from "@/components/indicators/DelegationImpactP
 import { DocumentQualityRadar } from "@/components/indicators/DocumentQualityRadar";
 import { EmptyIndicatorsState } from "@/components/indicators/EmptyIndicatorsState";
 import { ExecutiveSummaryCard } from "@/components/indicators/ExecutiveSummaryCard";
-import { IndicatorExportBar } from "@/components/indicators/IndicatorExportBar";
+import {
+  IndicatorExportBar,
+  type IndicatorPrintOrientation,
+} from "@/components/indicators/IndicatorExportBar";
 import { IndicatorFilterBar } from "@/components/indicators/IndicatorFilterBar";
 import { IndicatorSectionTabs } from "@/components/indicators/IndicatorSectionTabs";
 import { IndicatorsVisualOverview } from "@/components/indicators/IndicatorsVisualOverview";
@@ -41,6 +44,7 @@ import {
 } from "@/lib/operationalIndicators";
 
 const VIEW_MODE_KEY = "tramita.indicators.viewMode";
+const PRINT_ORIENTATION_KEY = "tramita.indicators.printOrientation";
 
 function formatGeneratedAt(value: string) {
   const date = new Date(value);
@@ -64,12 +68,47 @@ export function OperationalIndicatorsDashboard() {
   const indicators = useOperationalIndicators();
   const report = indicators.report;
   const [viewMode, setViewMode] = useState<IndicatorViewMode>("management");
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const [printOrientation, setPrintOrientation] =
+    useState<IndicatorPrintOrientation>("landscape");
+  const navigate = useNavigate();
+  const location = useRouterState({
+    select: (state) => ({
+      pathname: state.location.pathname,
+      searchStr: state.location.searchStr,
+    }),
+  });
+  const pathname = location.pathname;
+  const requestedView = new URLSearchParams(location.searchStr).get("view");
+  const requestedMode =
+    requestedView === "management" ||
+    requestedView === "presentation" ||
+    requestedView === "analysis"
+      ? requestedView
+      : null;
   const isLibraryIndicatorsRoute = /^\/authenticated\/biblioteca\/[^/]+\/indicadores\/?$/.test(
     pathname,
   );
 
   useEffect(() => {
+    try {
+      const storedOrientation = localStorage.getItem(PRINT_ORIENTATION_KEY);
+      if (
+        storedOrientation === "landscape" ||
+        storedOrientation === "portrait"
+      ) {
+        setPrintOrientation(storedOrientation);
+      }
+    } catch {
+      // A orientação padrão segue como paisagem quando o storage não estiver disponível.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (requestedMode) {
+      setViewMode(requestedMode);
+      return;
+    }
+
     if (isLibraryIndicatorsRoute) {
       setViewMode("management");
       return;
@@ -87,7 +126,7 @@ export function OperationalIndicatorsDashboard() {
     } catch {
       // Estado local é opcional; o modo Gestão permanece como fallback.
     }
-  }, [isLibraryIndicatorsRoute]);
+  }, [isLibraryIndicatorsRoute, requestedMode]);
 
   const recommendations = useMemo(
     () =>
@@ -107,6 +146,28 @@ export function OperationalIndicatorsDashboard() {
     } catch {
       // A tela continua funcional quando a persistência local é bloqueada.
     }
+    void navigate({
+      to: pathname,
+      search: (previous: Record<string, unknown>) => {
+        const next = { ...previous };
+        if (mode === "management" && isLibraryIndicatorsRoute) {
+          delete next.view;
+        } else {
+          next.view = mode;
+        }
+        return next;
+      },
+      replace: true,
+    });
+  }
+
+  function changePrintOrientation(orientation: IndicatorPrintOrientation) {
+    setPrintOrientation(orientation);
+    try {
+      localStorage.setItem(PRINT_ORIENTATION_KEY, orientation);
+    } catch {
+      // A seleção permanece funcional sem persistência local.
+    }
   }
 
   if (indicators.isLoading && !report) {
@@ -121,7 +182,11 @@ export function OperationalIndicatorsDashboard() {
     report && !hasData && !showManagementOverview,
   );
   return (
-    <MeetingModeLayout mode={viewMode} report={report}>
+    <MeetingModeLayout
+      mode={viewMode}
+      report={report}
+      printOrientation={printOrientation}
+    >
       <header
         data-print-hidden
         className="overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/[0.075] via-background to-background p-5 md:p-7"
@@ -194,6 +259,8 @@ export function OperationalIndicatorsDashboard() {
           report={report}
           mode={viewMode}
           onModeChange={changeViewMode}
+          printOrientation={printOrientation}
+          onPrintOrientationChange={changePrintOrientation}
         />
       )}
 
