@@ -223,6 +223,11 @@ function saveLocalLibraries(orgId: string, items: LibraryRecord[]) {
   );
 }
 
+function clearLocalLibraries(orgId: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(getLocalLibrariesStorageKey(orgId));
+}
+
 function loadLocalProjects(orgId: string) {
   if (typeof window === "undefined") return [] as ProjectOperationalContext[];
   try {
@@ -246,6 +251,17 @@ function saveLocalProjects(orgId: string, items: ProjectOperationalContext[]) {
     getLocalProjectsStorageKey(orgId),
     JSON.stringify(items),
   );
+}
+
+function clearLocalEnterprises(orgId: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(getLocalEnterprisesStorageKey(orgId));
+}
+
+function resolveLocalPhaseCode(library: LibraryRecord): LibraryPhaseCode {
+  if (library.phase_template?.code === "om") return "om";
+  if (library.phase_template_id.toLowerCase().includes("om")) return "om";
+  return "project";
 }
 
 function classifyProjectContract(error: unknown) {
@@ -283,6 +299,77 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const syncLocalCatalogToRemote = useCallback(
+    async (templates: PhaseTemplateRecord[]) => {
+      if (!profile?.org_id) return false;
+      if (profile.role !== "admin" && profile.role !== "manager") return false;
+
+      const localEnterprises = loadLocalEnterprises(profile.org_id);
+      const localLibraries = loadLocalLibraries(profile.org_id);
+
+      if (localEnterprises.length === 0 && localLibraries.length === 0) {
+        return false;
+      }
+
+      const templateByCode = new Map(
+        templates.map((template) => [template.code, template.id]),
+      );
+
+      if (localEnterprises.length > 0) {
+        const enterpriseRows = localEnterprises.map((enterprise) => ({
+          id: enterprise.id,
+          org_id: profile.org_id,
+          name: enterprise.name.trim(),
+          created_by: profile.id ?? null,
+          created_at: enterprise.created_at || new Date().toISOString(),
+          updated_at: enterprise.created_at || new Date().toISOString(),
+        }));
+
+        const { error: enterprisesError } = await supabase
+          .from("enterprises")
+          .upsert(enterpriseRows, { onConflict: "id" });
+
+        if (enterprisesError) {
+          throw enterprisesError;
+        }
+      }
+
+      if (localLibraries.length > 0) {
+        const libraryRows = localLibraries.map((library) => ({
+          id: library.id,
+          org_id: profile.org_id,
+          enterprise_id: library.enterprise_id,
+          phase_template_id:
+            templateByCode.get(resolveLocalPhaseCode(library)) ??
+            templates[0]?.id,
+          name: library.name.trim(),
+          created_by: profile.id ?? null,
+          created_at: library.created_at || new Date().toISOString(),
+          updated_at: library.created_at || new Date().toISOString(),
+        }));
+
+        const validLibraryRows = libraryRows.filter(
+          (library) => Boolean(library.enterprise_id && library.phase_template_id),
+        );
+
+        if (validLibraryRows.length > 0) {
+          const { error: librariesError } = await supabase
+            .from("libraries")
+            .upsert(validLibraryRows, { onConflict: "id" });
+
+          if (librariesError) {
+            throw librariesError;
+          }
+        }
+      }
+
+      clearLocalEnterprises(profile.org_id);
+      clearLocalLibraries(profile.org_id);
+      return true;
+    },
+    [profile?.id, profile?.org_id, profile?.role],
+  );
+
   const refresh = useCallback(async () => {
     if (!enabled) {
       setLoading(false);
@@ -304,6 +391,7 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
       let librariesData: unknown[] = [];
       let enterprisesData: unknown[] = [];
       let phaseTemplatesData: unknown[] = DEFAULT_PHASE_TEMPLATES;
+      let usingLocalCatalogFallback = false;
 
       const phaseTemplatesResult = await supabase
         .from("phase_templates")
@@ -437,10 +525,66 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
 
           librariesData = loadLocalLibraries(profile.org_id);
           enterprisesData = loadLocalEnterprises(profile.org_id);
+          usingLocalCatalogFallback = true;
         }
       } else {
         librariesData = librariesResult.data ?? [];
         enterprisesData = enterprisesResult.data ?? [];
+      }
+
+      let normalizedPhaseTemplates = phaseTemplatesData
+        .map(normalizePhaseTemplate)
+        .filter((value): value is PhaseTemplateRecord => Boolean(value));
+
+      if (!usingLocalCatalogFallback) {
+        const didSyncLocalCatalog = await syncLocalCatalogToRemote(
+          normalizedPhaseTemplates,
+        );
+
+        if (didSyncLocalCatalog) {
+          const [syncedLibrariesResult, syncedEnterprisesResult] =
+            await Promise.all([
+              supabase
+                .from("libraries")
+                .select(
+                  `
+                    id,
+                    org_id,
+                    enterprise_id,
+                    phase_template_id,
+                    name,
+                    created_by,
+                    created_at,
+                    enterprise:enterprises (id, org_id, name, created_at),
+                    phase_template:phase_templates (
+                      id,
+                      code,
+                      display_name,
+                      reference_standard,
+                      workflow_definition
+                    )
+                  `,
+                )
+                .eq("org_id", profile.org_id)
+                .order("created_at", { ascending: true }),
+              supabase
+                .from("enterprises")
+                .select("id, org_id, name, created_at")
+                .eq("org_id", profile.org_id)
+                .order("name", { ascending: true }),
+            ]);
+
+          if (syncedLibrariesResult.error) {
+            throw syncedLibrariesResult.error;
+          }
+
+          if (syncedEnterprisesResult.error) {
+            throw syncedEnterprisesResult.error;
+          }
+
+          librariesData = syncedLibrariesResult.data ?? [];
+          enterprisesData = syncedEnterprisesResult.data ?? [];
+        }
       }
 
       const normalizedLibraries = librariesData
@@ -449,9 +593,6 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
       const normalizedEnterprises = enterprisesData
         .map(normalizeEnterprise)
         .filter((value): value is EnterpriseRecord => Boolean(value));
-      const normalizedPhaseTemplates = phaseTemplatesData
-        .map(normalizePhaseTemplate)
-        .filter((value): value is PhaseTemplateRecord => Boolean(value));
 
       setLibraries(normalizedLibraries);
       setEnterprises(normalizedEnterprises);
@@ -477,7 +618,7 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [enabled, profile?.org_id]);
+  }, [enabled, profile?.org_id, syncLocalCatalogToRemote]);
 
   useEffect(() => {
     void refresh();
