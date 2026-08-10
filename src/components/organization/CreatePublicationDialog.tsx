@@ -256,8 +256,8 @@ export function CreatePublicationDialog({
         <DialogHeader>
           <DialogTitle>Criar publicação</DialogTitle>
           <DialogDescription>
-            Vincule um documento já aprovado e publicado, ou crie uma publicação
-            avulsa (sem documento vinculado).
+            Vincule um documento da biblioteca selecionada, priorizando os já
+            publicados, ou crie uma publicação avulsa (sem documento vinculado).
           </DialogDescription>
         </DialogHeader>
 
@@ -279,12 +279,12 @@ export function CreatePublicationDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-slate-500">
-                Escolha a biblioteca para listar apenas os documentos publicados desse projeto.
+                Escolha a biblioteca para listar os documentos vinculados a esse projeto.
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label>Documento publicado da biblioteca</Label>
+              <Label>Documento da biblioteca</Label>
               <Select
                 value={foundDocument?.id ?? ""}
                 onValueChange={(documentId) => {
@@ -307,7 +307,7 @@ export function CreatePublicationDialog({
                         : documentsLoading
                           ? "Carregando documentos..."
                           : availableDocuments.length === 0
-                            ? "Nenhum documento publicado nessa biblioteca"
+                            ? "Nenhum documento encontrado nessa biblioteca"
                             : "Selecione um documento"
                     }
                   />
@@ -366,7 +366,7 @@ export function CreatePublicationDialog({
                   </Badge>
                 ) : null}
                 <Badge className="rounded-full border-emerald-300 bg-white text-emerald-700">
-                  Publicado
+                  {(foundDocument.status || "documento").replaceAll("_", " ")}
                 </Badge>
                 <button
                   type="button"

@@ -12,7 +12,7 @@ export interface PublicationSelectableDocument {
   project_id: string | null;
 }
 
-const PUBLIC_DOCUMENT_STATUSES = new Set([
+const PREFERRED_DOCUMENT_STATUSES = new Set([
   "published",
   "approved",
   "approved_with_comments",
@@ -43,10 +43,29 @@ function normalizeCode(value: string) {
   return value.trim().toLowerCase();
 }
 
-function sortDocuments(
-  documents: PublicationSelectableDocument[],
-): PublicationSelectableDocument[] {
+function getDocumentPriority(document: PublicationSelectableDocument) {
+  const normalizedStatus = document.status.trim().toLowerCase();
+
+  if (PREFERRED_DOCUMENT_STATUSES.has(normalizedStatus)) {
+    return 0;
+  }
+
+  if (document.published_at) {
+    return 1;
+  }
+
+  return 2;
+}
+
+function sortDocuments(documents: PublicationSelectableDocument[]) {
   return [...documents].sort((left, right) => {
+    const priorityComparison =
+      getDocumentPriority(left) - getDocumentPriority(right);
+
+    if (priorityComparison !== 0) {
+      return priorityComparison;
+    }
+
     const leftCode = left.code?.trim() ?? "";
     const rightCode = right.code?.trim() ?? "";
 
@@ -77,16 +96,6 @@ function isLegacyDocumentsContract(error: unknown) {
   );
 }
 
-function isDocumentSelectable(document: PublicationSelectableDocument) {
-  const normalizedStatus = document.status.trim().toLowerCase();
-
-  if (PUBLIC_DOCUMENT_STATUSES.has(normalizedStatus)) {
-    return true;
-  }
-
-  return Boolean(document.published_at);
-}
-
 async function fetchProjectIdsForLibrary(orgId: string, libraryId: string) {
   const { data, error } = await supabase
     .from("projects")
@@ -107,7 +116,61 @@ async function fetchProjectIdsForLibrary(orgId: string, libraryId: string) {
     throw error;
   }
 
-  return (data ?? [])
+  const projectIds = (data ?? [])
+    .map((item) =>
+      isRecord(item) && typeof item.id === "string" ? item.id : null,
+    )
+    .filter((item): item is string => Boolean(item));
+
+  if (projectIds.length > 0) {
+    return projectIds;
+  }
+
+  const { data: libraryData, error: libraryError } = await supabase
+    .from("libraries")
+    .select("name")
+    .eq("org_id", orgId)
+    .eq("id", libraryId)
+    .maybeSingle();
+
+  if (libraryError) {
+    const message = getErrorMessage(libraryError, "").toLowerCase();
+    if (
+      !message.includes("schema cache") &&
+      !message.includes("does not exist")
+    ) {
+      throw libraryError;
+    }
+    return [];
+  }
+
+  const libraryName =
+    isRecord(libraryData) && typeof libraryData.name === "string"
+      ? libraryData.name.trim()
+      : "";
+
+  if (!libraryName) {
+    return [];
+  }
+
+  const { data: fallbackProjects, error: fallbackProjectsError } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("name", libraryName);
+
+  if (fallbackProjectsError) {
+    const message = getErrorMessage(fallbackProjectsError, "").toLowerCase();
+    if (
+      message.includes("schema cache") ||
+      message.includes("does not exist")
+    ) {
+      return [];
+    }
+    throw fallbackProjectsError;
+  }
+
+  return (fallbackProjects ?? [])
     .map((item) =>
       isRecord(item) && typeof item.id === "string" ? item.id : null,
     )
@@ -127,7 +190,7 @@ function filterDocumentsForLibrary(
         document.library_id === libraryId ||
         (document.project_id ? projectIdSet.has(document.project_id) : false);
 
-      return belongsToLibrary && isDocumentSelectable(document);
+      return belongsToLibrary;
     }),
   );
 }
