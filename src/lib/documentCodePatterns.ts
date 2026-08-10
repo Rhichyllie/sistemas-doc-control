@@ -1,6 +1,7 @@
 export const DOCUMENT_CODE_TOKENS = [
   "PREFIX",
   "AREA",
+  "DISCIPLINE",
   "TYPE",
   "PROJECT",
   "YEAR",
@@ -59,6 +60,7 @@ export interface DocumentCodeContext {
   orgCode?: string | null;
   docType?: string | null;
   area?: string | null;
+  discipline?: string | null;
   projectId?: string | null;
   projectCode?: string | null;
   custom?: string | null;
@@ -169,6 +171,7 @@ export function renderDocumentCodePattern(
   const values: Record<DocumentCodeToken, string> = {
     PREFIX: normalizeCodeToken(pattern.prefix),
     AREA: normalizeCodeToken(context.area),
+    DISCIPLINE: normalizeCodeToken(context.discipline),
     TYPE: normalizeCodeToken(context.docType),
     PROJECT: normalizeCodeToken(
       context.projectCode || fallbackProjectCode(context.projectId),
@@ -306,6 +309,11 @@ export function validateCodePattern(
   if (tokens.includes("PROJECT") && !pattern.project_id) {
     warnings.push(
       "O token {PROJECT} usará GERAL quando nenhum projeto estiver selecionado.",
+    );
+  }
+  if (tokens.includes("DISCIPLINE")) {
+    warnings.push(
+      "O token {DISCIPLINE} depende da disciplina informada no cadastro do documento.",
     );
   }
   if (tokens.includes("ORG")) {

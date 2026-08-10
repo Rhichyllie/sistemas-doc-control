@@ -625,7 +625,7 @@ export function DocumentCodePatternBuilder({
           </div>
           <p className="text-xs text-muted-foreground">
             Tokens aceitos:{" "}
-            {"{PREFIX} {ORG} {PROJECT} {AREA} {TYPE} {YEAR} {YEAR2} "}
+            {"{PREFIX} {ORG} {PROJECT} {AREA} {DISCIPLINE} {TYPE} {YEAR} {YEAR2} "}
             {"{MONTH} {SEQ} {CUSTOM}"}. O bloco {"{SEQ}"} é obrigatório.
           </p>
           {(advancedMessage || advancedValidation.errors[0]) && (

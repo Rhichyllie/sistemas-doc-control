@@ -5,6 +5,7 @@ export type DocumentCodeTokenType =
   | "ORG"
   | "PROJECT"
   | "AREA"
+  | "DISCIPLINE"
   | "TYPE"
   | "YEAR"
   | "YEAR2"
@@ -38,6 +39,7 @@ export interface DocumentCodePatternExampleContext {
   project?: string | null;
   projectId?: string | null;
   area?: string | null;
+  discipline?: string | null;
   docType?: string | null;
   custom?: string | null;
   referenceDate?: Date;
@@ -70,6 +72,7 @@ const TOKEN_TYPES = [
   "ORG",
   "PROJECT",
   "AREA",
+  "DISCIPLINE",
   "TYPE",
   "YEAR",
   "YEAR2",
@@ -105,6 +108,13 @@ const TOKEN_DESCRIPTORS: Record<DocumentCodeTokenType, TokenDescriptor> = {
     description:
       "Diferencia Engenharia, Operação, Qualidade ou outra área cadastrada.",
     example: "ENG",
+  },
+  DISCIPLINE: {
+    type: "DISCIPLINE",
+    label: "Disciplina",
+    description:
+      "Usa a disciplina técnica vinculada ao documento, como arquitetura, elétrica ou mecânica.",
+    example: "ARQ",
   },
   TYPE: {
     type: "TYPE",
@@ -415,6 +425,7 @@ export function buildPatternExample(
     ORG: normalizeCodeToken(context.org || "ACME"),
     PROJECT: normalizeCodeToken(context.project || projectFallback),
     AREA: normalizeCodeToken(context.area || "ENG"),
+    DISCIPLINE: normalizeCodeToken(context.discipline || "ARQ"),
     TYPE: normalizeCodeToken(context.docType || "ET"),
     YEAR: String(date.getFullYear()),
     YEAR2: String(date.getFullYear()).slice(-2),

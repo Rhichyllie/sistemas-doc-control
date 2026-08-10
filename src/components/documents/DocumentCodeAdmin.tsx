@@ -658,6 +658,7 @@ export function DocumentCodeAdmin() {
         projects={coding.projects}
         docTypes={options.docTypes}
         areas={options.areas}
+        disciplines={options.disciplines}
         isSaving={coding.isSaving}
         submissionError={coding.error}
         onSubmit={savePattern}

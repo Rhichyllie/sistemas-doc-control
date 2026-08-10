@@ -364,12 +364,16 @@ function DocumentsListPage() {
   const selectedProject = projectOptions.projects.find(
     (project) => project.id === form.project_id,
   );
+  const selectedDiscipline = disciplineOptions.find(
+    (discipline) => discipline.id === form.discipline_id,
+  );
   const selectedEditProject = projectOptions.projects.find(
     (project) => project.id === editForm.project_id,
   );
   const coding = useDocumentCreationControls({
     docType: form.doc_type,
     area: form.area,
+    discipline: selectedDiscipline?.code || null,
     projectId: form.project_id || null,
     projectCode: selectedProject?.code || null,
     selectedPatternId:

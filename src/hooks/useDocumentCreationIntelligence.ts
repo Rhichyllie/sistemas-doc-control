@@ -241,6 +241,9 @@ export function useDocumentCreationIntelligence(
   const selectedProject = projectCatalog.projects.find(
     (project) => project.id === form.project_id,
   );
+  const selectedDiscipline = disciplines.find(
+    (discipline) => discipline.id === form.discipline_id,
+  );
   const inferredType = useMemo(
     () =>
       inferDocumentType({
@@ -263,6 +266,7 @@ export function useDocumentCreationIntelligence(
   const coding = useDocumentCreationControls({
     docType: form.doc_type || inferredType,
     area: form.area || inferredArea,
+    discipline: selectedDiscipline?.code || null,
     projectId: form.project_id || null,
     projectCode: selectedProject?.code || null,
     selectedPatternId: options.selectedCodePatternId,

@@ -16,6 +16,7 @@ export type DocumentCreationCodeMode =
 interface UseDocumentCreationControlsInput {
   docType?: string | null;
   area?: string | null;
+  discipline?: string | null;
   projectId?: string | null;
   projectCode?: string | null;
   selectedPatternId?: string | null;
@@ -41,6 +42,7 @@ function isMissingIntegrationSchema(error: unknown) {
 export function useDocumentCreationControls({
   docType,
   area,
+  discipline,
   projectId,
   projectCode,
   selectedPatternId,
@@ -102,10 +104,19 @@ export function useDocumentCreationControls({
       orgCode: org?.code_prefix,
       docType,
       area,
+      discipline,
       projectId,
       projectCode,
     }),
-    [area, docType, org?.code_prefix, profile?.org_id, projectCode, projectId],
+    [
+      area,
+      discipline,
+      docType,
+      org?.code_prefix,
+      profile?.org_id,
+      projectCode,
+      projectId,
+    ],
   );
   const applicablePatterns = useMemo(() => {
     const result = rankCodePatterns(patternCatalog.patterns, context);
@@ -120,6 +131,7 @@ export function useDocumentCreationControls({
   const preview = useDocumentCodePreview({
     docType,
     area,
+    discipline,
     projectId,
     projectCode,
     patternId: selectedPattern?.id ?? null,

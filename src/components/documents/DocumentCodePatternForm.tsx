@@ -47,6 +47,7 @@ interface DocumentCodePatternFormProps {
   projects: DocumentCodeProject[];
   docTypes: DocumentCodeOption[];
   areas: DocumentCodeOption[];
+  disciplines: DocumentCodeOption[];
   isSaving: boolean;
   submissionError: string | null;
   onSubmit: (input: DocumentCodePatternMutationInput) => Promise<boolean>;
@@ -100,6 +101,7 @@ export function DocumentCodePatternForm({
   projects,
   docTypes,
   areas,
+  disciplines,
   isSaving,
   submissionError,
   onSubmit,
@@ -123,6 +125,7 @@ export function DocumentCodePatternForm({
       org: "ACME",
       docType: form.doc_type || "ET",
       area: form.area || "ENG",
+      discipline: disciplines[0]?.code || "ARQ",
       project: selectedProject?.code,
       projectId: form.project_id || null,
       custom: form.custom_token,
@@ -137,6 +140,7 @@ export function DocumentCodePatternForm({
       form.project_id,
       form.sequence_padding,
       form.sequence_start,
+      disciplines,
       selectedProject?.code,
     ],
   );
@@ -184,6 +188,7 @@ export function DocumentCodePatternForm({
   const preview = previewLocalDocumentCode(previewPattern, {
     docType: form.doc_type || "ET",
     area: form.area || "ENG",
+    discipline: disciplines[0]?.code || "ARQ",
     projectId: form.project_id || null,
     projectCode: selectedProject?.code,
     orgCode: "ACME",

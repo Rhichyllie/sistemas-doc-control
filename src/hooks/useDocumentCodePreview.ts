@@ -14,6 +14,7 @@ import {
 interface UseDocumentCodePreviewInput {
   docType?: string | null;
   area?: string | null;
+  discipline?: string | null;
   projectId?: string | null;
   projectCode?: string | null;
   patternId?: string | null;
@@ -144,6 +145,7 @@ function unavailablePreview(): DocumentCodePreview {
 export function useDocumentCodePreview({
   docType,
   area,
+  discipline,
   projectId,
   projectCode,
   patternId,
@@ -163,6 +165,7 @@ export function useDocumentCodePreview({
     const currentRequest = ++requestId.current;
     const normalizedType = normalizeCodeToken(docType);
     const normalizedArea = normalizeCodeToken(area);
+    const normalizedDiscipline = normalizeCodeToken(discipline);
     if (
       !enabled ||
       !profile?.id ||
@@ -200,6 +203,7 @@ export function useDocumentCodePreview({
         orgCode: org?.code_prefix,
         docType: normalizedType,
         area: normalizedArea,
+        discipline: normalizedDiscipline,
         projectId,
         projectCode,
       };
@@ -275,6 +279,7 @@ export function useDocumentCodePreview({
     setIsLoading(false);
   }, [
     area,
+    discipline,
     docType,
     enabled,
     org?.code_prefix,
