@@ -36,6 +36,7 @@ import { FloatingMessagesWidget } from "@/components/messages/FloatingMessagesWi
 import { Badge } from "@/components/ui/badge";
 import { navigationSections } from "@/app/navigation/navigation-items";
 import { canViewNavigationItem } from "@/app/navigation/navigation-permissions";
+import { getStoredActiveLibraryId } from "@/contexts/library-context";
 import { getLibraryIdFromPath, toLibraryScopedPath } from "@/lib/library-routing";
 import { toast } from "sonner";
 
@@ -56,6 +57,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { unreadCount } = notificationState;
   const { queue } = useApprovalQueue();
   const currentLibraryId = getLibraryIdFromPath(pathname);
+  const [rememberedLibraryId, setRememberedLibraryId] = useState<string | null>(
+    null,
+  );
+  const effectiveLibraryId = currentLibraryId ?? rememberedLibraryId;
   const isOrganizationHome =
     pathname === "/authenticated/organizacao" ||
     pathname.startsWith("/authenticated/organizacao/");
@@ -83,7 +88,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     } catch {
       setSidebarCollapsed(false);
     }
+    setRememberedLibraryId(getStoredActiveLibraryId());
   }, []);
+
+  useEffect(() => {
+    if (!currentLibraryId) return;
+    setRememberedLibraryId(currentLibraryId);
+  }, [currentLibraryId]);
 
   function toggleSidebar() {
     setSidebarCollapsed((current) => {
@@ -427,10 +438,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <div className="space-y-1">
                   {visibleItems.map((item) => {
                     const isLibraryScoped = item.scope === "library";
-                    const isDisabled = isLibraryScoped && !currentLibraryId;
+                    const isDisabled = isLibraryScoped && !effectiveLibraryId;
                     const resolvedTo =
-                      isLibraryScoped && currentLibraryId
-                        ? toLibraryScopedPath(item.to, currentLibraryId)
+                      isLibraryScoped && effectiveLibraryId
+                        ? toLibraryScopedPath(item.to, effectiveLibraryId)
                         : item.to;
                     const matchesPath =
                       resolvedTo === "/authenticated/configuracoes"
