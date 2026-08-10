@@ -37,6 +37,11 @@ interface ProvisionLibraryInput {
   enterpriseId: string;
   phaseCode: LibraryPhaseCode;
   name: string;
+  // Código do projeto definido pelo usuário no momento da criação da
+  // biblioteca. Passa a ser obrigatório: substitui a antiga geração
+  // automática do prefixo de projeto (ex.: "PROJC9DAA5") que acontecia
+  // a cada novo documento.
+  projectCode: string;
 }
 
 const LOCAL_ENTERPRISES_STORAGE_PREFIX = "tramita.enterprises.local.";
@@ -598,6 +603,10 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
       setEnterprises(normalizedEnterprises);
       setPhaseTemplates(normalizedPhaseTemplates);
 
+      // Reconciliação silenciosa: garante que bibliotecas antigas (criadas
+      // antes do código de projeto se tornar obrigatório) continuem tendo
+      // um projeto vinculado. Não recebe explicitCode de propósito — não
+      // deve sobrescrever nem inventar código para bibliotecas já existentes.
       await Promise.all(
         normalizedLibraries.map((library) =>
           ensureProjectForLibrary({
@@ -709,6 +718,10 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
     libraryName: string;
     enterpriseId: string;
     phaseCode: LibraryPhaseCode;
+    // Código do projeto digitado pelo usuário na criação da biblioteca.
+    // Quando ausente (ex.: reconciliação de bibliotecas antigas em refresh()),
+    // cai no comportamento antigo de gerar um código a partir do ID.
+    explicitCode?: string;
   }) {
     if (!profile?.org_id) return true;
 
@@ -718,6 +731,11 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
       phase_code: input.phaseCode,
       linked_library_id: input.libraryId,
     };
+
+    const hasExplicitCode = Boolean(input.explicitCode?.trim());
+    const normalizedExplicitCode = hasExplicitCode
+      ? input.explicitCode!.trim().toUpperCase()
+      : null;
 
     try {
       const existingEnterpriseProject = await supabase
@@ -743,7 +761,8 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
         .insert({
           org_id: profile.org_id,
           library_id: input.libraryId,
-          code: null,
+          code: normalizedExplicitCode,
+          has_explicit_code: hasExplicitCode,
           name: input.libraryName.trim(),
           description: `Projeto gerado automaticamente a partir da biblioteca ${input.libraryName.trim()}.`,
           client_name: null,
@@ -792,7 +811,7 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
         const legacyInsert = await supabase
           .from("projects")
           .insert({
-            code: null,
+            code: normalizedExplicitCode,
             name: input.libraryName.trim(),
             client: null,
             start_date: null,
@@ -825,8 +844,10 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
         id: globalThis.crypto?.randomUUID?.() ?? `project-${Date.now()}`,
         org_id: profile.org_id,
         library_id: input.libraryId,
-        code: `PROJ${input.libraryId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,
-        has_explicit_code: false,
+        code:
+          normalizedExplicitCode ??
+          `PROJ${input.libraryId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,
+        has_explicit_code: hasExplicitCode,
         name: input.libraryName.trim(),
         description: `Projeto gerado automaticamente a partir da biblioteca ${input.libraryName.trim()}.`,
         client_name: null,
@@ -872,6 +893,10 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
       });
 
       if (!rpcError) {
+        // TODO: se/quando o RPC `provision_library` existir no banco, ele
+        // também precisa receber e gravar o código do projeto (input.projectCode).
+        // Hoje esse RPC não existe no Supabase do projeto, então o fluxo cai
+        // sempre no fallback abaixo.
         await refresh();
         return typeof data === "string" ? data : String(data ?? "");
       }
@@ -964,6 +989,7 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
         libraryName: input.name.trim(),
         enterpriseId: input.enterpriseId,
         phaseCode: input.phaseCode,
+        explicitCode: input.projectCode,
       });
       await refresh();
       return insertedLibraryId;
@@ -988,3 +1014,4 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
     provisionLibrary,
   };
 }
+
