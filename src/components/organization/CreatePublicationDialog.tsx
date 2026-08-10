@@ -23,7 +23,11 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useLibraries } from "@/hooks/useLibraries";
-import { supabase } from "@/lib/supabase";
+import {
+  findSelectableLibraryDocumentByCode,
+  listSelectableLibraryDocuments,
+  type PublicationSelectableDocument,
+} from "@/lib/publicationDocuments";
 import {
   PUBLICATION_DISPLAY_MODE_OPTIONS,
   type CreatePublicationInput,
@@ -38,24 +42,6 @@ const CATEGORY_OPTIONS: { value: PublicationCategory; label: string }[] = [
   { value: "seguranca_saude", label: "Segurança e saúde" },
   { value: "comunicado", label: "Comunicado" },
 ];
-
-interface FoundDocument {
-  id: string;
-  code: string | null;
-  title: string;
-  status: string;
-  published_at: string | null;
-  library_id: string | null;
-}
-
-/**
- * TODO: confirme quais valores de `status`/`published_at` indicam, no seu
- * fluxo, que o documento está "aprovado e publicado". Hoje considero:
- * status === "published" e published_at preenchido.
- */
-function isDocumentApprovedAndPublished(document: FoundDocument) {
-  return document.status === "published" && Boolean(document.published_at);
-}
 
 export function CreatePublicationDialog({
   onCreate,
@@ -79,10 +65,13 @@ export function CreatePublicationDialog({
   const [selectedLibraryId, setSelectedLibraryId] = useState("");
   const [documentCode, setDocumentCode] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(false);
-  const [availableDocuments, setAvailableDocuments] = useState<FoundDocument[]>([]);
+  const [availableDocuments, setAvailableDocuments] = useState<
+    PublicationSelectableDocument[]
+  >([]);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
-  const [foundDocument, setFoundDocument] = useState<FoundDocument | null>(null);
+  const [foundDocument, setFoundDocument] =
+    useState<PublicationSelectableDocument | null>(null);
 
   // Campos da publicação
   const [titulo, setTitulo] = useState("");
@@ -122,18 +111,11 @@ export function CreatePublicationDialog({
 
     void (async () => {
       try {
-        const { data, error } = await supabase
-          .from("documents")
-          .select("id, code, title, status, published_at, library_id")
-          .eq("org_id", profile.org_id)
-          .eq("library_id", selectedLibraryId)
-          .eq("status", "published")
-          .not("published_at", "is", null)
-          .order("title", { ascending: true })
-          .limit(200);
-
-        if (error) throw error;
-        setAvailableDocuments((data ?? []) as FoundDocument[]);
+        const documents = await listSelectableLibraryDocuments(
+          profile.org_id,
+          selectedLibraryId,
+        );
+        setAvailableDocuments(documents);
       } catch (err) {
         setLookupError(
           err instanceof Error ? err.message : "Erro ao carregar documentos da biblioteca.",
@@ -157,31 +139,27 @@ export function CreatePublicationDialog({
     setFoundDocument(null);
 
     try {
-      const { data, error } = await supabase
-        .from("documents")
-        .select("id, code, title, status, published_at, library_id")
-        .eq("org_id", profile.org_id)
-        .eq("library_id", selectedLibraryId)
-        .eq("code", documentCode.trim())
-        .maybeSingle();
+      const document =
+        availableDocuments.find(
+          (item) => item.code?.trim().toLowerCase() === documentCode.trim().toLowerCase(),
+        ) ??
+        (await findSelectableLibraryDocumentByCode(
+          profile.org_id,
+          selectedLibraryId,
+          documentCode.trim(),
+        ));
 
-      if (error) throw error;
-
-      if (!data) {
+      if (!document) {
         setLookupError("Nenhum documento encontrado com esse código.");
         return;
       }
 
-      const document = data as FoundDocument;
-
-      if (!isDocumentApprovedAndPublished(document)) {
-        setLookupError(
-          `O documento "${document.title}" foi encontrado, mas ainda não está aprovado/publicado.`,
-        );
-        return;
-      }
-
       setFoundDocument(document);
+      setAvailableDocuments((current) =>
+        current.some((item) => item.id === document.id)
+          ? current
+          : [document, ...current],
+      );
       setSelectedLibraryId(document.library_id ?? selectedLibraryId);
       setTitulo((current) => current || document.title);
     } catch (err) {
