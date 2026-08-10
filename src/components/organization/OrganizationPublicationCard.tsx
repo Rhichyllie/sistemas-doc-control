@@ -81,6 +81,21 @@ const CATEGORY_META: Record<
   },
 };
 
+const DISPLAY_MODE_META = {
+  destaque: {
+    label: "Destaque",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+  },
+  secundaria: {
+    label: "Secundária",
+    className: "border-blue-200 bg-blue-50 text-blue-700",
+  },
+  padrao: {
+    label: "Padrão",
+    className: "border-slate-200 bg-slate-50 text-slate-600",
+  },
+} as const;
+
 function buildPublicationImageUrl(category: PublicationCategory) {
   const promptByCategory: Record<PublicationCategory, string> = {
     procedimento:
@@ -145,6 +160,7 @@ export function OrganizationPublicationCard({
   ) => Promise<void>;
 }) {
   const meta = CATEGORY_META[publication.categoria] ?? CATEGORY_META.comunicado;
+  const displayModeMeta = DISPLAY_MODE_META[publication.modo_exibicao];
   const interactive = Boolean(onOpen);
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -382,9 +398,17 @@ export function OrganizationPublicationCard({
 
       <div className="flex flex-1 flex-col space-y-4 p-4">
         <div className="space-y-2">
-          <Badge variant="outline" className={cn("rounded-full", meta.badgeClass)}>
-            {meta.label}
-          </Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className={cn("rounded-full", meta.badgeClass)}>
+                {meta.label}
+              </Badge>
+              <Badge
+                variant="outline"
+                className={cn("rounded-full", displayModeMeta.className)}
+              >
+                {displayModeMeta.label}
+              </Badge>
+            </div>
           <div className="flex items-center gap-2 text-[11px] text-slate-500">
             <CalendarDays className="h-3.5 w-3.5" />
             <span>{formatPublicationDate(publication.data_publicacao)}</span>

@@ -23,9 +23,11 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
-import type {
-  CreatePublicationInput,
-  PublicationCategory,
+import {
+  PUBLICATION_DISPLAY_MODE_OPTIONS,
+  type CreatePublicationInput,
+  type PublicationCategory,
+  type PublicationDisplayMode,
 } from "@/hooks/usePublications";
 import { toast } from "sonner";
 
@@ -80,6 +82,8 @@ export function CreatePublicationDialog({
   // Campos da publicação
   const [titulo, setTitulo] = useState("");
   const [categoria, setCategoria] = useState<PublicationCategory | "">("");
+  const [modoExibicao, setModoExibicao] =
+    useState<PublicationDisplayMode>("padrao");
   const [resumo, setResumo] = useState("");
 
   // Imagem
@@ -92,6 +96,7 @@ export function CreatePublicationDialog({
     setFoundDocument(null);
     setTitulo("");
     setCategoria("");
+    setModoExibicao("padrao");
     setResumo("");
     setImagePreview(null);
     setSelectedImageFile(null);
@@ -166,6 +171,7 @@ export function CreatePublicationDialog({
         categoria,
         resumo: resumo.trim() || null,
         documento_id: foundDocument?.id ?? null,
+        modo_exibicao: modoExibicao,
       });
 
       if (selectedImageFile) {
@@ -303,6 +309,34 @@ export function CreatePublicationDialog({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Posição na home</Label>
+            <Select
+              value={modoExibicao}
+              onValueChange={(value) =>
+                setModoExibicao(value as PublicationDisplayMode)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione" />
+              </SelectTrigger>
+              <SelectContent>
+                {PUBLICATION_DISPLAY_MODE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-500">
+              {
+                PUBLICATION_DISPLAY_MODE_OPTIONS.find(
+                  (option) => option.value === modoExibicao,
+                )?.description
+              }
+            </p>
           </div>
 
           <div className="space-y-2">

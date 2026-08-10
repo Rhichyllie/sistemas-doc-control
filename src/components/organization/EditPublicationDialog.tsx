@@ -22,10 +22,12 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
-import type {
-  PublicationCategory,
-  PublicationRecord,
-  UpdatePublicationInput,
+import {
+  PUBLICATION_DISPLAY_MODE_OPTIONS,
+  type PublicationCategory,
+  type PublicationDisplayMode,
+  type PublicationRecord,
+  type UpdatePublicationInput,
 } from "@/hooks/usePublications";
 import { toast } from "sonner";
 
@@ -69,6 +71,8 @@ export function EditPublicationDialog({
   const [foundDocument, setFoundDocument] = useState<FoundDocument | null>(null);
   const [titulo, setTitulo] = useState("");
   const [categoria, setCategoria] = useState<PublicationCategory | "">("");
+  const [modoExibicao, setModoExibicao] =
+    useState<PublicationDisplayMode>("padrao");
   const [resumo, setResumo] = useState("");
 
   useEffect(() => {
@@ -89,6 +93,7 @@ export function EditPublicationDialog({
     );
     setTitulo(publication.titulo);
     setCategoria(publication.categoria);
+    setModoExibicao(publication.modo_exibicao);
     setResumo(publication.resumo ?? "");
     setFormError(null);
   }, [open, publication]);
@@ -146,6 +151,7 @@ export function EditPublicationDialog({
         categoria,
         resumo: resumo.trim() || null,
         documento_id: foundDocument?.id ?? null,
+        modo_exibicao: modoExibicao,
       });
       toast.success("Publicação atualizada com sucesso.");
       onOpenChange(false);
@@ -251,6 +257,34 @@ export function EditPublicationDialog({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Posição na home</Label>
+            <Select
+              value={modoExibicao}
+              onValueChange={(value) =>
+                setModoExibicao(value as PublicationDisplayMode)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione" />
+              </SelectTrigger>
+              <SelectContent>
+                {PUBLICATION_DISPLAY_MODE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-500">
+              {
+                PUBLICATION_DISPLAY_MODE_OPTIONS.find(
+                  (option) => option.value === modoExibicao,
+                )?.description
+              }
+            </p>
           </div>
 
           <div className="space-y-2">

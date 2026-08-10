@@ -54,6 +54,7 @@ import { useLibraries, type LibraryPhaseCode } from "@/hooks/useLibraries";
 import {
   PUBLICATION_IMAGE_FOCUS_OPTIONS,
   usePublications,
+  type PublicationDisplayMode,
   type PublicationRecord,
 } from "@/hooks/usePublications";
 import { cn } from "@/lib/utils";
@@ -96,9 +97,7 @@ function OrganizationLibrariesPage() {
   const navigate = useNavigate();
   const { profile, user, hasRole } = useAuthContext();
   const catalog = useLibraries();
-  // Busca 5: 1 vai para o card de destaque (hero) e as outras 4 preenchem
-  // completamente a grade "Últimas notícias e publicações" (xl:grid-cols-4).
-  const publications = usePublications({ limit: 6 });
+  const publications = usePublications({ limit: 12 });
   const [open, setOpen] = useState(false);
   const [enterpriseMode, setEnterpriseMode] = useState<"existing" | "new">(
     "existing",
@@ -125,13 +124,44 @@ function OrganizationLibrariesPage() {
     return hasEnterprise && Boolean(phaseCode) && libraryName.trim().length >= 3;
   }, [enterpriseId, enterpriseMode, libraryName, newEnterpriseName, phaseCode]);
 
-  const featuredPublication = publications.latestPublications[0] ?? null;
-  const newsroomPublications = publications.latestPublications.slice(0, 4);
+  const publicationBuckets = useMemo(() => {
+    const allPublications = publications.latestPublications;
+    const byMode = (mode: PublicationDisplayMode) =>
+      allPublications.filter((publication) => publication.modo_exibicao === mode);
+
+    const highlighted = byMode("destaque");
+    const secondaries = byMode("secundaria");
+    const standard = allPublications.filter(
+      (publication) =>
+        publication.modo_exibicao !== "destaque" &&
+        publication.modo_exibicao !== "secundaria",
+    );
+
+    const featuredPublication =
+      highlighted[0] ?? allPublications[0] ?? null;
+
+    const secondaryCandidates = [
+      ...secondaries,
+      ...standard,
+      ...highlighted.slice(1),
+    ].filter((publication) => publication.id !== featuredPublication?.id);
+
+    return {
+      featuredPublication,
+      newsroomPublications: secondaryCandidates.slice(0, 4),
+    };
+  }, [publications.latestPublications]);
+
+  const { featuredPublication, newsroomPublications } = publicationBuckets;
 
   // Publicações candidatas a aparecer no carrossel do hero (ajuste a fonte se tiver uma lista própria de "destaques")
   const heroSlides = useMemo(
-    () => publications.latestPublications.slice(0, 3),
-    [publications.latestPublications],
+    () =>
+      [
+        ...(featuredPublication ? [featuredPublication] : []),
+        ...newsroomPublications,
+      ].slice(0, 3),
+    [featuredPublication, newsroomPublications],
   );
 
   useEffect(() => {

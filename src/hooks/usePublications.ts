@@ -20,6 +20,30 @@ export type PublicationImageFocus =
   | "center bottom"
   | "right bottom";
 
+export type PublicationDisplayMode = "padrao" | "destaque" | "secundaria";
+
+export const PUBLICATION_DISPLAY_MODE_OPTIONS: {
+  value: PublicationDisplayMode;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "padrao",
+    label: "Padrão",
+    description: "A publicação fica disponível na listagem geral.",
+  },
+  {
+    value: "destaque",
+    label: "Destaque",
+    description: "Usa esta publicação no card principal da home.",
+  },
+  {
+    value: "secundaria",
+    label: "Secundária",
+    description: "Usa esta publicação nos cards abaixo do destaque.",
+  },
+];
+
 export const PUBLICATION_IMAGE_FOCUS_OPTIONS: {
   value: PublicationImageFocus;
   label: string;
@@ -42,6 +66,7 @@ export interface PublicationRecord {
   categoria: PublicationCategory;
   imagem_url: string | null;
   imagem_foco: PublicationImageFocus | null;
+  modo_exibicao: PublicationDisplayMode;
   resumo: string | null;
   documento_id: string | null;
   data_publicacao: string;
@@ -63,6 +88,7 @@ export interface CreatePublicationInput {
   resumo?: string | null;
   documento_id?: string | null;
   data_publicacao?: string;
+  modo_exibicao?: PublicationDisplayMode;
 }
 
 export interface UpdatePublicationInput {
@@ -70,6 +96,7 @@ export interface UpdatePublicationInput {
   categoria: PublicationCategory;
   resumo?: string | null;
   documento_id?: string | null;
+  modo_exibicao?: PublicationDisplayMode;
 }
 
 const PUBLICATIONS_BUCKET = "publicacoes";
@@ -84,6 +111,7 @@ const DEFAULT_PUBLICATIONS: Omit<
     categoria: "procedimento",
     imagem_url: null,
     imagem_foco: null,
+    modo_exibicao: "destaque",
     resumo:
       "Padronização do fluxo de emissão e conferência para entregáveis de projeto com múltiplas disciplinas.",
     data_publicacao: new Date(Date.now() - 86400000).toISOString(),
@@ -95,6 +123,7 @@ const DEFAULT_PUBLICATIONS: Omit<
     categoria: "manual",
     imagem_url: null,
     imagem_foco: null,
+    modo_exibicao: "secundaria",
     resumo:
       "Atualização do guia interno com critérios de registro, revisão e rastreabilidade de documentos.",
     data_publicacao: new Date(Date.now() - 2 * 86400000).toISOString(),
@@ -106,6 +135,7 @@ const DEFAULT_PUBLICATIONS: Omit<
     categoria: "seguranca_saude",
     imagem_url: null,
     imagem_foco: null,
+    modo_exibicao: "secundaria",
     resumo:
       "Comunicado com reforço dos requisitos mínimos de segurança para inspeções, manutenção e acesso controlado.",
     data_publicacao: new Date(Date.now() - 4 * 86400000).toISOString(),
@@ -117,6 +147,7 @@ const DEFAULT_PUBLICATIONS: Omit<
     categoria: "comunicado",
     imagem_url: null,
     imagem_foco: null,
+    modo_exibicao: "secundaria",
     resumo:
       "Ajustes de nomenclatura para harmonizar bibliotecas de Projeto e O&M dentro da mesma organização.",
     data_publicacao: new Date(Date.now() - 6 * 86400000).toISOString(),
@@ -152,6 +183,12 @@ function normalizePublication(value: unknown): PublicationRecord | null {
     PUBLICATION_IMAGE_FOCUS_OPTIONS.some((option) => option.value === value.imagem_foco)
       ? (value.imagem_foco as PublicationImageFocus)
       : null;
+  const modoExibicao =
+    value.modo_exibicao === "destaque" ||
+    value.modo_exibicao === "secundaria" ||
+    value.modo_exibicao === "padrao"
+      ? value.modo_exibicao
+      : "padrao";
 
   const documento = isRecord(value.documento)
     ? {
@@ -171,6 +208,7 @@ function normalizePublication(value: unknown): PublicationRecord | null {
     categoria,
     imagem_url: typeof value.imagem_url === "string" ? value.imagem_url : null,
     imagem_foco: imagemFoco,
+    modo_exibicao: modoExibicao,
     resumo: typeof value.resumo === "string" ? value.resumo : null,
     documento_id:
       typeof value.documento_id === "string" ? value.documento_id : null,
@@ -191,6 +229,7 @@ interface PublicationBaseRow {
   categoria: PublicationCategory;
   imagem_url: string | null;
   imagem_foco: PublicationImageFocus | null;
+  modo_exibicao: PublicationDisplayMode;
   resumo: string | null;
   documento_id: string | null;
   data_publicacao: string;
@@ -271,7 +310,7 @@ export function usePublications(options: { limit?: number } = {}) {
       let query = supabase
         .from("publicacoes")
         .select(
-          "id, org_id, titulo, categoria, imagem_url, imagem_foco, resumo, documento_id, data_publicacao, autor_id",
+          "id, org_id, titulo, categoria, imagem_url, imagem_foco, modo_exibicao, resumo, documento_id, data_publicacao, autor_id",
         )
         .eq("org_id", profile.org_id)
         .order("data_publicacao", { ascending: false });
@@ -385,7 +424,7 @@ export function usePublications(options: { limit?: number } = {}) {
 
       const { data, error: selectError } = await supabase
         .from("publicacoes")
-        .select("id, imagem_url, imagem_foco")
+        .select("id, imagem_url, imagem_foco, modo_exibicao")
         .eq("id", publicationId)
         .eq("org_id", profile.org_id)
         .maybeSingle();
@@ -425,6 +464,7 @@ export function usePublications(options: { limit?: number } = {}) {
           p_resumo: input.resumo ?? null,
           p_documento_id: input.documento_id ?? null,
           p_data_publicacao: input.data_publicacao ?? new Date().toISOString(),
+          p_modo_exibicao: input.modo_exibicao ?? "padrao",
         },
       );
       // #region debug-point A:create-result
@@ -625,6 +665,7 @@ export function usePublications(options: { limit?: number } = {}) {
         p_categoria: input.categoria,
         p_resumo: input.resumo ?? null,
         p_documento_id: input.documento_id ?? null,
+        p_modo_exibicao: input.modo_exibicao ?? "padrao",
       });
 
       if (error) {
