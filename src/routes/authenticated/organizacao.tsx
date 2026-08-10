@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   Building2,
@@ -132,6 +132,10 @@ function OrganizationLibrariesPage() {
     [publications.latestPublications],
   );
 
+  useEffect(() => {
+    setHeroImagePreview(null);
+  }, [featuredPublication?.id]);
+
   const accessibleLibraries = useMemo(
     () =>
       catalog.groupedByEnterprise.flatMap(({ enterprise, libraries }) =>
@@ -169,9 +173,12 @@ function OrganizationLibrariesPage() {
     setUploadingHeroImage(true);
 
     try {
-      // TODO: troque pela sua rotina real de upload (ex.: Supabase Storage)
-      // const uploadedUrl = await uploadPublicationImage(featuredPublication.id, file);
-      // await publications.updateImage(featuredPublication.id, uploadedUrl);
+      const uploadedUrl = await publications.updatePublicationImage(
+        featuredPublication.id,
+        file,
+        featuredPublication.imagem_url,
+      );
+      setHeroImagePreview(uploadedUrl);
     } catch (error) {
       console.error("Falha ao enviar imagem de destaque", error);
       setHeroImagePreview(null);
@@ -182,9 +189,21 @@ function OrganizationLibrariesPage() {
   }
 
   function handleRemoveHeroImage() {
-    setHeroImagePreview(null);
-    // TODO: se a imagem já estiver salva no backend, dispare aqui a chamada
-    // para limpar `imagem_url` na publicação (ex.: publications.updateImage(featuredPublication.id, null))
+    if (!featuredPublication) return;
+    setUploadingHeroImage(true);
+    void (async () => {
+      try {
+        await publications.removePublicationImage(
+          featuredPublication.id,
+          featuredPublication.imagem_url,
+        );
+        setHeroImagePreview(null);
+      } catch (error) {
+        console.error("Falha ao remover imagem de destaque", error);
+      } finally {
+        setUploadingHeroImage(false);
+      }
+    })();
   }
 
   async function handleCreateLibrary() {
@@ -536,13 +555,14 @@ function OrganizationLibrariesPage() {
           {/* Controles de administrador para a imagem de destaque */}
           {isAdmin && (
             <div className="absolute right-4 top-4 flex gap-2">
-              {heroImagePreview && (
+              {(heroImagePreview || featuredPublication?.imagem_url) && (
                 <Button
                   type="button"
                   size="sm"
                   variant="secondary"
                   className="h-9 gap-1.5 rounded-lg bg-black/40 text-white backdrop-blur-sm hover:bg-black/55"
                   onClick={handleRemoveHeroImage}
+                  disabled={uploadingHeroImage}
                 >
                   <X className="h-3.5 w-3.5" />
                   Remover
@@ -594,7 +614,10 @@ function OrganizationLibrariesPage() {
 
         {isAdmin && (
           <div className="flex justify-end">
-            <CreatePublicationDialog onCreate={publications.createPublication} />
+            <CreatePublicationDialog
+              onCreate={publications.createPublication}
+              onAttachImage={publications.updatePublicationImage}
+            />
           </div>
         )}
 
@@ -605,6 +628,8 @@ function OrganizationLibrariesPage() {
                 key={publication.id}
                 publication={publication}
                 isAdmin={isAdmin}
+                onUpdateImage={publications.updatePublicationImage}
+                onRemoveImage={publications.removePublicationImage}
                 onOpen={() => {
                   void handleOpenPublication(publication);
                 }}

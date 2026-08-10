@@ -85,11 +85,22 @@ export function OrganizationPublicationCard({
   publication,
   onOpen,
   isAdmin = false,
+  onUpdateImage,
+  onRemoveImage,
 }: {
   publication: PublicationRecord;
   onOpen?: () => void;
   /** Exibe os controles de inserir/trocar/remover imagem — apenas para administradores. */
   isAdmin?: boolean;
+  onUpdateImage?: (
+    publicationId: string,
+    file: File,
+    currentUrl?: string | null,
+  ) => Promise<string>;
+  onRemoveImage?: (
+    publicationId: string,
+    currentUrl?: string | null,
+  ) => Promise<void>;
 }) {
   const meta = CATEGORY_META[publication.categoria] ?? CATEGORY_META.comunicado;
   const interactive = Boolean(onOpen);
@@ -112,9 +123,15 @@ export function OrganizationPublicationCard({
     setUploadingImage(true);
 
     try {
-      // TODO: troque pela sua rotina real de upload (ex.: Supabase Storage)
-      // const uploadedUrl = await uploadPublicationImage(publication.id, file);
-      // await publications.updateImage(publication.id, uploadedUrl);
+      if (!onUpdateImage) {
+        throw new Error("Atualização de imagem não está disponível.");
+      }
+      const uploadedUrl = await onUpdateImage(
+        publication.id,
+        file,
+        publication.imagem_url,
+      );
+      setImagePreview(uploadedUrl);
     } catch (error) {
       console.error("Falha ao enviar imagem da publicação", error);
       setImagePreview(null);
@@ -126,9 +143,20 @@ export function OrganizationPublicationCard({
 
   function handleRemoveImage(event: React.MouseEvent) {
     event.stopPropagation();
-    setImagePreview(null);
-    // TODO: se a imagem já estiver salva no backend, dispare aqui a chamada
-    // para limpar `imagem_url` da publicação (ex.: publications.updateImage(publication.id, null))
+    setUploadingImage(true);
+    void (async () => {
+      try {
+        if (!onRemoveImage) {
+          throw new Error("Remoção de imagem não está disponível.");
+        }
+        await onRemoveImage(publication.id, publication.imagem_url);
+        setImagePreview(null);
+      } catch (error) {
+        console.error("Falha ao remover imagem da publicação", error);
+      } finally {
+        setUploadingImage(false);
+      }
+    })();
   }
 
   return (
@@ -160,13 +188,14 @@ export function OrganizationPublicationCard({
 
           {isAdmin && (
             <div className="absolute right-2 top-2 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-              {imagePreview && (
+              {(imagePreview || publication.imagem_url) && (
                 <Button
                   type="button"
                   size="icon"
                   variant="secondary"
                   className="h-7 w-7 rounded-lg bg-black/45 text-white backdrop-blur-sm hover:bg-black/60"
                   onClick={handleRemoveImage}
+                  disabled={uploadingImage}
                   aria-label="Remover imagem"
                 >
                   <X className="h-3.5 w-3.5" />

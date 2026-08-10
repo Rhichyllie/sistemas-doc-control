@@ -61,7 +61,10 @@ function OrganizationNewsPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin && (
-            <CreatePublicationDialog onCreate={publications.createPublication} />
+            <CreatePublicationDialog
+              onCreate={publications.createPublication}
+              onAttachImage={publications.updatePublicationImage}
+            />
           )}
           <Button asChild variant="secondary" className="gap-2">
             <Link to="/authenticated/organizacao">
@@ -87,6 +90,8 @@ function OrganizationNewsPage() {
                   key={publication.id}
                   publication={publication}
                   isAdmin={isAdmin}
+                  onUpdateImage={publications.updatePublicationImage}
+                  onRemoveImage={publications.removePublicationImage}
                   onOpen={() => {
                     void handleOpenPublication(publication);
                   }}

@@ -27,6 +27,7 @@ import type {
   CreatePublicationInput,
   PublicationCategory,
 } from "@/hooks/usePublications";
+import { toast } from "sonner";
 
 const CATEGORY_OPTIONS: { value: PublicationCategory; label: string }[] = [
   { value: "procedimento", label: "Procedimento" },
@@ -55,8 +56,14 @@ function isDocumentApprovedAndPublished(document: FoundDocument) {
 
 export function CreatePublicationDialog({
   onCreate,
+  onAttachImage,
 }: {
-  onCreate: (input: CreatePublicationInput) => Promise<string | void>;
+  onCreate: (input: CreatePublicationInput) => Promise<string>;
+  onAttachImage: (
+    publicationId: string,
+    file: File,
+    currentUrl?: string | null,
+  ) => Promise<string>;
 }) {
   const { profile } = useAuthContext();
 
@@ -77,6 +84,7 @@ export function CreatePublicationDialog({
 
   // Imagem
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
 
   function resetForm() {
     setDocumentCode("");
@@ -86,6 +94,7 @@ export function CreatePublicationDialog({
     setCategoria("");
     setResumo("");
     setImagePreview(null);
+    setSelectedImageFile(null);
     setFormError(null);
   }
 
@@ -134,9 +143,8 @@ export function CreatePublicationDialog({
   function handleImageSelect(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    setSelectedImageFile(file);
     setImagePreview(URL.createObjectURL(file));
-    // TODO: troque por upload real (ex.: Supabase Storage) e guarde a URL
-    // pública retornada para enviar como `imagem_url` no submit.
     event.target.value = "";
   }
 
@@ -148,21 +156,43 @@ export function CreatePublicationDialog({
 
     setSaving(true);
     setFormError(null);
+    // #region debug-point C:dialog-submit-start
+    fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"publication-save-missing",runId:"pre-fix",hypothesisId:"C",location:"src/components/organization/CreatePublicationDialog.tsx:handleSubmit:start",msg:"[DEBUG] publication dialog submit started",data:{hasOrgId:Boolean(profile?.org_id),profileId:profile?.id ?? null,tituloLength:titulo.trim().length,categoria,hasResumo:Boolean(resumo.trim()),hasImage:Boolean(selectedImageFile),documentoId:foundDocument?.id ?? null},ts:Date.now()})}).catch(()=>{});
+    // #endregion
 
     try {
-      await onCreate({
+      const publicationId = await onCreate({
         titulo: titulo.trim(),
         categoria,
         resumo: resumo.trim() || null,
-        imagem_url: imagePreview, // TODO: substituir pela URL definitiva pós-upload
         documento_id: foundDocument?.id ?? null,
       });
+
+      if (selectedImageFile) {
+        const uploadedImageUrl = await onAttachImage(
+          publicationId,
+          selectedImageFile,
+          null,
+        );
+        // #region debug-point B:dialog-upload-finished
+        fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"publication-save-missing",runId:"pre-fix",hypothesisId:"B",location:"src/components/organization/CreatePublicationDialog.tsx:handleSubmit:afterUpload",msg:"[DEBUG] publication dialog upload finished",data:{uploadedImageUrl,hasImage:Boolean(selectedImageFile),publicationId},ts:Date.now()})}).catch(()=>{});
+        // #endregion
+      }
+
+      // #region debug-point D:dialog-create-finished
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"publication-save-missing",runId:"pre-fix",hypothesisId:"D",location:"src/components/organization/CreatePublicationDialog.tsx:handleSubmit:success",msg:"[DEBUG] publication dialog create completed",data:{publicationId,titulo:titulo.trim(),categoria,documentoId:foundDocument?.id ?? null},ts:Date.now()})}).catch(()=>{});
+      // #endregion
+      toast.success("Publicação salva com sucesso.");
       setOpen(false);
       resetForm();
     } catch (err) {
-      setFormError(
-        err instanceof Error ? err.message : "Não foi possível criar a publicação.",
-      );
+      // #region debug-point D:dialog-create-error
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"publication-save-missing",runId:"pre-fix",hypothesisId:"D",location:"src/components/organization/CreatePublicationDialog.tsx:handleSubmit:error",msg:"[DEBUG] publication dialog submit failed",data:{message:err instanceof Error ? err.message : String(err)},ts:Date.now()})}).catch(()=>{});
+      // #endregion
+      const message =
+        err instanceof Error ? err.message : "Não foi possível criar a publicação.";
+      setFormError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -299,7 +329,10 @@ export function CreatePublicationDialog({
                   size="icon"
                   variant="secondary"
                   className="absolute right-2 top-2 h-8 w-8 rounded-lg bg-black/45 text-white hover:bg-black/60"
-                  onClick={() => setImagePreview(null)}
+                  onClick={() => {
+                    setImagePreview(null);
+                    setSelectedImageFile(null);
+                  }}
                   aria-label="Remover imagem"
                 >
                   <X className="h-4 w-4" />
