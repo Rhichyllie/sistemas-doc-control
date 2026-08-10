@@ -139,6 +139,29 @@ function normalizePublication(value: unknown): PublicationRecord | null {
   };
 }
 
+interface PublicationBaseRow {
+  id: string;
+  org_id: string;
+  titulo: string;
+  categoria: PublicationCategory;
+  imagem_url: string | null;
+  resumo: string | null;
+  documento_id: string | null;
+  data_publicacao: string;
+  autor_id: string | null;
+}
+
+interface PublicationDocumentRow {
+  id: string;
+  title: string;
+  library_id: string | null;
+}
+
+interface PublicationAuthorRow {
+  id: string;
+  full_name: string | null;
+}
+
 function buildFallbackPublications(orgId: string) {
   return DEFAULT_PUBLICATIONS.map((item) => ({
     ...item,
@@ -202,19 +225,7 @@ export function usePublications(options: { limit?: number } = {}) {
       let query = supabase
         .from("publicacoes")
         .select(
-          `
-            id,
-            org_id,
-            titulo,
-            categoria,
-            imagem_url,
-            resumo,
-            documento_id,
-            data_publicacao,
-            autor_id,
-            autor:profiles!publicacoes_autor_id_fkey (full_name),
-            documento:documents!publicacoes_documento_id_fkey (id, title, library_id)
-          `,
+          "id, org_id, titulo, categoria, imagem_url, resumo, documento_id, data_publicacao, autor_id",
         )
         .eq("org_id", profile.org_id)
         .order("data_publicacao", { ascending: false });
@@ -236,9 +247,65 @@ export function usePublications(options: { limit?: number } = {}) {
         throw result.error;
       }
 
+      const publicationRows = (result.data ?? []) as PublicationBaseRow[];
+      const documentIds = Array.from(
+        new Set(
+          publicationRows
+            .map((item) => item.documento_id)
+            .filter((item): item is string => Boolean(item)),
+        ),
+      );
+      const authorIds = Array.from(
+        new Set(
+          publicationRows
+            .map((item) => item.autor_id)
+            .filter((item): item is string => Boolean(item)),
+        ),
+      );
+
+      const documentsById = new Map<string, PublicationDocumentRow>();
+      if (documentIds.length > 0) {
+        const { data: documentsData, error: documentsError } = await supabase
+          .from("documents")
+          .select("id, title, library_id")
+          .in("id", documentIds);
+
+        if (documentsError) {
+          throw documentsError;
+        }
+
+        for (const document of (documentsData ?? []) as PublicationDocumentRow[]) {
+          documentsById.set(document.id, document);
+        }
+      }
+
+      const authorsById = new Map<string, PublicationAuthorRow>();
+      if (authorIds.length > 0) {
+        const { data: authorsData, error: authorsError } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", authorIds);
+
+        if (authorsError) {
+          throw authorsError;
+        }
+
+        for (const author of (authorsData ?? []) as PublicationAuthorRow[]) {
+          authorsById.set(author.id, author);
+        }
+      }
+
       setPublications(
-        (result.data ?? [])
-          .map(normalizePublication)
+        publicationRows
+          .map((item) =>
+            normalizePublication({
+              ...item,
+              autor: item.autor_id ? authorsById.get(item.autor_id) : null,
+              documento: item.documento_id
+                ? documentsById.get(item.documento_id)
+                : null,
+            }),
+          )
           .filter((item): item is PublicationRecord => Boolean(item)),
       );
     } catch (err: unknown) {

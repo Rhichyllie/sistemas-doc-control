@@ -621,6 +621,12 @@ function OrganizationLibrariesPage() {
           </div>
         )}
 
+        {publications.error && (
+          <div className="rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {publications.error}
+          </div>
+        )}
+
         {newsroomPublications.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {newsroomPublications.map((publication) => (
