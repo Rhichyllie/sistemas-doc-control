@@ -68,6 +68,8 @@ interface DocumentCodePatternBuilderProps {
   onChange: (value: string) => void;
   separator: string;
   onSeparatorChange: (value: string) => void;
+  customValue?: string;
+  onCustomValueChange?: (value: string) => void;
   context?: DocumentCodePatternExampleContext;
   onModeChange?: (mode: "visual" | "advanced") => void;
   initialMode?: "visual" | "advanced";
@@ -89,6 +91,7 @@ function withFreshIds(blocks: DocumentCodePatternBlock[]) {
 
 function SortableDocumentCodePatternBlockChip({
   block,
+  customValue,
   index,
   total,
   onMoveLeft,
@@ -96,6 +99,7 @@ function SortableDocumentCodePatternBlockChip({
   onRemove,
 }: {
   block: DocumentCodePatternBlock;
+  customValue?: string;
   index: number;
   total: number;
   onMoveLeft?: () => void;
@@ -116,6 +120,7 @@ function SortableDocumentCodePatternBlockChip({
     <div ref={setNodeRef} style={style}>
       <DocumentCodePatternBlockChip
         block={block}
+        customValue={customValue}
         index={index}
         total={total}
         onMoveLeft={onMoveLeft}
@@ -132,6 +137,8 @@ export function DocumentCodePatternBuilder({
   onChange,
   separator,
   onSeparatorChange,
+  customValue = "",
+  onCustomValueChange,
   context = {},
   onModeChange,
   initialMode,
@@ -372,6 +379,7 @@ export function DocumentCodePatternBuilder({
                     id: `available-${token.type}`,
                     type: token.type,
                   }}
+                  customValue={customValue}
                   onAdd={() => addBlock(token.type)}
                 />
               ))}
@@ -401,6 +409,31 @@ export function DocumentCodePatternBuilder({
                 }}
               >
                 Adicionar texto fixo
+              </Button>
+            </div>
+            <div className="flex flex-col gap-2 rounded-lg border border-dashed bg-background p-3 sm:flex-row">
+              <div className="flex-1 space-y-1">
+                <Input
+                  value={customValue}
+                  onChange={(event) =>
+                    onCustomValueChange?.(event.target.value.toUpperCase())
+                  }
+                  placeholder="Valor personalizado, por exemplo REV00"
+                  aria-label="Valor personalizado"
+                  maxLength={24}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Use este campo para definir o conteúdo do bloco {"{CUSTOM}"} no
+                  preview e no padrão salvo.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!customValue.trim()}
+                onClick={() => addBlock("CUSTOM")}
+              >
+                Adicionar valor personalizado
               </Button>
             </div>
           </div>
@@ -458,6 +491,7 @@ export function DocumentCodePatternBuilder({
                       <SortableDocumentCodePatternBlockChip
                         key={block.id}
                         block={block}
+                        customValue={customValue}
                         index={index}
                         total={blocks.length}
                         onMoveLeft={() => moveBlock(index, -1)}
@@ -476,6 +510,7 @@ export function DocumentCodePatternBuilder({
                         return (
                           <DocumentCodePatternBlockChip
                             block={block}
+                            customValue={customValue}
                             index={blocks.findIndex((b) => b.id === activeId)}
                             total={blocks.length}
                           />

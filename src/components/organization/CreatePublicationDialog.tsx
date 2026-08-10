@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, ImagePlus, Loader2, Plus, Search, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { useLibraries } from "@/hooks/useLibraries";
 import { supabase } from "@/lib/supabase";
 import {
   PUBLICATION_DISPLAY_MODE_OPTIONS,
@@ -68,13 +69,17 @@ export function CreatePublicationDialog({
   ) => Promise<string>;
 }) {
   const { profile } = useAuthContext();
+  const libraries = useLibraries();
 
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   // Busca de documento por código
+  const [selectedLibraryId, setSelectedLibraryId] = useState("");
   const [documentCode, setDocumentCode] = useState("");
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [availableDocuments, setAvailableDocuments] = useState<FoundDocument[]>([]);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [foundDocument, setFoundDocument] = useState<FoundDocument | null>(null);
@@ -91,7 +96,10 @@ export function CreatePublicationDialog({
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
 
   function resetForm() {
+    setSelectedLibraryId("");
     setDocumentCode("");
+    setDocumentsLoading(false);
+    setAvailableDocuments([]);
     setLookupError(null);
     setFoundDocument(null);
     setTitulo("");
@@ -103,8 +111,46 @@ export function CreatePublicationDialog({
     setFormError(null);
   }
 
+  useEffect(() => {
+    if (!open || !profile?.org_id || !selectedLibraryId) {
+      setAvailableDocuments([]);
+      return;
+    }
+
+    setDocumentsLoading(true);
+    setLookupError(null);
+
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("documents")
+          .select("id, code, title, status, published_at, library_id")
+          .eq("org_id", profile.org_id)
+          .eq("library_id", selectedLibraryId)
+          .eq("status", "published")
+          .not("published_at", "is", null)
+          .order("title", { ascending: true })
+          .limit(200);
+
+        if (error) throw error;
+        setAvailableDocuments((data ?? []) as FoundDocument[]);
+      } catch (err) {
+        setLookupError(
+          err instanceof Error ? err.message : "Erro ao carregar documentos da biblioteca.",
+        );
+        setAvailableDocuments([]);
+      } finally {
+        setDocumentsLoading(false);
+      }
+    })();
+  }, [open, profile?.org_id, selectedLibraryId]);
+
   async function handleLookupDocument() {
     if (!documentCode.trim() || !profile?.org_id) return;
+    if (!selectedLibraryId) {
+      setLookupError("Selecione a biblioteca para buscar o documento.");
+      return;
+    }
 
     setLookupLoading(true);
     setLookupError(null);
@@ -115,6 +161,7 @@ export function CreatePublicationDialog({
         .from("documents")
         .select("id, code, title, status, published_at, library_id")
         .eq("org_id", profile.org_id)
+        .eq("library_id", selectedLibraryId)
         .eq("code", documentCode.trim())
         .maybeSingle();
 
@@ -135,6 +182,7 @@ export function CreatePublicationDialog({
       }
 
       setFoundDocument(document);
+      setSelectedLibraryId(document.library_id ?? selectedLibraryId);
       setTitulo((current) => current || document.title);
     } catch (err) {
       setLookupError(
@@ -151,6 +199,13 @@ export function CreatePublicationDialog({
     setSelectedImageFile(file);
     setImagePreview(URL.createObjectURL(file));
     event.target.value = "";
+  }
+
+  function handleSelectLibrary(libraryId: string) {
+    setSelectedLibraryId(libraryId);
+    setFoundDocument(null);
+    setLookupError(null);
+    setDocumentCode("");
   }
 
   const canSubmit =
@@ -230,6 +285,66 @@ export function CreatePublicationDialog({
 
         <div className="grid gap-5 py-2">
           <div className="space-y-2 rounded-2xl border border-slate-200 p-4">
+            <div className="space-y-2">
+              <Label>Biblioteca do documento</Label>
+              <Select value={selectedLibraryId} onValueChange={handleSelectLibrary}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a biblioteca/projeto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {libraries.libraries.map((library) => (
+                    <SelectItem key={library.id} value={library.id}>
+                      {library.name}
+                      {library.enterprise?.name ? ` • ${library.enterprise.name}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">
+                Escolha a biblioteca para listar apenas os documentos publicados desse projeto.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Documento publicado da biblioteca</Label>
+              <Select
+                value={foundDocument?.id ?? ""}
+                onValueChange={(documentId) => {
+                  const selectedDocument =
+                    availableDocuments.find((document) => document.id === documentId) ?? null;
+                  setFoundDocument(selectedDocument);
+                  setLookupError(null);
+                  setDocumentCode(selectedDocument?.code ?? "");
+                  if (selectedDocument) {
+                    setTitulo((current) => current || selectedDocument.title);
+                  }
+                }}
+                disabled={!selectedLibraryId || documentsLoading || availableDocuments.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      !selectedLibraryId
+                        ? "Selecione uma biblioteca primeiro"
+                        : documentsLoading
+                          ? "Carregando documentos..."
+                          : availableDocuments.length === 0
+                            ? "Nenhum documento publicado nessa biblioteca"
+                            : "Selecione um documento"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableDocuments.map((document) => (
+                    <SelectItem key={document.id} value={document.id}>
+                      {document.code ? `${document.code} • ` : ""}
+                      {document.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <Label>Código do documento (opcional)</Label>
             <div className="flex gap-2">
               <Input
@@ -246,7 +361,7 @@ export function CreatePublicationDialog({
                 variant="outline"
                 className="shrink-0 gap-1.5"
                 onClick={handleLookupDocument}
-                disabled={!documentCode.trim() || lookupLoading}
+                disabled={!documentCode.trim() || lookupLoading || !selectedLibraryId}
               >
                 {lookupLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -267,12 +382,20 @@ export function CreatePublicationDialog({
                 <span className="flex-1">
                   Documento vinculado: <strong>{foundDocument.title}</strong>
                 </span>
+                {foundDocument.code ? (
+                  <Badge className="rounded-full border-slate-200 bg-white text-slate-700">
+                    {foundDocument.code}
+                  </Badge>
+                ) : null}
                 <Badge className="rounded-full border-emerald-300 bg-white text-emerald-700">
                   Publicado
                 </Badge>
                 <button
                   type="button"
-                  onClick={() => setFoundDocument(null)}
+                  onClick={() => {
+                    setFoundDocument(null);
+                    setDocumentCode("");
+                  }}
                   aria-label="Remover vínculo com o documento"
                   className="text-emerald-700/70 hover:text-emerald-900"
                 >

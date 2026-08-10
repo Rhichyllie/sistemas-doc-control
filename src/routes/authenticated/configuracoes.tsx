@@ -105,7 +105,7 @@ function ConfiguracoesLayout({ children }: { children: ReactNode }) {
 }
 
 export function ConfiguracoesOverview() {
-  const { profile, org, updateOrg, refreshProfile } = useAuthContext();
+  const { profile, org, updateOrg } = useAuthContext();
   const [orgDetails, setOrgDetails] = useState<OrgDetails | null>(null);
   const [name, setName] = useState(org?.name ?? "");
   const [prefix, setPrefix] = useState(org?.code_prefix ?? "");
@@ -175,17 +175,7 @@ export function ConfiguracoesOverview() {
     setSavingOrg(false);
 
     if (!ok) {
-      // Fallback direct update
-      const { error } = await supabase
-        .from("organizations")
-        .update({ name, code_prefix: normalizedPrefix, sector, updated_at: new Date().toISOString() })
-        .eq("id", org.id);
-      if (error) toast.error(error.message);
-      else {
-        toast.success("Configurações salvas");
-        setPrefix(normalizedPrefix);
-        await refreshProfile();
-      }
+      toast.error("Não foi possível salvar as informações da organização.");
     } else {
       toast.success("Configurações salvas");
       setPrefix(normalizedPrefix);
@@ -196,15 +186,18 @@ export function ConfiguracoesOverview() {
     if (!org?.id) return;
     setSavingDeadlines(true);
     const settings = { ...(orgDetails?.settings ?? {}), default_review_months: Number(reviewMonths), alert_days: alertDays };
-    const { error } = await supabase
-      .from("organizations")
-      .update({ settings, updated_at: new Date().toISOString() })
-      .eq("id", org.id);
+    const { data, error } = await supabase.rpc("update_general_org_settings", {
+      p_default_review_months: Number(reviewMonths),
+      p_alert_days: alertDays,
+    });
     setSavingDeadlines(false);
 
     if (error) toast.error(error.message);
     else {
-      setOrgDetails((prev) => prev ? { ...prev, settings } : prev);
+      const nextSettings = ((data as { settings?: OrgSettings } | null)?.settings ?? settings) as OrgSettings;
+      setOrgDetails((prev) => prev ? { ...prev, settings: nextSettings } : prev);
+      setReviewMonths(String(nextSettings.default_review_months ?? Number(reviewMonths)));
+      setAlertDays(nextSettings.alert_days?.length ? nextSettings.alert_days : alertDays);
       toast.success("Configurações salvas");
     }
   }

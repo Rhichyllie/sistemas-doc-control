@@ -181,12 +181,15 @@ END;
 $$;
 
 DO $$
+DECLARE
+  v_approval_template_steps REGCLASS := to_regclass('public.approval_template_steps');
+  v_approval_templates REGCLASS := to_regclass('public.approval_templates');
 BEGIN
-  IF to_regclass('public.approval_template_steps') IS NOT NULL THEN
+  IF v_approval_template_steps IS NOT NULL THEN
     IF NOT EXISTS (
       SELECT 1
       FROM pg_constraint
-      WHERE conrelid = 'public.approval_template_steps'::REGCLASS
+      WHERE conrelid = v_approval_template_steps
         AND conname = 'approval_template_steps_assignment_type_check'
     ) THEN
       EXECUTE $ddl$
@@ -199,7 +202,7 @@ BEGIN
     IF NOT EXISTS (
       SELECT 1
       FROM pg_constraint
-      WHERE conrelid = 'public.approval_template_steps'::REGCLASS
+      WHERE conrelid = v_approval_template_steps
         AND conname = 'approval_template_steps_assignee_user_id_fkey'
     ) THEN
       EXECUTE $ddl$
@@ -213,7 +216,7 @@ BEGIN
     IF NOT EXISTS (
       SELECT 1
       FROM pg_constraint
-      WHERE conrelid = 'public.approval_template_steps'::REGCLASS
+      WHERE conrelid = v_approval_template_steps
         AND conname = 'approval_template_steps_assignee_group_id_fkey'
     ) THEN
       EXECUTE $ddl$
@@ -227,7 +230,7 @@ BEGIN
     IF NOT EXISTS (
       SELECT 1
       FROM pg_constraint
-      WHERE conrelid = 'public.approval_template_steps'::REGCLASS
+      WHERE conrelid = v_approval_template_steps
         AND conname = 'approval_template_steps_escalation_user_id_fkey'
     ) THEN
       EXECUTE $ddl$
@@ -241,7 +244,7 @@ BEGIN
     IF NOT EXISTS (
       SELECT 1
       FROM pg_constraint
-      WHERE conrelid = 'public.approval_template_steps'::REGCLASS
+      WHERE conrelid = v_approval_template_steps
         AND conname = 'approval_template_steps_escalation_group_id_fkey'
     ) THEN
       EXECUTE $ddl$
@@ -253,11 +256,11 @@ BEGIN
     END IF;
   END IF;
 
-  IF to_regclass('public.approval_templates') IS NOT NULL
+  IF v_approval_templates IS NOT NULL
     AND NOT EXISTS (
       SELECT 1
       FROM pg_constraint
-      WHERE conrelid = 'public.approval_templates'::REGCLASS
+      WHERE conrelid = v_approval_templates
         AND conname = 'approval_templates_mode_check'
     )
   THEN

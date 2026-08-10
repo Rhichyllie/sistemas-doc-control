@@ -8,6 +8,7 @@ import {
 
 interface DocumentCodePatternBlockChipProps {
   block: DocumentCodePatternBlock;
+  customValue?: string;
   index?: number;
   total?: number;
   onMoveLeft?: () => void;
@@ -23,8 +24,17 @@ function technicalValue(block: DocumentCodePatternBlock) {
   return `{${block.type}}`;
 }
 
+function displayTechnicalValue(
+  block: DocumentCodePatternBlock,
+  customValue?: string,
+) {
+  if (block.type !== "CUSTOM") return technicalValue(block);
+  return customValue?.trim() ? customValue.trim().toUpperCase() : "{CUSTOM}";
+}
+
 export function DocumentCodePatternBlockChip({
   block,
+  customValue,
   index,
   total,
   onMoveLeft,
@@ -53,7 +63,7 @@ export function DocumentCodePatternBlockChip({
       >
         <span className="block text-sm font-medium">{label}</span>
         <span className="block font-mono text-[11px] text-muted-foreground">
-          {technicalValue(block)}
+          {displayTechnicalValue(block, customValue)}
         </span>
       </button>
     );
@@ -79,7 +89,7 @@ export function DocumentCodePatternBlockChip({
       <div className="min-w-0 px-1.5">
         <span className="block truncate text-xs font-medium">{label}</span>
         <span className="block truncate font-mono text-[10px] text-muted-foreground">
-          {technicalValue(block)}
+          {displayTechnicalValue(block, customValue)}
         </span>
       </div>
       <div className="flex items-center">

@@ -499,7 +499,7 @@ export function DocumentCodePatternForm({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="code-pattern-custom">
-                    Valor personalizado
+                    Valor do bloco personalizado
                   </Label>
                   <Input
                     id="code-pattern-custom"
@@ -510,9 +510,13 @@ export function DocumentCodePatternForm({
                         custom_token: event.target.value.toUpperCase(),
                       }))
                     }
-                    placeholder="Usado quando o bloco personalizado estiver presente"
+                    placeholder="Ex.: REV00, EMISSAO, CLIENTE"
                     maxLength={24}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Este valor preenche o bloco {"{CUSTOM}"} quando ele for usado
+                    no padrão visual.
+                  </p>
                 </div>
               </div>
             </section>
@@ -523,6 +527,13 @@ export function DocumentCodePatternForm({
               separator={form.separator}
               onSeparatorChange={(separator) =>
                 setForm((current) => ({ ...current, separator }))
+              }
+              customValue={form.custom_token}
+              onCustomValueChange={(customToken) =>
+                setForm((current) => ({
+                  ...current,
+                  custom_token: customToken,
+                }))
               }
               context={builderContext}
               initialMode={form.builder_mode}

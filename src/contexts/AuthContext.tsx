@@ -308,22 +308,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function updateOrg(updates: Partial<Pick<OrgInfo, 'name' | 'sector' | 'code_prefix'>>): Promise<boolean> {
     if (!org?.id) return false;
     try {
-      const normalized: Partial<OrgInfo> = { ...updates };
-      if (normalized.code_prefix) {
-        normalized.code_prefix = normalized.code_prefix.toUpperCase().slice(0, 4);
-      }
-      const { error } = await supabase
-        .from('organizations')
-        .update({ ...normalized, updated_at: new Date().toISOString() })
-        .eq('id', org.id);
+      const normalizedName = (updates.name ?? org.name).trim()
+      const normalizedSector = (updates.sector ?? org.sector).trim()
+      const normalizedPrefix = (updates.code_prefix ?? org.code_prefix)
+        .toUpperCase()
+        .slice(0, 4)
+
+      const { data, error } = await supabase.rpc('update_organization_profile', {
+        p_name: normalizedName,
+        p_sector: normalizedSector,
+        p_code_prefix: normalizedPrefix,
+      })
       if (error) {
         console.error('[auth] updateOrg error:', error);
-        // Fallback: optimistic local update
-        setOrg(prev => prev ? { ...prev, ...normalized } : prev);
         return false;
       }
-      // Optimistic + re-sync
-      setOrg(prev => prev ? { ...prev, ...normalized } : prev);
+
+      if (!data) {
+        console.error('[auth] updateOrg affected no rows');
+        return false;
+      }
+
+      const updatedOrg = data as Partial<OrgInfo>
+      setOrg(prev => prev ? {
+        ...prev,
+        name: updatedOrg.name ?? normalizedName,
+        sector: updatedOrg.sector ?? normalizedSector,
+        code_prefix: updatedOrg.code_prefix ?? normalizedPrefix,
+        slug: updatedOrg.slug ?? prev.slug,
+        logo_url: updatedOrg.logo_url ?? prev.logo_url,
+      } : prev)
       await refreshProfile();
       return true;
     } catch (err) {
