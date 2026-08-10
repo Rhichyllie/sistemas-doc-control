@@ -34,10 +34,11 @@ export interface CreatePublicationInput {
   titulo: string;
   categoria: PublicationCategory;
   resumo?: string | null;
-  imagem_url?: string | null;
   documento_id?: string | null;
   data_publicacao?: string;
 }
+
+const PUBLICATIONS_BUCKET = "publicacoes";
 
 const DEFAULT_PUBLICATIONS: Omit<
   PublicationRecord,
@@ -148,6 +149,30 @@ function buildFallbackPublications(orgId: string) {
   }));
 }
 
+function buildPublicationImagePath(orgId: string, file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  const safeExtension =
+    extension && /^[a-z0-9]+$/i.test(extension) ? extension : "jpg";
+
+  return `${orgId}/${crypto.randomUUID()}.${safeExtension}`;
+}
+
+function extractPublicationImagePath(url: string) {
+  try {
+    const parsedUrl = new URL(url);
+    const marker = `/storage/v1/object/public/${PUBLICATIONS_BUCKET}/`;
+    const markerIndex = parsedUrl.pathname.indexOf(marker);
+
+    if (markerIndex === -1) return null;
+
+    return decodeURIComponent(
+      parsedUrl.pathname.slice(markerIndex + marker.length),
+    );
+  } catch {
+    return null;
+  }
+}
+
 export function usePublications(options: { limit?: number } = {}) {
   const { limit } = options;
   const { profile } = useAuthContext();
@@ -158,6 +183,9 @@ export function usePublications(options: { limit?: number } = {}) {
 
   const refresh = useCallback(async () => {
     if (!profile?.org_id) {
+      // #region debug-point C:refresh-no-org
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"publication-save-missing",runId:"pre-fix",hypothesisId:"C",location:"src/hooks/usePublications.ts:refresh:noOrg",msg:"[DEBUG] publications refresh skipped without org",data:{profileId:profile?.id ?? null,orgId:profile?.org_id ?? null},ts:Date.now()})}).catch(()=>{});
+      // #endregion
       setPublications([]);
       setLoading(false);
       return;
@@ -166,6 +194,9 @@ export function usePublications(options: { limit?: number } = {}) {
     setLoading(true);
     setError(null);
     setUsingFallback(false);
+    // #region debug-point E:refresh-start
+    fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"publication-save-missing",runId:"pre-fix",hypothesisId:"E",location:"src/hooks/usePublications.ts:refresh:start",msg:"[DEBUG] publications refresh started",data:{orgId:profile.org_id,limit:typeof limit === "number" ? limit : null},ts:Date.now()})}).catch(()=>{});
+    // #endregion
 
     try {
       let query = supabase
@@ -193,6 +224,9 @@ export function usePublications(options: { limit?: number } = {}) {
       }
 
       const result = await query;
+      // #region debug-point E:refresh-result
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"publication-save-missing",runId:"pre-fix",hypothesisId:"E",location:"src/hooks/usePublications.ts:refresh:result",msg:"[DEBUG] publications refresh received query result",data:{orgId:profile.org_id,rowCount:Array.isArray(result.data) ? result.data.length : null,error:result.error ? {message:result.error.message,code:(result.error as { code?: string }).code}:null},ts:Date.now()})}).catch(()=>{});
+      // #endregion
       if (result.error) {
         if (isMissingPublicationsSchema(result.error)) {
           setUsingFallback(true);
@@ -228,34 +262,61 @@ export function usePublications(options: { limit?: number } = {}) {
     [limit, publications],
   );
 
+  const fetchPublicationState = useCallback(
+    async (publicationId: string) => {
+      if (!profile?.org_id) {
+        throw new Error(
+          "Organização não identificada para validar a publicação.",
+        );
+      }
+
+      const { data, error: selectError } = await supabase
+        .from("publicacoes")
+        .select("id, imagem_url")
+        .eq("id", publicationId)
+        .eq("org_id", profile.org_id)
+        .maybeSingle();
+
+      if (selectError) {
+        throw new Error(
+          getErrorMessage(
+            selectError,
+            "Não foi possível validar a publicação salva.",
+          ),
+        );
+      }
+
+      return data;
+    },
+    [profile?.org_id],
+  );
+
   /**
    * Cria uma nova publicação vinculada (opcionalmente) a um documento já
    * cadastrado, e atualiza a lista local em seguida.
-   *
-   * TODO: confirme o nome da coluna de autor em `profiles` — assumi
-   * `profile.id` como `autor_id`. Ajuste se o seu AuthContext usar outro campo
-   * (ex.: `profile.user_id`).
    */
   const createPublication = useCallback(
     async (input: CreatePublicationInput) => {
       if (!profile?.org_id) {
         throw new Error("Organização não identificada para criar a publicação.");
       }
+      // #region debug-point A:create-start
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"publication-save-missing",runId:"pre-fix",hypothesisId:"A",location:"src/hooks/usePublications.ts:createPublication:start",msg:"[DEBUG] publication insert started",data:{orgId:profile.org_id,profileId:profile.id ?? null,titulo:input.titulo,categoria:input.categoria,documentoId:input.documento_id ?? null},ts:Date.now()})}).catch(()=>{});
+      // #endregion
 
-      const { data, error: insertError } = await supabase
-        .from("publicacoes")
-        .insert({
-          org_id: profile.org_id,
-          titulo: input.titulo,
-          categoria: input.categoria,
-          resumo: input.resumo ?? null,
-          imagem_url: input.imagem_url ?? null,
-          documento_id: input.documento_id ?? null,
-          data_publicacao: input.data_publicacao ?? new Date().toISOString(),
-          autor_id: profile.id ?? null,
-        })
-        .select("id")
-        .single();
+      const { data, error: insertError } = await supabase.rpc(
+        "create_publicacao",
+        {
+          p_titulo: input.titulo,
+          p_categoria: input.categoria,
+          p_resumo: input.resumo ?? null,
+          p_documento_id: input.documento_id ?? null,
+          p_data_publicacao: input.data_publicacao ?? new Date().toISOString(),
+        },
+      );
+      // #region debug-point A:create-result
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"publication-save-missing",runId:"pre-fix",hypothesisId:"A",location:"src/hooks/usePublications.ts:createPublication:result",msg:"[DEBUG] publication insert finished",data:{insertedId:typeof data === "string" ? data : null,error:insertError ? {message:insertError.message,code:(insertError as { code?: string }).code}:null},ts:Date.now()})}).catch(()=>{});
+      // #endregion
 
       if (insertError) {
         throw new Error(
@@ -263,10 +324,170 @@ export function usePublications(options: { limit?: number } = {}) {
         );
       }
 
+      if (typeof data !== "string" || !data) {
+        throw new Error("A publicação foi criada sem retornar um identificador.");
+      }
+
+      const persistedPublication = await fetchPublicationState(data);
+      if (!persistedPublication) {
+        throw new Error(
+          "A publicação não foi confirmada no Supabase após a gravação.",
+        );
+      }
+
       await refresh();
-      return data?.id as string | undefined;
+
+      return data;
     },
-    [profile, refresh],
+    [fetchPublicationState, profile, refresh],
+  );
+
+  const persistPublicationImage = useCallback(
+    async (publicationId: string, imageUrl: string | null) => {
+      const { error } = await supabase.rpc("set_publicacao_image", {
+        p_publicacao_id: publicationId,
+        p_imagem_url: imageUrl,
+      });
+
+      if (error) {
+        throw new Error(
+          getErrorMessage(
+            error,
+            "Não foi possível salvar a imagem da publicação.",
+          ),
+        );
+      }
+    },
+    [],
+  );
+
+  const uploadPublicationImage = useCallback(
+    async (file: File) => {
+      if (!profile?.org_id) {
+        throw new Error("Organização não identificada para enviar a imagem.");
+      }
+
+      const filePath = buildPublicationImagePath(profile.org_id, file);
+      // #region debug-point B:upload-start
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"publication-save-missing",runId:"pre-fix",hypothesisId:"B",location:"src/hooks/usePublications.ts:uploadPublicationImage:start",msg:"[DEBUG] publication image upload started",data:{orgId:profile.org_id,filePath,fileName:file.name,fileType:file.type,fileSize:file.size},ts:Date.now()})}).catch(()=>{});
+      // #endregion
+      const { error } = await supabase.storage
+        .from(PUBLICATIONS_BUCKET)
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type || undefined,
+        });
+
+      if (error) {
+        throw new Error(
+          getErrorMessage(
+            error,
+            "Não foi possível enviar a imagem da publicação.",
+          ),
+        );
+      }
+
+      const { data } = supabase.storage
+        .from(PUBLICATIONS_BUCKET)
+        .getPublicUrl(filePath);
+      // #region debug-point B:upload-result
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"publication-save-missing",runId:"pre-fix",hypothesisId:"B",location:"src/hooks/usePublications.ts:uploadPublicationImage:result",msg:"[DEBUG] publication image upload finished",data:{filePath,publicUrl:data.publicUrl},ts:Date.now()})}).catch(()=>{});
+      // #endregion
+
+      return data.publicUrl;
+    },
+    [profile?.org_id],
+  );
+
+  const deletePublicationImage = useCallback(async (url: string | null) => {
+    if (!url) return;
+
+    const filePath = extractPublicationImagePath(url);
+    if (!filePath) return;
+
+    const { error } = await supabase.storage
+      .from(PUBLICATIONS_BUCKET)
+      .remove([filePath]);
+
+    if (error) {
+      throw new Error(
+        getErrorMessage(
+          error,
+          "Não foi possível remover a imagem da publicação.",
+        ),
+      );
+    }
+  }, []);
+
+  const updatePublicationImage = useCallback(
+    async (publicationId: string, file: File, currentUrl?: string | null) => {
+      if (!profile?.org_id) {
+        throw new Error(
+          "Organização não identificada para atualizar a publicação.",
+        );
+      }
+
+      const uploadedUrl = await uploadPublicationImage(file);
+
+      try {
+        await persistPublicationImage(publicationId, uploadedUrl);
+        const persistedPublication = await fetchPublicationState(publicationId);
+
+        if (!persistedPublication || persistedPublication.imagem_url !== uploadedUrl) {
+          throw new Error(
+            "A imagem foi enviada, mas não foi confirmada na publicação.",
+          );
+        }
+      } catch (error) {
+        await deletePublicationImage(uploadedUrl).catch(() => undefined);
+        throw error;
+      }
+
+      if (currentUrl && currentUrl !== uploadedUrl) {
+        await deletePublicationImage(currentUrl).catch(() => undefined);
+      }
+
+      await refresh();
+      return uploadedUrl;
+    },
+    [
+      deletePublicationImage,
+      fetchPublicationState,
+      persistPublicationImage,
+      profile?.org_id,
+      refresh,
+      uploadPublicationImage,
+    ],
+  );
+
+  const removePublicationImage = useCallback(
+    async (publicationId: string, currentUrl?: string | null) => {
+      if (!profile?.org_id) {
+        throw new Error(
+          "Organização não identificada para atualizar a publicação.",
+        );
+      }
+
+      await persistPublicationImage(publicationId, null);
+
+      const persistedPublication = await fetchPublicationState(publicationId);
+      if (!persistedPublication || persistedPublication.imagem_url !== null) {
+        throw new Error(
+          "A remoção da imagem não foi confirmada na publicação.",
+        );
+      }
+
+      await deletePublicationImage(currentUrl ?? null).catch(() => undefined);
+      await refresh();
+    },
+    [
+      deletePublicationImage,
+      fetchPublicationState,
+      persistPublicationImage,
+      profile?.org_id,
+      refresh,
+    ],
   );
 
   return {
@@ -277,5 +498,8 @@ export function usePublications(options: { limit?: number } = {}) {
     usingFallback,
     refresh,
     createPublication,
+    uploadPublicationImage,
+    updatePublicationImage,
+    removePublicationImage,
   };
 }
