@@ -90,7 +90,10 @@ function OrganizationNewsPage() {
                   key={publication.id}
                   publication={publication}
                   isAdmin={isAdmin}
+                  onEditPublication={publications.updatePublication}
+                  onDeletePublication={publications.deletePublication}
                   onUpdateImage={publications.updatePublicationImage}
+                  onUpdateImageFocus={publications.updatePublicationImageFocus}
                   onRemoveImage={publications.removePublicationImage}
                   onOpen={() => {
                     void handleOpenPublication(publication);

@@ -5,6 +5,7 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  Crosshair,
   FileStack,
   FolderOpen,
   ImagePlus,
@@ -50,7 +51,11 @@ import { Badge } from "@/components/ui/badge";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { setStoredActiveLibraryId } from "@/contexts/library-context";
 import { useLibraries, type LibraryPhaseCode } from "@/hooks/useLibraries";
-import { usePublications, type PublicationRecord } from "@/hooks/usePublications";
+import {
+  PUBLICATION_IMAGE_FOCUS_OPTIONS,
+  usePublications,
+  type PublicationRecord,
+} from "@/hooks/usePublications";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/authenticated/organizacao")({
@@ -93,7 +98,7 @@ function OrganizationLibrariesPage() {
   const catalog = useLibraries();
   // Busca 5: 1 vai para o card de destaque (hero) e as outras 4 preenchem
   // completamente a grade "Últimas notícias e publicações" (xl:grid-cols-4).
-  const publications = usePublications({ limit: 5 });
+  const publications = usePublications({ limit: 6 });
   const [open, setOpen] = useState(false);
   const [enterpriseMode, setEnterpriseMode] = useState<"existing" | "new">(
     "existing",
@@ -121,10 +126,7 @@ function OrganizationLibrariesPage() {
   }, [enterpriseId, enterpriseMode, libraryName, newEnterpriseName, phaseCode]);
 
   const featuredPublication = publications.latestPublications[0] ?? null;
-  const newsroomPublications =
-    publications.latestPublications.length > 1
-      ? publications.latestPublications.slice(1, 5)
-      : publications.latestPublications;
+  const newsroomPublications = publications.latestPublications.slice(0, 4);
 
   // Publicações candidatas a aparecer no carrossel do hero (ajuste a fonte se tiver uma lista própria de "destaques")
   const heroSlides = useMemo(
@@ -465,6 +467,10 @@ function OrganizationLibrariesPage() {
             src={heroImageUrl}
             alt={featuredPublication?.titulo ?? "Destaque das bibliotecas"}
             className="absolute inset-0 h-full w-full object-cover"
+            style={{
+              objectPosition:
+                featuredPublication?.imagem_foco ?? "center center",
+            }}
           />
 
           {/* Gradiente da esquerda para a direita, garantindo contraste do texto sobre a foto */}
@@ -582,6 +588,38 @@ function OrganizationLibrariesPage() {
                 )}
                 {heroImagePreview ? "Trocar imagem" : "Inserir imagem"}
               </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="h-9 gap-1.5 rounded-lg bg-black/40 text-white backdrop-blur-sm hover:bg-black/55"
+                    disabled={uploadingHeroImage || !featuredPublication}
+                  >
+                    <Crosshair className="h-3.5 w-3.5" />
+                    Enquadrar
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Enquadramento da imagem</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {PUBLICATION_IMAGE_FOCUS_OPTIONS.map((option) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      onClick={() => {
+                        if (!featuredPublication) return;
+                        void publications.updatePublicationImageFocus(
+                          featuredPublication.id,
+                          option.value,
+                        );
+                      }}
+                    >
+                      {option.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
               <input
                 ref={heroFileInputRef}
                 type="file"
@@ -634,7 +672,10 @@ function OrganizationLibrariesPage() {
                 key={publication.id}
                 publication={publication}
                 isAdmin={isAdmin}
+                onEditPublication={publications.updatePublication}
+                onDeletePublication={publications.deletePublication}
                 onUpdateImage={publications.updatePublicationImage}
+                onUpdateImageFocus={publications.updatePublicationImageFocus}
                 onRemoveImage={publications.removePublicationImage}
                 onOpen={() => {
                   void handleOpenPublication(publication);

@@ -9,12 +9,39 @@ export type PublicationCategory =
   | "seguranca_saude"
   | "comunicado";
 
+export type PublicationImageFocus =
+  | "left top"
+  | "center top"
+  | "right top"
+  | "left center"
+  | "center center"
+  | "right center"
+  | "left bottom"
+  | "center bottom"
+  | "right bottom";
+
+export const PUBLICATION_IMAGE_FOCUS_OPTIONS: {
+  value: PublicationImageFocus;
+  label: string;
+}[] = [
+  { value: "left top", label: "Superior esquerda" },
+  { value: "center top", label: "Superior centro" },
+  { value: "right top", label: "Superior direita" },
+  { value: "left center", label: "Centro esquerda" },
+  { value: "center center", label: "Centro" },
+  { value: "right center", label: "Centro direita" },
+  { value: "left bottom", label: "Inferior esquerda" },
+  { value: "center bottom", label: "Inferior centro" },
+  { value: "right bottom", label: "Inferior direita" },
+];
+
 export interface PublicationRecord {
   id: string;
   org_id: string;
   titulo: string;
   categoria: PublicationCategory;
   imagem_url: string | null;
+  imagem_foco: PublicationImageFocus | null;
   resumo: string | null;
   documento_id: string | null;
   data_publicacao: string;
@@ -38,6 +65,13 @@ export interface CreatePublicationInput {
   data_publicacao?: string;
 }
 
+export interface UpdatePublicationInput {
+  titulo: string;
+  categoria: PublicationCategory;
+  resumo?: string | null;
+  documento_id?: string | null;
+}
+
 const PUBLICATIONS_BUCKET = "publicacoes";
 
 const DEFAULT_PUBLICATIONS: Omit<
@@ -49,6 +83,7 @@ const DEFAULT_PUBLICATIONS: Omit<
     titulo: "Novo procedimento para emissão multidisciplinar",
     categoria: "procedimento",
     imagem_url: null,
+    imagem_foco: null,
     resumo:
       "Padronização do fluxo de emissão e conferência para entregáveis de projeto com múltiplas disciplinas.",
     data_publicacao: new Date(Date.now() - 86400000).toISOString(),
@@ -59,6 +94,7 @@ const DEFAULT_PUBLICATIONS: Omit<
     titulo: "Manual operacional revisado para gestão documental",
     categoria: "manual",
     imagem_url: null,
+    imagem_foco: null,
     resumo:
       "Atualização do guia interno com critérios de registro, revisão e rastreabilidade de documentos.",
     data_publicacao: new Date(Date.now() - 2 * 86400000).toISOString(),
@@ -69,6 +105,7 @@ const DEFAULT_PUBLICATIONS: Omit<
     titulo: "Nova orientação de segurança e saúde no canteiro",
     categoria: "seguranca_saude",
     imagem_url: null,
+    imagem_foco: null,
     resumo:
       "Comunicado com reforço dos requisitos mínimos de segurança para inspeções, manutenção e acesso controlado.",
     data_publicacao: new Date(Date.now() - 4 * 86400000).toISOString(),
@@ -79,6 +116,7 @@ const DEFAULT_PUBLICATIONS: Omit<
     titulo: "Comunicado geral sobre padronização de nomenclaturas",
     categoria: "comunicado",
     imagem_url: null,
+    imagem_foco: null,
     resumo:
       "Ajustes de nomenclatura para harmonizar bibliotecas de Projeto e O&M dentro da mesma organização.",
     data_publicacao: new Date(Date.now() - 6 * 86400000).toISOString(),
@@ -109,6 +147,12 @@ function normalizePublication(value: unknown): PublicationRecord | null {
       ? value.categoria
       : "comunicado";
 
+  const imagemFoco =
+    typeof value.imagem_foco === "string" &&
+    PUBLICATION_IMAGE_FOCUS_OPTIONS.some((option) => option.value === value.imagem_foco)
+      ? (value.imagem_foco as PublicationImageFocus)
+      : null;
+
   const documento = isRecord(value.documento)
     ? {
         id: String(value.documento.id ?? ""),
@@ -126,6 +170,7 @@ function normalizePublication(value: unknown): PublicationRecord | null {
     titulo: String(value.titulo ?? "Publicação"),
     categoria,
     imagem_url: typeof value.imagem_url === "string" ? value.imagem_url : null,
+    imagem_foco: imagemFoco,
     resumo: typeof value.resumo === "string" ? value.resumo : null,
     documento_id:
       typeof value.documento_id === "string" ? value.documento_id : null,
@@ -145,6 +190,7 @@ interface PublicationBaseRow {
   titulo: string;
   categoria: PublicationCategory;
   imagem_url: string | null;
+  imagem_foco: PublicationImageFocus | null;
   resumo: string | null;
   documento_id: string | null;
   data_publicacao: string;
@@ -225,7 +271,7 @@ export function usePublications(options: { limit?: number } = {}) {
       let query = supabase
         .from("publicacoes")
         .select(
-          "id, org_id, titulo, categoria, imagem_url, resumo, documento_id, data_publicacao, autor_id",
+          "id, org_id, titulo, categoria, imagem_url, imagem_foco, resumo, documento_id, data_publicacao, autor_id",
         )
         .eq("org_id", profile.org_id)
         .order("data_publicacao", { ascending: false });
@@ -339,7 +385,7 @@ export function usePublications(options: { limit?: number } = {}) {
 
       const { data, error: selectError } = await supabase
         .from("publicacoes")
-        .select("id, imagem_url")
+        .select("id, imagem_url, imagem_foco")
         .eq("id", publicationId)
         .eq("org_id", profile.org_id)
         .maybeSingle();
@@ -528,6 +574,80 @@ export function usePublications(options: { limit?: number } = {}) {
     ],
   );
 
+  const updatePublicationImageFocus = useCallback(
+    async (
+      publicationId: string,
+      imageFocus: PublicationImageFocus,
+    ) => {
+      if (!profile?.org_id) {
+        throw new Error(
+          "Organização não identificada para atualizar a publicação.",
+        );
+      }
+
+      const { error } = await supabase.rpc("set_publicacao_image_focus", {
+        p_publicacao_id: publicationId,
+        p_imagem_foco: imageFocus,
+      });
+
+      if (error) {
+        throw new Error(
+          getErrorMessage(
+            error,
+            "Não foi possível atualizar o enquadramento da imagem.",
+          ),
+        );
+      }
+
+      const persistedPublication = await fetchPublicationState(publicationId);
+      if (!persistedPublication || persistedPublication.imagem_foco !== imageFocus) {
+        throw new Error(
+          "O enquadramento da imagem não foi confirmado na publicação.",
+        );
+      }
+
+      await refresh();
+    },
+    [fetchPublicationState, profile?.org_id, refresh],
+  );
+
+  const updatePublication = useCallback(
+    async (publicationId: string, input: UpdatePublicationInput) => {
+      if (!profile?.org_id) {
+        throw new Error(
+          "Organização não identificada para atualizar a publicação.",
+        );
+      }
+
+      const { error } = await supabase.rpc("update_publicacao", {
+        p_publicacao_id: publicationId,
+        p_titulo: input.titulo,
+        p_categoria: input.categoria,
+        p_resumo: input.resumo ?? null,
+        p_documento_id: input.documento_id ?? null,
+      });
+
+      if (error) {
+        throw new Error(
+          getErrorMessage(
+            error,
+            "Não foi possível atualizar a publicação.",
+          ),
+        );
+      }
+
+      const persistedPublication = await fetchPublicationState(publicationId);
+      if (!persistedPublication) {
+        throw new Error(
+          "A publicação atualizada não foi confirmada no Supabase.",
+        );
+      }
+
+      await refresh();
+    },
+    [fetchPublicationState, profile?.org_id, refresh],
+  );
+
   const removePublicationImage = useCallback(
     async (publicationId: string, currentUrl?: string | null) => {
       if (!profile?.org_id) {
@@ -557,6 +677,33 @@ export function usePublications(options: { limit?: number } = {}) {
     ],
   );
 
+  const deletePublication = useCallback(
+    async (publicationId: string, currentUrl?: string | null) => {
+      if (!profile?.org_id) {
+        throw new Error(
+          "Organização não identificada para remover a publicação.",
+        );
+      }
+
+      const { error } = await supabase.rpc("delete_publicacao", {
+        p_publicacao_id: publicationId,
+      });
+
+      if (error) {
+        throw new Error(
+          getErrorMessage(
+            error,
+            "Não foi possível remover a publicação.",
+          ),
+        );
+      }
+
+      await deletePublicationImage(currentUrl ?? null).catch(() => undefined);
+      await refresh();
+    },
+    [deletePublicationImage, profile?.org_id, refresh],
+  );
+
   return {
     publications,
     latestPublications,
@@ -565,8 +712,11 @@ export function usePublications(options: { limit?: number } = {}) {
     usingFallback,
     refresh,
     createPublication,
+    updatePublication,
+    deletePublication,
     uploadPublicationImage,
     updatePublicationImage,
+    updatePublicationImageFocus,
     removePublicationImage,
   };
 }
