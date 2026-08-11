@@ -106,10 +106,16 @@ export function ApprovalGroupsPage() {
   )
   const availableUsersForMemberGroup = useMemo(() => {
     if (!memberGroup) return []
-    const assignedProfileIds =
-      memberGroup.scope === 'project' && memberGroup.project_id
-        ? new Set(getProfilesForProject(memberGroup.project_id))
-        : null
+    // Apenas filtra por projeto se:
+    //  - o scope do grupo é "project"
+    //  - tem project_id vinculado
+    //  - e existe pelo menos um membro de projeto cadastrado para aquele projeto
+    // Se qualquer condição acima falhar, exibe TODOS os membros da equipe.
+    const hasProjectScoping =
+      memberGroup.scope === 'project' && Boolean(memberGroup.project_id)
+    const assignedProfileIds = hasProjectScoping
+      ? new Set(getProfilesForProject(memberGroup.project_id!))
+      : null
 
     return users.filter((user) => {
       if (
@@ -125,7 +131,7 @@ export function ApprovalGroupsPage() {
       if (assignedProfileIds && assignedProfileIds.size > 0) {
         return assignedProfileIds.has(user.id)
       }
-      return assignedProfileIds === null
+      return true
     })
   }, [getProfilesForProject, memberGroup, members, users])
   const substituteCandidatesForMemberGroup = useMemo(() => {
@@ -629,11 +635,13 @@ export function ApprovalGroupsPage() {
                   ))}
                 </SelectContent>
               </Select>
-              {memberGroup?.scope === 'project' && memberGroup.project_id && (
-                <p className="text-xs text-muted-foreground">
-                  São exibidos apenas os usuários cadastrados no projeto vinculado a este grupo.
-                </p>
-              )}
+              {memberGroup?.scope === 'project' &&
+                memberGroup.project_id &&
+                getProfilesForProject(memberGroup.project_id).length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    São exibidos apenas os usuários cadastrados no projeto vinculado a este grupo.
+                  </p>
+                )}
             </div>
             <div className="space-y-2">
               <Label>Papel no grupo</Label>
