@@ -3,33 +3,19 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Activity,
   AlertTriangle,
+  FileCheck2,
   LayoutDashboard,
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
-import { BottleneckBarChart } from "@/components/indicators/BottleneckBarChart";
-import { DelegationImpactPanel } from "@/components/indicators/DelegationImpactPanel";
-import { DocumentQualityRadar } from "@/components/indicators/DocumentQualityRadar";
 import { EmptyIndicatorsState } from "@/components/indicators/EmptyIndicatorsState";
-import { ExecutiveSummaryCard } from "@/components/indicators/ExecutiveSummaryCard";
 import {
   IndicatorExportBar,
   type IndicatorPrintOrientation,
 } from "@/components/indicators/IndicatorExportBar";
 import { IndicatorFilterBar } from "@/components/indicators/IndicatorFilterBar";
-import { IndicatorSectionTabs } from "@/components/indicators/IndicatorSectionTabs";
-import { IndicatorsVisualOverview } from "@/components/indicators/IndicatorsVisualOverview";
 import { MeetingModeLayout } from "@/components/indicators/MeetingModeLayout";
-import { MetricCardGrid } from "@/components/indicators/MetricCardGrid";
-import { NotificationSignalPanel } from "@/components/indicators/NotificationSignalPanel";
-import { OperationalFlowPanel } from "@/components/indicators/OperationalFlowPanel";
-import { OperationalHealthHero } from "@/components/indicators/OperationalHealthHero";
-import { OperationalHeatmapPanel } from "@/components/indicators/OperationalHeatmapPanel";
-import { OperationalRecommendations } from "@/components/indicators/OperationalRecommendations";
-import { ResponsibleRiskPanel } from "@/components/indicators/ResponsibleRiskPanel";
-import { RiskMatrixPanel } from "@/components/indicators/RiskMatrixPanel";
-import { SlaDistributionChart } from "@/components/indicators/SlaDistributionChart";
-import { TrendComparisonPanel } from "@/components/indicators/TrendComparisonPanel";
+import { ExecutiveDashboardSection } from "@/components/indicators/ExecutiveDashboardSection";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,7 +23,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useOperationalIndicators } from "@/hooks/useOperationalIndicators";
 import {
   getIndicatorsSourceMessage,
-  getKpiCards,
   hasOperationalIndicatorData,
   type IndicatorViewMode,
   type OperationalIndicatorsReport,
@@ -237,6 +222,12 @@ export function OperationalIndicatorsDashboard() {
                   Configurações
                 </Link>
               </Button>
+              <Button asChild variant="outline">
+                <Link to="/authenticated/auditoria/relatorios">
+                  <FileCheck2 className="mr-2 h-4 w-4" />
+                  Relatórios
+                </Link>
+              </Button>
               <Button
                 aria-label="Atualizar indicadores operacionais"
                 onClick={() => void indicators.refresh()}
@@ -293,34 +284,29 @@ export function OperationalIndicatorsDashboard() {
         <EmptyIndicatorsState source={indicators.source} />
       ) : (
         <>
-          {showManagementOverview && (
-            <IndicatorsVisualOverview report={report} />
-          )}
-
           {showAdvancedEmptyState ? (
             <EmptyIndicatorsState
               source={indicators.source === "fallback" ? "fallback" : "empty"}
               hasFallbackReport={indicators.source === "fallback"}
             />
           ) : (
-            <>
-              <ExecutiveSummaryCard report={report} />
-              <MetricCardGrid metrics={getKpiCards(report)} />
-
-              {viewMode === "analysis" ? (
-                <AnalysisCockpit
-                  report={report}
-                  recommendations={recommendations}
-                  primaryRecommendation={recommendations[0]}
-                />
-              ) : (
-                <ExecutiveCockpit
-                  report={report}
-                  recommendations={recommendations}
-                  presentation={viewMode === "presentation"}
-                />
-              )}
-            </>
+            <div
+              data-print-hidden
+              className="rounded-2xl border border-dashed p-6 text-center"
+            >
+              <p className="text-sm font-medium text-muted-foreground">
+                Os indicadores executivos foram movidos para a tela de Relatórios.
+              </p>
+              <Button
+                asChild
+                variant="default"
+                className="mt-3"
+              >
+                <Link to="/authenticated/auditoria/relatorios">
+                  Ir para Relatórios
+                </Link>
+              </Button>
+            </div>
           )}
 
           <Alert data-print-break-inside className="border-dashed">
@@ -335,107 +321,6 @@ export function OperationalIndicatorsDashboard() {
         </>
       )}
     </MeetingModeLayout>
-  );
-}
-
-function ExecutiveCockpit({
-  report,
-  recommendations,
-  presentation,
-}: {
-  report: OperationalIndicatorsReport;
-  recommendations: OperationalIndicatorsReport["recommendations"];
-  presentation: boolean;
-}) {
-  return (
-    <>
-      <section
-        aria-label="SLA, risco e comparação de período"
-        className="grid gap-4 2xl:grid-cols-12"
-      >
-        <div className="2xl:col-span-5">
-          <SlaDistributionChart report={report} />
-        </div>
-        <div className="2xl:col-span-4">
-          <RiskMatrixPanel report={report} />
-        </div>
-        <div className="2xl:col-span-3">
-          <TrendComparisonPanel report={report} />
-        </div>
-      </section>
-
-      <section
-        data-print-page-break-before={presentation ? "" : undefined}
-        aria-label="Gargalos e concentração de risco"
-        className="grid gap-4 xl:grid-cols-2"
-      >
-        <ResponsibleRiskPanel report={report} />
-        <OperationalFlowPanel report={report} />
-      </section>
-
-      <section
-        aria-label="Comparação e matriz de risco"
-        className="grid gap-4 xl:grid-cols-2"
-      >
-        <TrendComparisonPanel report={report} />
-        <RiskMatrixPanel report={report} />
-      </section>
-
-      <section
-        aria-label="Intensidade operacional"
-        className="grid gap-4"
-      >
-        <OperationalHeatmapPanel report={report} />
-      </section>
-    </>
-  );
-}
-
-function AnalysisCockpit({
-  report,
-  recommendations,
-  primaryRecommendation,
-}: {
-  report: OperationalIndicatorsReport;
-  recommendations: OperationalIndicatorsReport["recommendations"];
-  primaryRecommendation?: OperationalIndicatorsReport["recommendations"][number];
-}) {
-  return (
-    <>
-      <OperationalHealthHero
-        report={report}
-        primaryRecommendation={primaryRecommendation}
-      />
-
-      <section
-        aria-label="Comparação e matriz de risco"
-        className="grid gap-4 xl:grid-cols-2"
-      >
-        <TrendComparisonPanel report={report} />
-        <RiskMatrixPanel report={report} />
-      </section>
-
-      <section
-        aria-label="Rankings analíticos"
-        className="grid gap-4 xl:grid-cols-2"
-      >
-        <BottleneckBarChart report={report} />
-        <OperationalHeatmapPanel report={report} />
-      </section>
-
-      <section
-        data-print-page-break-before
-        aria-label="Sinais operacionais complementares"
-        className="grid gap-4 2xl:grid-cols-3"
-      >
-        <NotificationSignalPanel report={report} />
-        <DelegationImpactPanel report={report} />
-        <DocumentQualityRadar report={report} />
-      </section>
-
-      <IndicatorSectionTabs report={report} />
-      <OperationalRecommendations recommendations={recommendations} />
-    </>
   );
 }
 
