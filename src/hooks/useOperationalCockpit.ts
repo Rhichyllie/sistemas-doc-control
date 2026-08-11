@@ -409,16 +409,14 @@ export function useOperationalCockpit() {
       ) {
         continue
       }
-      if (!managerialView && !wi.isMine) continue
-      const alreadyMapped = activityItems.some(
-        (existing) =>
-          existing.documentId === wi.documentId &&
-          (existing.type === "approval_pending" ||
-            existing.type === "review_pending" ||
-            existing.type === "overdue"),
-      )
-      if (alreadyMapped) continue
       if (wi.type === "suggested_tramite") {
+        if (!wi.isMine) continue
+        const alreadyMappedSuggested = activityItems.some(
+          (existing) =>
+            existing.documentId === wi.documentId &&
+            existing.type === "review_pending",
+        )
+        if (alreadyMappedSuggested) continue
         activityItems.push({
           id: `suggested-tramite-cockpit-${wi.id}`,
           type: "review_pending",
@@ -430,7 +428,7 @@ export function useOperationalCockpit() {
           projectName: wi.projectName,
           area: wi.area,
           status: "Aguardando início",
-          priority: managerialView ? "low" : "high",
+          priority: "high",
           dueAt: null,
           createdAt: wi.createdAt,
           suggestedAction: "Iniciar trâmite",
@@ -438,6 +436,15 @@ export function useOperationalCockpit() {
         })
         continue
       }
+      if (!managerialView && !wi.isMine) continue
+      const alreadyMapped = activityItems.some(
+        (existing) =>
+          existing.documentId === wi.documentId &&
+          (existing.type === "approval_pending" ||
+            existing.type === "review_pending" ||
+            existing.type === "overdue"),
+      )
+      if (alreadyMapped) continue
       const remaining =
         typeof wi.businessDaysRemaining === "number"
           ? wi.businessDaysRemaining

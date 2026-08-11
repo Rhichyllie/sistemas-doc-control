@@ -208,6 +208,7 @@ export function useDocumentWorkCenter() {
     const usersById = new Map(
       actorsState.users.map((user) => [user.id, user.full_name]),
     );
+    const groupMemberIds = actorsState.groupMembers;
     const notificationFields = (documentId: string, stepId?: string | null) => {
       const related = notificationState.notifications.filter(
         (notification) =>
@@ -586,17 +587,80 @@ export function useDocumentWorkCenter() {
               left.name.localeCompare(right.name),
           )[0];
       if (!suggested) continue;
+
+      const sug =
+        suggested as unknown as {
+          graph?: {
+            nodes?: Array<{
+              assignment_type?: string;
+              assignee_user_id?: string | null;
+              assignee_group_id?: string | null;
+              required_role?: string;
+              assignee_user_name?: string | null;
+              assignee_group_name?: string | null;
+              label?: string;
+              position_x?: number;
+            }>;
+          };
+        };
+      const firstNode = Array.isArray(sug.graph?.nodes) && sug.graph!.nodes!.length > 0
+        ? [...sug.graph!.nodes!].sort(
+            (a, b) => (a.position_x ?? 0) - (b.position_x ?? 0),
+          )[0]
+        : null;
+      const suggestedFirstAssignee = firstNode ?? null;
+
+      const isMineSuggested =
+        document.author_id === profile?.id ||
+        (() => {
+          if (!profile || !suggestedFirstAssignee) return false;
+          const step = suggestedFirstAssignee;
+          if (
+            step.assignment_type === "author" ||
+            step.assignment_type === "document_owner"
+          ) {
+            return document.author_id === profile.id;
+          }
+          if (
+            step.assignment_type === "specific_user" ||
+            step.assignee_user_id
+          ) {
+            return step.assignee_user_id === profile.id;
+          }
+          if (
+            step.assignment_type === "approval_group" ||
+            step.assignee_group_id
+          ) {
+            return step.assignee_group_id
+              ? groupMemberIds.some(
+                  (row) =>
+                    row.group_id === step.assignee_group_id &&
+                    row.user_id === profile.id,
+                )
+              : false;
+          }
+          if (step.assignment_type === "role" || step.required_role) {
+            return profile.role === step.required_role;
+          }
+          return false;
+        })();
+
       workItems.push({
         id: `suggested-tramite-${document.id}-${suggested.id}`,
         type: "suggested_tramite",
         origin: "tramite",
         priority: calculateWorkItemPriority({ type: "suggested_tramite" }),
         title: "Trâmite aplicável ainda não iniciado",
-        description: `Modelo sugerido: ${suggested.name}.`,
+        description: `Modelo sugerido: ${suggested.name}.${suggestedFirstAssignee?.label ? ` · Próximo passo: ${suggestedFirstAssignee.label}` : ""}`,
         ...documentFields(document),
         dueAt: null,
-        responsibleName: document.author?.full_name ?? null,
-        isMine: document.author_id === profile?.id,
+        responsibleName:
+          (suggestedFirstAssignee?.assignee_user_name as string | null) ??
+          (suggestedFirstAssignee?.assignee_group_name as string | null) ??
+          (suggestedFirstAssignee?.required_role as string | null) ??
+          document.author?.full_name ??
+          null,
+        isMine: isMineSuggested,
         createdAt: document.updated_at,
         statusLabel: "Aguardando próximo passo",
         actionLabel: buildWorkItemAction("suggested_tramite"),
