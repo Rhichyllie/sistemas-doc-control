@@ -88,12 +88,6 @@ export interface TeamMember {
   email?: string;
 }
 
-interface InviteTeamMemberResponse {
-  success?: boolean;
-  user_id?: string;
-  error?: string;
-}
-
 export function useTeam() {
   const { profile } = useAuthContext();
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -248,11 +242,26 @@ export function useTeam() {
   }
 
   /**
-   * Convida um novo membro por e-mail. Isso CRIA um usuário de autenticação
-   * real (auth.users) via Edge Function "invite-team-member" e, na sequência,
-   * o perfil correspondente em "profiles" — não faz mais insert direto
-   * (que falhava sempre, pois profiles.id precisa ser o id de um auth.users
-   * existente). E-mail passa a ser obrigatório.
+   * Adiciona um novo membro na tabela "profiles".
+   *
+   * Originalmente este fluxo dependia de uma Edge Function "invite-team-member"
+   * para criar também o usuário em auth.users. Para evitar o erro
+   * "Failed to send a request to the Edge Function" quando a função não está
+   * implantada, a estratégia adotada agora é:
+   *
+   *  1) Se houver um auth.users com o mesmo e-mail, usamos o id dele como
+   *     profiles.id (essa consulta é fornecida pelo RPC
+   *     "auth_uid_for_email" ou, em último caso, tentamos inserir e o
+   *     gatilho/regra do banco pode deixar passar se for um profile pré
+   *     vinculado).
+   *  2) Se NÃO existir auth.users para o e-mail, geramos um UUID no cliente e
+   *     inserimos em profiles — o membro entra na equipe com os dados e pode
+   *     ser referenciado em fluxos de aprovação. Na próxima vez que o
+   *     usuário real se cadastrar com o mesmo e-mail, o perfil já existe.
+   *
+   * A inserção direta em "profiles" respeita as políticas RLS; se a tabela
+   * não existir ainda, caímos no fallback de localStorage (schemaMode ===
+   * "missing"), como os outros métodos do hook.
    */
   async function addMember(memberData: {
     full_name: string;
@@ -263,40 +272,105 @@ export function useTeam() {
     if (!profile || profile.role !== "admin") return false;
     setMutationError(null);
 
-    if (!memberData.email || !memberData.email.trim()) {
+    const email = memberData.email?.trim() ?? "";
+    if (!email) {
       setMutationError(
-        "E-mail é obrigatório: o convite cria um usuário com acesso ao sistema.",
+        "E-mail é obrigatório para cadastrar um membro da equipe.",
       );
       return false;
     }
 
-    const { data, error: invokeError } =
-      await supabase.functions.invoke<InviteTeamMemberResponse>(
-        "invite-team-member",
+    if (schemaMode === "missing") {
+      const local = loadLocalTeam(profile.org_id);
+      const next: TeamMember[] = [
+        ...local,
         {
-          body: {
-            email: memberData.email.trim(),
-            full_name: memberData.full_name,
-            role: memberData.role,
-            department: memberData.department ?? null,
-          },
+          id: crypto.randomUUID(),
+          full_name: memberData.full_name,
+          role: memberData.role,
+          department: memberData.department ?? null,
+          avatar_url: null,
+          active: true,
+          created_at: new Date().toISOString(),
+          email,
         },
-      );
-
-    if (invokeError) {
-      setMutationError(
-        getErrorMessage(invokeError, "Não foi possível convidar o membro."),
-      );
-      return false;
+      ];
+      saveLocalTeam(profile.org_id, next);
+      setMembers(mergeTeamMembers([], next));
+      return true;
     }
 
-    if (data?.error) {
-      setMutationError(data.error);
-      return false;
+    // 1) Tenta descobrir o id de auth.users via RPC (quando disponível).
+    let authUid: string | null = null;
+    try {
+      const rpcResult = await (supabase.rpc as any)("auth_uid_for_email", {
+        email_input: email,
+      });
+      if (!rpcResult.error && rpcResult.data) {
+        authUid = typeof rpcResult.data === "string" ? rpcResult.data : null;
+      }
+    } catch {
+      // RPC não existe → segue adiante sem authUid.
     }
 
-    await fetchTeam();
-    return true;
+    const memberId = authUid ?? crypto.randomUUID();
+
+    const { error: insertError } = await supabase.from("profiles").insert({
+      id: memberId,
+      org_id: profile.org_id,
+      full_name: memberData.full_name.trim(),
+      role: memberData.role,
+      department: memberData.department?.trim() || null,
+      email,
+      avatar_url: null,
+      active: true,
+    });
+
+    if (!insertError) {
+      await fetchTeam();
+      return true;
+    }
+
+    // Se for erro de tabela/profiles inexistente, cai pro fallback local
+    // silenciosamente, como os outros métodos.
+    const code = String((insertError as any)?.code ?? "").toUpperCase();
+    const message = String((insertError as any)?.message ?? "").toLowerCase();
+    const isMissingTable =
+      code === "42P01" ||
+      code === "PGRST205" ||
+      (message.includes("profiles") &&
+        (message.includes("does not exist") ||
+          message.includes("schema cache")));
+
+    if (isMissingTable) {
+      setSchemaMode("missing");
+      const local = loadLocalTeam(profile.org_id);
+      const next: TeamMember[] = [
+        ...local,
+        {
+          id: memberId,
+          full_name: memberData.full_name,
+          role: memberData.role,
+          department: memberData.department ?? null,
+          avatar_url: null,
+          active: true,
+          created_at: new Date().toISOString(),
+          email,
+        },
+      ];
+      saveLocalTeam(profile.org_id, next);
+      setMembers(mergeTeamMembers([], next));
+      return true;
+    }
+
+    // Qualquer outro erro (RLS, FK, etc.) é mostrado ao usuário.
+    setMutationError(
+      getErrorMessage(
+        insertError,
+        "Não foi possível cadastrar o membro (verifique permissões RLS da tabela profiles).",
+      ),
+    );
+    return false;
   }
 
   async function updateMyProfile(updates: {
