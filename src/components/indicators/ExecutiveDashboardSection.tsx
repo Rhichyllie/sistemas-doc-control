@@ -5,17 +5,9 @@ import { TrendComparisonPanel } from "@/components/indicators/TrendComparisonPan
 import { ResponsibleRiskPanel } from "@/components/indicators/ResponsibleRiskPanel";
 import { OperationalFlowPanel } from "@/components/indicators/OperationalFlowPanel";
 import { OperationalHeatmapPanel } from "@/components/indicators/OperationalHeatmapPanel";
-import { OperationalHealthHero } from "@/components/indicators/OperationalHealthHero";
-import { BottleneckBarChart } from "@/components/indicators/BottleneckBarChart";
-import { NotificationSignalPanel } from "@/components/indicators/NotificationSignalPanel";
-import { DelegationImpactPanel } from "@/components/indicators/DelegationImpactPanel";
-import { DocumentQualityRadar } from "@/components/indicators/DocumentQualityRadar";
 import { ExecutiveSummaryCard } from "@/components/indicators/ExecutiveSummaryCard";
 import { MetricCardGrid } from "@/components/indicators/MetricCardGrid";
 import { getKpiCards } from "@/lib/operationalIndicators";
-import { IndicatorsVisualOverview } from "@/components/indicators/IndicatorsVisualOverview";
-import { IndicatorSectionTabs } from "@/components/indicators/IndicatorSectionTabs";
-import { OperationalRecommendations } from "@/components/indicators/OperationalRecommendations";
 
 export function ExecutiveIndicatorsCockpit({
   report,
@@ -26,6 +18,7 @@ export function ExecutiveIndicatorsCockpit({
   recommendations: OperationalIndicatorsReport["recommendations"];
   presentation: boolean;
 }) {
+  void recommendations;
   return (
     <>
       <section
@@ -70,87 +63,25 @@ export function ExecutiveIndicatorsCockpit({
   );
 }
 
-export function AnalysisIndicatorsCockpit({
-  report,
-  recommendations,
-  primaryRecommendation,
-}: {
-  report: OperationalIndicatorsReport;
-  recommendations: OperationalIndicatorsReport["recommendations"];
-  primaryRecommendation?: OperationalIndicatorsReport["recommendations"][number];
-}) {
-  return (
-    <>
-      <OperationalHealthHero
-        report={report}
-        primaryRecommendation={primaryRecommendation}
-      />
-
-      <section
-        aria-label="Comparação e matriz de risco"
-        className="grid gap-4 xl:grid-cols-2"
-      >
-        <TrendComparisonPanel report={report} />
-        <RiskMatrixPanel report={report} />
-      </section>
-
-      <section
-        aria-label="Rankings analíticos"
-        className="grid gap-4 xl:grid-cols-2"
-      >
-        <BottleneckBarChart report={report} />
-        <OperationalHeatmapPanel report={report} />
-      </section>
-
-      <section
-        data-print-page-break-before
-        aria-label="Sinais operacionais complementares"
-        className="grid gap-4 2xl:grid-cols-3"
-      >
-        <NotificationSignalPanel report={report} />
-        <DelegationImpactPanel report={report} />
-        <DocumentQualityRadar report={report} />
-      </section>
-
-      <IndicatorSectionTabs report={report} />
-      <OperationalRecommendations recommendations={recommendations} />
-    </>
-  );
-}
-
 export function ExecutiveDashboardSection({
   report,
   recommendations,
   viewMode,
-  showManagementOverview = true,
 }: {
   report: OperationalIndicatorsReport;
   recommendations: OperationalIndicatorsReport["recommendations"];
   viewMode: "management" | "presentation" | "analysis";
-  showManagementOverview?: boolean;
 }) {
+  const presentation = viewMode === "presentation";
   return (
     <>
-      {showManagementOverview && viewMode === "management" ? (
-        <IndicatorsVisualOverview report={report} />
-      ) : null}
-
       <ExecutiveSummaryCard report={report} />
       <MetricCardGrid metrics={getKpiCards(report)} />
-
-      {viewMode === "analysis" ? (
-        <AnalysisIndicatorsCockpit
-          report={report}
-          recommendations={recommendations}
-          primaryRecommendation={recommendations[0]}
-        />
-      ) : (
-        <ExecutiveIndicatorsCockpit
-          report={report}
-          recommendations={recommendations}
-          presentation={viewMode === "presentation"}
-        />
-      )}
+      <ExecutiveIndicatorsCockpit
+        report={report}
+        recommendations={recommendations}
+        presentation={presentation}
+      />
     </>
   );
 }

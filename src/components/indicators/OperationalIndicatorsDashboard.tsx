@@ -15,12 +15,22 @@ import {
 } from "@/components/indicators/IndicatorExportBar";
 import { IndicatorFilterBar } from "@/components/indicators/IndicatorFilterBar";
 import { MeetingModeLayout } from "@/components/indicators/MeetingModeLayout";
-import { ExecutiveDashboardSection } from "@/components/indicators/ExecutiveDashboardSection";
+import { IndicatorsVisualOverview } from "@/components/indicators/IndicatorsVisualOverview";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useOperationalIndicators } from "@/hooks/useOperationalIndicators";
+import { OperationalHealthHero } from "@/components/indicators/OperationalHealthHero";
+import { TrendComparisonPanel } from "@/components/indicators/TrendComparisonPanel";
+import { RiskMatrixPanel } from "@/components/indicators/RiskMatrixPanel";
+import { BottleneckBarChart } from "@/components/indicators/BottleneckBarChart";
+import { OperationalHeatmapPanel } from "@/components/indicators/OperationalHeatmapPanel";
+import { NotificationSignalPanel } from "@/components/indicators/NotificationSignalPanel";
+import { DelegationImpactPanel } from "@/components/indicators/DelegationImpactPanel";
+import { DocumentQualityRadar } from "@/components/indicators/DocumentQualityRadar";
+import { IndicatorSectionTabs } from "@/components/indicators/IndicatorSectionTabs";
+import { OperationalRecommendations } from "@/components/indicators/OperationalRecommendations";
 import {
   getIndicatorsSourceMessage,
   hasOperationalIndicatorData,
@@ -282,42 +292,84 @@ export function OperationalIndicatorsDashboard() {
 
       {!report ? (
         <EmptyIndicatorsState source={indicators.source} />
+      ) : showAdvancedEmptyState ? (
+        <EmptyIndicatorsState
+          source={indicators.source === "fallback" ? "fallback" : "empty"}
+          hasFallbackReport={indicators.source === "fallback"}
+        />
       ) : (
         <>
-          {showAdvancedEmptyState ? (
-            <EmptyIndicatorsState
-              source={indicators.source === "fallback" ? "fallback" : "empty"}
-              hasFallbackReport={indicators.source === "fallback"}
-            />
-          ) : (
-            <div
-              data-print-hidden
-              className="rounded-2xl border border-dashed p-6 text-center"
-            >
-              <p className="text-sm font-medium text-muted-foreground">
-                Os indicadores executivos foram movidos para a tela de Relatórios.
-              </p>
-              <Button
-                asChild
-                variant="default"
-                className="mt-3"
-              >
-                <Link to="/authenticated/auditoria/relatorios">
-                  Ir para Relatórios
-                </Link>
-              </Button>
-            </div>
-          )}
+          <IndicatorsVisualOverview report={report} />
 
-          <Alert data-print-break-inside className="border-dashed">
-            <Activity className="h-4 w-4" />
-            <AlertTitle>Leitura analítica, sem mutação</AlertTitle>
-            <AlertDescription>
-              {report.limitations.join(" ")} Este cockpit não altera status,
-              responsável, prazo ou notificações. A exportação é gerencial e não
-              substitui relatório formal de auditoria.
-            </AlertDescription>
-          </Alert>
+          {viewMode === "analysis" ? (
+            <>
+              <OperationalHealthHero
+                report={report}
+                primaryRecommendation={recommendations[0]}
+              />
+              <section
+                aria-label="Comparação e matriz de risco"
+                className="grid gap-4 xl:grid-cols-2"
+              >
+                <TrendComparisonPanel report={report} />
+                <RiskMatrixPanel report={report} />
+              </section>
+              <section
+                aria-label="Rankings analíticos"
+                className="grid gap-4 xl:grid-cols-2"
+              >
+                <BottleneckBarChart report={report} />
+                <OperationalHeatmapPanel report={report} />
+              </section>
+              <section
+                data-print-page-break-before
+                aria-label="Sinais operacionais complementares"
+                className="grid gap-4 2xl:grid-cols-3"
+              >
+                <NotificationSignalPanel report={report} />
+                <DelegationImpactPanel report={report} />
+                <DocumentQualityRadar report={report} />
+              </section>
+              <IndicatorSectionTabs report={report} />
+              <OperationalRecommendations recommendations={recommendations} />
+            </>
+          ) : (
+            <>
+              <Alert data-print-break-inside className="border-dashed">
+                <Activity className="h-4 w-4" />
+                <AlertTitle>Leitura gerencial consolidada</AlertTitle>
+                <AlertDescription>
+                  {report.limitations.join(" ")} O cockpit de Análise traz
+                  detalhamento por gargalo, sinal e qualidade. Para exportação
+                  formal, utilize a tela de Relatórios.
+                </AlertDescription>
+                {viewMode !== "presentation" ? (
+                  <div data-print-hidden className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      onClick={() => changeViewMode("analysis")}
+                    >
+                      <Link to={pathname}>
+                        Ir para modo Análise
+                      </Link>
+                    </Button>
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                    >
+                      <Link to="/authenticated/auditoria/relatorios">
+                        <FileCheck2 className="mr-2 h-4 w-4" />
+                        Exportação executiva em Relatórios
+                      </Link>
+                    </Button>
+                  </div>
+                ) : null}
+              </Alert>
+            </>
+          )}
         </>
       )}
     </MeetingModeLayout>
