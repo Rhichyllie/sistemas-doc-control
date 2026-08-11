@@ -27,6 +27,7 @@ export interface LibraryRecord {
   enterprise_id: string;
   phase_template_id: string;
   name: string;
+  active: boolean;
   created_by: string | null;
   created_at: string;
   enterprise: EnterpriseRecord | null;
@@ -37,11 +38,12 @@ interface ProvisionLibraryInput {
   enterpriseId: string;
   phaseCode: LibraryPhaseCode;
   name: string;
-  // Código do projeto definido pelo usuário no momento da criação da
-  // biblioteca. Passa a ser obrigatório: substitui a antiga geração
-  // automática do prefixo de projeto (ex.: "PROJC9DAA5") que acontecia
-  // a cada novo documento.
-  projectCode: string;
+}
+
+interface UpdateLibraryInput {
+  name?: string;
+  code?: string;
+  active?: boolean;
 }
 
 const LOCAL_ENTERPRISES_STORAGE_PREFIX = "tramita.enterprises.local.";
@@ -111,10 +113,7 @@ function normalizePhaseTemplate(value: unknown): PhaseTemplateRecord | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
   const code = record.code ?? record.codigo;
-  if (
-    typeof record.id !== "string" ||
-    (code !== "project" && code !== "om")
-  ) {
+  if (typeof record.id !== "string" || (code !== "project" && code !== "om")) {
     return null;
   }
   const workflowDefinition =
@@ -122,9 +121,7 @@ function normalizePhaseTemplate(value: unknown): PhaseTemplateRecord | null {
   return {
     id: record.id,
     code,
-    display_name: String(
-      record.display_name ?? record.nome_exibicao ?? code,
-    ),
+    display_name: String(record.display_name ?? record.nome_exibicao ?? code),
     reference_standard: String(
       record.reference_standard ?? record.norma_referencia ?? "",
     ),
@@ -155,6 +152,10 @@ function normalizeLibrary(value: unknown): LibraryRecord | null {
     enterprise_id: enterpriseId,
     phase_template_id: phaseTemplateId,
     name: String(record.name ?? record.nome ?? "Biblioteca"),
+    active:
+      typeof (record.active ?? record.ativo) === "boolean"
+        ? Boolean(record.active ?? record.ativo)
+        : true,
     created_by:
       typeof (record.created_by ?? record.criado_por) === "string"
         ? String(record.created_by ?? record.criado_por)
@@ -182,13 +183,14 @@ function getLocalProjectsStorageKey(orgId: string) {
 function loadLocalEnterprises(orgId: string) {
   if (typeof window === "undefined") return [] as EnterpriseRecord[];
   try {
-    const raw = window.localStorage.getItem(getLocalEnterprisesStorageKey(orgId));
+    const raw = window.localStorage.getItem(
+      getLocalEnterprisesStorageKey(orgId),
+    );
     if (!raw) return [] as EnterpriseRecord[];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed)
-      ? parsed.filter(
-          (item): item is EnterpriseRecord =>
-            Boolean(normalizeEnterprise(item)),
+      ? parsed.filter((item): item is EnterpriseRecord =>
+          Boolean(normalizeEnterprise(item)),
         )
       : [];
   } catch {
@@ -211,8 +213,8 @@ function loadLocalLibraries(orgId: string) {
     if (!raw) return [] as LibraryRecord[];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed)
-      ? parsed.filter(
-          (item): item is LibraryRecord => Boolean(normalizeLibrary(item)),
+      ? parsed.filter((item): item is LibraryRecord =>
+          Boolean(normalizeLibrary(item)),
         )
       : [];
   } catch {
@@ -240,9 +242,8 @@ function loadLocalProjects(orgId: string) {
     if (!raw) return [] as ProjectOperationalContext[];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed)
-      ? parsed.filter(
-          (item): item is ProjectOperationalContext =>
-            Boolean(item && typeof item === "object" && "id" in item),
+      ? parsed.filter((item): item is ProjectOperationalContext =>
+          Boolean(item && typeof item === "object" && "id" in item),
         )
       : [];
   } catch {
@@ -353,8 +354,8 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
           updated_at: library.created_at || new Date().toISOString(),
         }));
 
-        const validLibraryRows = libraryRows.filter(
-          (library) => Boolean(library.enterprise_id && library.phase_template_id),
+        const validLibraryRows = libraryRows.filter((library) =>
+          Boolean(library.enterprise_id && library.phase_template_id),
         );
 
         if (validLibraryRows.length > 0) {
@@ -408,7 +409,9 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
       if (!phaseTemplatesResult.error) {
         phaseTemplatesData = phaseTemplatesResult.data ?? [];
       } else if (
-        isMissingCatalogContract(phaseTemplatesResult.error, ["phase_templates"])
+        isMissingCatalogContract(phaseTemplatesResult.error, [
+          "phase_templates",
+        ])
       ) {
         const fallbackPhaseTemplatesResult = await supabase
           .from("fase_templates")
@@ -440,6 +443,7 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
               enterprise_id,
               phase_template_id,
               name,
+              active,
               created_by,
               created_at,
               enterprise:enterprises (id, org_id, name, created_at),
@@ -462,30 +466,25 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
       ]);
 
       if (librariesResult.error || enterprisesResult.error) {
-        const englishError =
-          librariesResult.error ??
-          enterprisesResult.error;
+        const englishError = librariesResult.error ?? enterprisesResult.error;
 
         if (
-          !isMissingCatalogContract(englishError, [
-            "libraries",
-            "enterprises",
-          ])
+          !isMissingCatalogContract(englishError, ["libraries", "enterprises"])
         ) {
           throw englishError;
         }
 
-        const [bibliotecasResult, empreendimentosResult] =
-          await Promise.all([
-            supabase
-              .from("bibliotecas")
-              .select(
-                `
+        const [bibliotecasResult, empreendimentosResult] = await Promise.all([
+          supabase
+            .from("bibliotecas")
+            .select(
+              `
                   id,
                   organizacao_id,
                   empreendimento_id,
                   fase_template_id,
                   nome,
+                  ativo,
                   criado_por,
                   criado_em,
                   empreendimento:empreendimentos (
@@ -502,15 +501,15 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
                     definicao_workflow
                   )
                 `,
-              )
-              .eq("organizacao_id", profile.org_id)
-              .order("criado_em", { ascending: true }),
-            supabase
-              .from("empreendimentos")
-              .select("id, organizacao_id, nome, criado_em")
-              .eq("organizacao_id", profile.org_id)
-              .order("nome", { ascending: true }),
-          ]);
+            )
+            .eq("organizacao_id", profile.org_id)
+            .order("criado_em", { ascending: true }),
+          supabase
+            .from("empreendimentos")
+            .select("id, organizacao_id, nome, criado_em")
+            .eq("organizacao_id", profile.org_id)
+            .order("nome", { ascending: true }),
+        ]);
 
         if (!bibliotecasResult.error && !empreendimentosResult.error) {
           librariesData = bibliotecasResult.data ?? [];
@@ -558,6 +557,7 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
                     enterprise_id,
                     phase_template_id,
                     name,
+                    active,
                     created_by,
                     created_at,
                     enterprise:enterprises (id, org_id, name, created_at),
@@ -603,10 +603,6 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
       setEnterprises(normalizedEnterprises);
       setPhaseTemplates(normalizedPhaseTemplates);
 
-      // Reconciliação silenciosa: garante que bibliotecas antigas (criadas
-      // antes do código de projeto se tornar obrigatório) continuem tendo
-      // um projeto vinculado. Não recebe explicitCode de propósito — não
-      // deve sobrescrever nem inventar código para bibliotecas já existentes.
       await Promise.all(
         normalizedLibraries.map((library) =>
           ensureProjectForLibrary({
@@ -623,7 +619,9 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
         ),
       );
     } catch (err: unknown) {
-      setError(getErrorMessage(err, "Não foi possível carregar as bibliotecas."));
+      setError(
+        getErrorMessage(err, "Não foi possível carregar as bibliotecas."),
+      );
     } finally {
       setLoading(false);
     }
@@ -663,7 +661,9 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
       insertError = enterpriseInsert.error;
 
       if (enterpriseInsert.error) {
-        if (!isMissingCatalogContract(enterpriseInsert.error, ["enterprises"])) {
+        if (
+          !isMissingCatalogContract(enterpriseInsert.error, ["enterprises"])
+        ) {
           throw enterpriseInsert.error;
         }
 
@@ -691,7 +691,10 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
             created_at: new Date().toISOString(),
           };
           const localEnterprises = loadLocalEnterprises(profile.org_id);
-          saveLocalEnterprises(profile.org_id, [...localEnterprises, enterprise]);
+          saveLocalEnterprises(profile.org_id, [
+            ...localEnterprises,
+            enterprise,
+          ]);
           data = enterprise;
           insertError = null;
         } else {
@@ -718,10 +721,6 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
     libraryName: string;
     enterpriseId: string;
     phaseCode: LibraryPhaseCode;
-    // Código do projeto digitado pelo usuário na criação da biblioteca.
-    // Quando ausente (ex.: reconciliação de bibliotecas antigas em refresh()),
-    // cai no comportamento antigo de gerar um código a partir do ID.
-    explicitCode?: string;
   }) {
     if (!profile?.org_id) return true;
 
@@ -731,11 +730,6 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
       phase_code: input.phaseCode,
       linked_library_id: input.libraryId,
     };
-
-    const hasExplicitCode = Boolean(input.explicitCode?.trim());
-    const normalizedExplicitCode = hasExplicitCode
-      ? input.explicitCode!.trim().toUpperCase()
-      : null;
 
     try {
       const existingEnterpriseProject = await supabase
@@ -761,8 +755,7 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
         .insert({
           org_id: profile.org_id,
           library_id: input.libraryId,
-          code: normalizedExplicitCode,
-          has_explicit_code: hasExplicitCode,
+          code: null,
           name: input.libraryName.trim(),
           description: `Projeto gerado automaticamente a partir da biblioteca ${input.libraryName.trim()}.`,
           client_name: null,
@@ -811,7 +804,7 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
         const legacyInsert = await supabase
           .from("projects")
           .insert({
-            code: normalizedExplicitCode,
+            code: null,
             name: input.libraryName.trim(),
             client: null,
             start_date: null,
@@ -844,10 +837,8 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
         id: globalThis.crypto?.randomUUID?.() ?? `project-${Date.now()}`,
         org_id: profile.org_id,
         library_id: input.libraryId,
-        code:
-          normalizedExplicitCode ??
-          `PROJ${input.libraryId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,
-        has_explicit_code: hasExplicitCode,
+        code: `PROJ${input.libraryId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,
+        has_explicit_code: false,
         name: input.libraryName.trim(),
         description: `Projeto gerado automaticamente a partir da biblioteca ${input.libraryName.trim()}.`,
         client_name: null,
@@ -886,17 +877,16 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
     setSaving(true);
     setError(null);
     try {
-      const { data, error: rpcError } = await supabase.rpc("provision_library", {
-        p_enterprise_id: input.enterpriseId,
-        p_phase_code: input.phaseCode,
-        p_library_name: input.name.trim(),
-      });
+      const { data, error: rpcError } = await supabase.rpc(
+        "provision_library",
+        {
+          p_enterprise_id: input.enterpriseId,
+          p_phase_code: input.phaseCode,
+          p_library_name: input.name.trim(),
+        },
+      );
 
       if (!rpcError) {
-        // TODO: se/quando o RPC `provision_library` existir no banco, ele
-        // também precisa receber e gravar o código do projeto (input.projectCode).
-        // Hoje esse RPC não existe no Supabase do projeto, então o fluxo cai
-        // sempre no fallback abaixo.
         await refresh();
         return typeof data === "string" ? data : String(data ?? "");
       }
@@ -972,6 +962,7 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
             enterprise_id: input.enterpriseId,
             phase_template_id: selectedPhaseTemplate.id,
             name: input.name.trim(),
+            active: true,
             created_by: profile.id ?? null,
             created_at: new Date().toISOString(),
             enterprise,
@@ -989,13 +980,227 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
         libraryName: input.name.trim(),
         enterpriseId: input.enterpriseId,
         phaseCode: input.phaseCode,
-        explicitCode: input.projectCode,
       });
       await refresh();
       return insertedLibraryId;
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Não foi possível criar a biblioteca."));
       return null;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function updateLibrary(libraryId: string, updates: UpdateLibraryInput) {
+    if (!profile?.org_id) return false;
+    setSaving(true);
+    setError(null);
+    try {
+      const libraryUpdates: Record<string, unknown> = {};
+      if (updates.name !== undefined) libraryUpdates.name = updates.name.trim();
+      if (updates.active !== undefined) libraryUpdates.active = updates.active;
+
+      if (Object.keys(libraryUpdates).length > 0) {
+        const englishUpdate = await supabase
+          .from("libraries")
+          .update(libraryUpdates)
+          .eq("id", libraryId)
+          .eq("org_id", profile.org_id);
+
+        if (englishUpdate.error) {
+          if (!isMissingCatalogContract(englishUpdate.error, ["libraries"])) {
+            throw englishUpdate.error;
+          }
+
+          const portugueseUpdates: Record<string, unknown> = {};
+          if (updates.name !== undefined)
+            portugueseUpdates.nome = updates.name.trim();
+          if (updates.active !== undefined)
+            portugueseUpdates.ativo = updates.active;
+
+          const portugueseUpdate = await supabase
+            .from("bibliotecas")
+            .update(portugueseUpdates)
+            .eq("id", libraryId)
+            .eq("organizacao_id", profile.org_id);
+
+          if (portugueseUpdate.error) {
+            if (
+              !isMissingCatalogContract(portugueseUpdate.error, ["bibliotecas"])
+            ) {
+              throw portugueseUpdate.error;
+            }
+
+            const localLibraries = loadLocalLibraries(profile.org_id);
+            const next = localLibraries.map((library) =>
+              library.id === libraryId
+                ? {
+                    ...library,
+                    name: updates.name?.trim() ?? library.name,
+                    active: updates.active ?? library.active,
+                  }
+                : library,
+            );
+            saveLocalLibraries(profile.org_id, next);
+          }
+        }
+      }
+
+      if (updates.code !== undefined) {
+        const trimmedCode = updates.code.trim();
+        // Primeiro tenta com has_explicit_code. Se a coluna não existir no
+        // banco do usuário, faz o fallback para atualizar apenas "code".
+        let codeResult = await supabase
+          .from("projects")
+          .update({
+            code: trimmedCode || null,
+            has_explicit_code: Boolean(trimmedCode),
+          })
+          .eq("library_id", libraryId)
+          .eq("org_id", profile.org_id);
+
+        if (codeResult.error) {
+          const msg = getErrorMessage(codeResult.error, "").toLowerCase();
+          const missingHasExplicit =
+            msg.includes("has_explicit_code") &&
+            (msg.includes("schema cache") ||
+              msg.includes("does not exist") ||
+              msg.includes("could not find"));
+
+          if (missingHasExplicit) {
+            codeResult = await supabase
+              .from("projects")
+              .update({ code: trimmedCode || null })
+              .eq("library_id", libraryId)
+              .eq("org_id", profile.org_id);
+          }
+        }
+
+        if (codeResult.error) {
+          throw codeResult.error;
+        }
+      }
+
+      await refresh();
+      return true;
+    } catch (err: unknown) {
+      setError(
+        getErrorMessage(err, "Não foi possível atualizar a biblioteca."),
+      );
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /**
+   * Busca o código atual do projeto vinculado a uma biblioteca — usado para
+   * pré-preencher o campo "Código" no diálogo de edição.
+   */
+  async function getLibraryCode(libraryId: string): Promise<string> {
+    try {
+      const { data, error: fetchError } = await supabase
+        .from("projects")
+        .select("code")
+        .eq("library_id", libraryId)
+        .maybeSingle();
+
+      if (fetchError || !data) return "";
+      return String((data as { code?: string | null }).code ?? "");
+    } catch {
+      return "";
+    }
+  }
+
+  async function deleteLibrary(libraryId: string) {
+    if (!profile?.org_id) return false;
+    setSaving(true);
+    setError(null);
+    try {
+      // 1) Bloqueia a exclusão se existirem documentos nesta biblioteca.
+      // TODO: confirme o nome real da tabela/coluna de documentos no seu
+      // banco — aqui tento "documentos" (pt) e depois "documents" (en),
+      // ambas com uma coluna "library_id".
+      let documentCount = 0;
+
+      const documentosCount = await supabase
+        .from("documentos")
+        .select("id", { count: "exact", head: true })
+        .eq("library_id", libraryId);
+
+      if (!documentosCount.error) {
+        documentCount = documentosCount.count ?? 0;
+      } else if (
+        !isMissingCatalogContract(documentosCount.error, ["documentos"])
+      ) {
+        const documentsCount = await supabase
+          .from("documents")
+          .select("id", { count: "exact", head: true })
+          .eq("library_id", libraryId);
+
+        if (!documentsCount.error) {
+          documentCount = documentsCount.count ?? 0;
+        } else if (
+          !isMissingCatalogContract(documentsCount.error, ["documents"])
+        ) {
+          throw documentsCount.error;
+        }
+      }
+
+      if (documentCount > 0) {
+        setError(
+          `Não é possível excluir: esta biblioteca tem ${documentCount} documento${
+            documentCount === 1 ? "" : "s"
+          }. Remova os documentos antes de excluir a biblioteca.`,
+        );
+        return false;
+      }
+
+      // 2) Remove o projeto vinculado (criado automaticamente pela biblioteca)
+      await supabase
+        .from("projects")
+        .delete()
+        .eq("library_id", libraryId)
+        .eq("org_id", profile.org_id);
+
+      // 3) Remove a biblioteca em si (com fallback pt-BR e local)
+      const englishDelete = await supabase
+        .from("libraries")
+        .delete()
+        .eq("id", libraryId)
+        .eq("org_id", profile.org_id);
+
+      if (englishDelete.error) {
+        if (!isMissingCatalogContract(englishDelete.error, ["libraries"])) {
+          throw englishDelete.error;
+        }
+
+        const portugueseDelete = await supabase
+          .from("bibliotecas")
+          .delete()
+          .eq("id", libraryId)
+          .eq("organizacao_id", profile.org_id);
+
+        if (portugueseDelete.error) {
+          if (
+            !isMissingCatalogContract(portugueseDelete.error, ["bibliotecas"])
+          ) {
+            throw portugueseDelete.error;
+          }
+        }
+      }
+
+      const localLibraries = loadLocalLibraries(profile.org_id);
+      saveLocalLibraries(
+        profile.org_id,
+        localLibraries.filter((library) => library.id !== libraryId),
+      );
+
+      await refresh();
+      return true;
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Não foi possível excluir a biblioteca."));
+      return false;
     } finally {
       setSaving(false);
     }
@@ -1012,6 +1217,8 @@ export function useLibraries(options: { enabled?: boolean } = {}) {
     refresh,
     createEnterprise,
     provisionLibrary,
+    updateLibrary,
+    getLibraryCode,
+    deleteLibrary,
   };
 }
-

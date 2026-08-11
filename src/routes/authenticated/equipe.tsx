@@ -55,10 +55,22 @@ const roleBadgeClass: Record<Role, string> = {
 };
 
 const schemaModeLabel: Record<string, { label: string; className: string }> = {
-  enterprise: { label: "Conectado ao Supabase", className: "bg-emerald-600 text-white" },
-  missing: { label: "Modo local (schema não configurado)", className: "bg-amber-500 text-white" },
-  denied: { label: "Acesso negado pelo Supabase (RLS)", className: "bg-destructive text-white" },
-  error: { label: "Erro ao conectar ao Supabase", className: "bg-destructive text-white" },
+  enterprise: {
+    label: "Conectado ao Supabase",
+    className: "bg-emerald-600 text-white",
+  },
+  missing: {
+    label: "Modo local (schema não configurado)",
+    className: "bg-amber-500 text-white",
+  },
+  denied: {
+    label: "Acesso negado pelo Supabase (RLS)",
+    className: "bg-destructive text-white",
+  },
+  error: {
+    label: "Erro ao conectar ao Supabase",
+    className: "bg-destructive text-white",
+  },
 };
 
 function getRoleLabel(role: string) {
@@ -153,7 +165,7 @@ export function EquipePage() {
     const ok = await addMember({
       full_name: newMemberName,
       role: newMemberRole,
-      email: newMemberEmail || undefined,
+      email: newMemberEmail ?? "",
       department: newMemberDepartment || null,
     });
     if (ok) {
@@ -184,7 +196,10 @@ export function EquipePage() {
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && (
-            <Dialog open={newMemberDialogOpen} onOpenChange={setNewMemberDialogOpen}>
+            <Dialog
+              open={newMemberDialogOpen}
+              onOpenChange={setNewMemberDialogOpen}
+            >
               <DialogTrigger asChild>
                 <Button>
                   <UserPlus className="h-4 w-4 mr-2" />
@@ -237,7 +252,9 @@ export function EquipePage() {
                     </Select>
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="department">Área/Departamento (opcional)</Label>
+                    <Label htmlFor="department">
+                      Área/Departamento (opcional)
+                    </Label>
                     <Input
                       id="department"
                       value={newMemberDepartment}
@@ -266,12 +283,14 @@ export function EquipePage() {
             <Badge className={modeInfo.className}>{modeInfo.label}</Badge>
             {schemaMode === "missing" && (
               <span className="text-muted-foreground">
-                Os dados abaixo estão salvos apenas neste navegador (localStorage), não no banco de dados.
+                Os dados abaixo estão salvos apenas neste navegador
+                (localStorage), não no banco de dados.
               </span>
             )}
             {schemaMode === "denied" && (
               <span className="text-muted-foreground">
-                O Supabase recusou a leitura/escrita por política de RLS. Verifique as policies da tabela.
+                O Supabase recusou a leitura/escrita por política de RLS.
+                Verifique as policies da tabela.
               </span>
             )}
           </CardContent>
@@ -301,7 +320,9 @@ export function EquipePage() {
 
       {error && (
         <Card className="border-destructive/50">
-          <CardContent className="p-4 text-sm text-destructive">{error}</CardContent>
+          <CardContent className="p-4 text-sm text-destructive">
+            {error}
+          </CardContent>
         </Card>
       )}
 
@@ -407,9 +428,7 @@ export function EquipePage() {
                                       htmlFor={`project-${project.id}`}
                                       className="text-sm"
                                     >
-                                      {project.code
-                                        ? `${project.code} - `
-                                        : ""}
+                                      {project.code ? `${project.code} - ` : ""}
                                       {project.name}
                                     </label>
                                   </div>

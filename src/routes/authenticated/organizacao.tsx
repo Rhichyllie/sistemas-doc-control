@@ -1,25 +1,24 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   ArrowRight,
   Building2,
-  ChevronLeft,
-  ChevronRight,
-  Crosshair,
   FileStack,
   FolderOpen,
   ImagePlus,
   Loader2,
+  Pencil,
   Plus,
+  Power,
   ShieldCheck,
   Settings,
   Sparkles,
+  Trash2,
   Users,
   Workflow,
-  X,
 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import { OrganizationPublicationCard } from "@/components/organization/OrganizationPublicationCard";
-import { CreatePublicationDialog } from "@/components/organization/CreatePublicationDialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -50,11 +49,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { setStoredActiveLibraryId } from "@/contexts/library-context";
-import { useLibraries, type LibraryPhaseCode } from "@/hooks/useLibraries";
 import {
-  PUBLICATION_IMAGE_FOCUS_OPTIONS,
+  useLibraries,
+  type LibraryPhaseCode,
+  type LibraryRecord,
+} from "@/hooks/useLibraries";
+import {
   usePublications,
-  type PublicationDisplayMode,
   type PublicationRecord,
 } from "@/hooks/usePublications";
 import { cn } from "@/lib/utils";
@@ -95,9 +96,9 @@ function buildHeroImageUrl(publication: PublicationRecord | null) {
 
 function OrganizationLibrariesPage() {
   const navigate = useNavigate();
-  const { profile, user, hasRole } = useAuthContext();
+  const { profile, user } = useAuthContext();
   const catalog = useLibraries();
-  const publications = usePublications({ limit: 12 });
+  const publications = usePublications({ limit: 4 });
   const [open, setOpen] = useState(false);
   const [enterpriseMode, setEnterpriseMode] = useState<"existing" | "new">(
     "existing",
@@ -107,66 +108,40 @@ function OrganizationLibrariesPage() {
   const [phaseCode, setPhaseCode] = useState<LibraryPhaseCode | "">("");
   const [libraryName, setLibraryName] = useState("");
 
-  const isAdmin = hasRole(["admin"]);
-
+  const isAdmin = profile?.role === "admin";
+  const heroImageInputRef = useRef<HTMLInputElement>(null);
   const [heroImagePreview, setHeroImagePreview] = useState<string | null>(null);
   const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
-  const heroFileInputRef = useRef<HTMLInputElement>(null);
+  const [heroImageError, setHeroImageError] = useState<string | null>(null);
 
-  // Índice do slide ativo no carrossel do hero (dots/setas)
-  const [activeHeroSlide, setActiveHeroSlide] = useState(0);
+  const [editingLibrary, setEditingLibrary] = useState<LibraryRecord | null>(
+    null,
+  );
+  const [editName, setEditName] = useState("");
+  const [editCode, setEditCode] = useState("");
+  const [editCodeLoading, setEditCodeLoading] = useState(false);
+  const [deletingLibrary, setDeletingLibrary] = useState<LibraryRecord | null>(
+    null,
+  );
+  const [togglingLibraryId, setTogglingLibraryId] = useState<string | null>(
+    null,
+  );
 
   const canSubmit = useMemo(() => {
     const hasEnterprise =
       enterpriseMode === "existing"
         ? Boolean(enterpriseId)
         : newEnterpriseName.trim().length >= 3;
-    return hasEnterprise && Boolean(phaseCode) && libraryName.trim().length >= 3;
+    return (
+      hasEnterprise && Boolean(phaseCode) && libraryName.trim().length >= 3
+    );
   }, [enterpriseId, enterpriseMode, libraryName, newEnterpriseName, phaseCode]);
 
-  const publicationBuckets = useMemo(() => {
-    const allPublications = publications.latestPublications;
-    const byMode = (mode: PublicationDisplayMode) =>
-      allPublications.filter((publication) => publication.modo_exibicao === mode);
-
-    const highlighted = byMode("destaque");
-    const secondaries = byMode("secundaria");
-    const standard = allPublications.filter(
-      (publication) =>
-        publication.modo_exibicao !== "destaque" &&
-        publication.modo_exibicao !== "secundaria",
-    );
-
-    const featuredPublication =
-      highlighted[0] ?? allPublications[0] ?? null;
-
-    const secondaryCandidates = [
-      ...secondaries,
-      ...standard,
-      ...highlighted.slice(1),
-    ].filter((publication) => publication.id !== featuredPublication?.id);
-
-    return {
-      featuredPublication,
-      newsroomPublications: secondaryCandidates.slice(0, 4),
-    };
-  }, [publications.latestPublications]);
-
-  const { featuredPublication, newsroomPublications } = publicationBuckets;
-
-  // Publicações candidatas a aparecer no carrossel do hero (ajuste a fonte se tiver uma lista própria de "destaques")
-  const heroSlides = useMemo(
-    () =>
-      [
-        ...(featuredPublication ? [featuredPublication] : []),
-        ...newsroomPublications,
-      ].slice(0, 3),
-    [featuredPublication, newsroomPublications],
-  );
-
-  useEffect(() => {
-    setHeroImagePreview(null);
-  }, [featuredPublication?.id]);
+  const featuredPublication = publications.latestPublications[0] ?? null;
+  const newsroomPublications =
+    publications.latestPublications.length > 1
+      ? publications.latestPublications.slice(1, 5)
+      : publications.latestPublications;
 
   const accessibleLibraries = useMemo(
     () =>
@@ -184,66 +159,13 @@ function OrganizationLibrariesPage() {
     user?.user_metadata?.full_name?.split(" ")[0] ||
     "Ana";
 
-  const heroImageUrl = heroImagePreview ?? buildHeroImageUrl(featuredPublication);
-
-  function handleHeroPrev() {
-    if (heroSlides.length === 0) return;
-    setActiveHeroSlide((prev) => (prev - 1 + heroSlides.length) % heroSlides.length);
-  }
-
-  function handleHeroNext() {
-    if (heroSlides.length === 0) return;
-    setActiveHeroSlide((prev) => (prev + 1) % heroSlides.length);
-  }
-
-  async function handleHeroImageSelect(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file || !featuredPublication) return;
-
-    const localPreview = URL.createObjectURL(file);
-    setHeroImagePreview(localPreview);
-    setUploadingHeroImage(true);
-
-    try {
-      const uploadedUrl = await publications.updatePublicationImage(
-        featuredPublication.id,
-        file,
-        featuredPublication.imagem_url,
-      );
-      setHeroImagePreview(uploadedUrl);
-    } catch (error) {
-      console.error("Falha ao enviar imagem de destaque", error);
-      setHeroImagePreview(null);
-    } finally {
-      setUploadingHeroImage(false);
-      event.target.value = "";
-    }
-  }
-
-  function handleRemoveHeroImage() {
-    if (!featuredPublication) return;
-    setUploadingHeroImage(true);
-    void (async () => {
-      try {
-        await publications.removePublicationImage(
-          featuredPublication.id,
-          featuredPublication.imagem_url,
-        );
-        setHeroImagePreview(null);
-      } catch (error) {
-        console.error("Falha ao remover imagem de destaque", error);
-      } finally {
-        setUploadingHeroImage(false);
-      }
-    })();
-  }
-
   async function handleCreateLibrary() {
     if (!canSubmit || !phaseCode) return;
 
     let targetEnterpriseId = enterpriseId;
     if (enterpriseMode === "new") {
-      const createdEnterprise = await catalog.createEnterprise(newEnterpriseName);
+      const createdEnterprise =
+        await catalog.createEnterprise(newEnterpriseName);
       if (!createdEnterprise?.id) return;
       targetEnterpriseId = createdEnterprise.id;
     }
@@ -284,6 +206,88 @@ function OrganizationLibrariesPage() {
     await navigate({ to: "/authenticated/organizacao/noticias" });
   }
 
+  async function handleHeroImageChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !featuredPublication) return;
+
+    setHeroImageError(null);
+
+    // Preview local imediato, antes mesmo do upload terminar
+    const localPreviewUrl = URL.createObjectURL(file);
+    setHeroImagePreview(localPreviewUrl);
+    setUploadingHeroImage(true);
+
+    try {
+      const filePath = `hero/${featuredPublication.id}-${Date.now()}-${file.name}`;
+
+      // TODO: confirme se o bucket "publicacoes-midia" existe no seu Supabase
+      // Storage (Dashboard > Storage). Ajuste o nome se for diferente.
+      const { error: uploadError } = await supabase.storage
+        .from("publicacoes-midia")
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from("publicacoes-midia")
+        .getPublicUrl(filePath);
+
+      // TODO: confirme o nome real da tabela de publicações (aqui assumi
+      // "publicacoes" com coluna "imagem_url", igual ao campo já usado em
+      // PublicationRecord.imagem_url).
+      const { error: updateError } = await supabase
+        .from("publicacoes")
+        .update({ imagem_url: publicUrlData.publicUrl })
+        .eq("id", featuredPublication.id);
+
+      if (updateError) throw updateError;
+
+      await publications.refresh();
+    } catch (err) {
+      setHeroImageError(
+        "Não foi possível salvar a nova imagem agora. Tente novamente em instantes.",
+      );
+    } finally {
+      setUploadingHeroImage(false);
+      if (heroImageInputRef.current) heroImageInputRef.current.value = "";
+    }
+  }
+
+  async function handleOpenEditLibrary(library: LibraryRecord) {
+    setEditingLibrary(library);
+    setEditName(library.name);
+    setEditCode("");
+    setEditCodeLoading(true);
+    const code = await catalog.getLibraryCode(library.id);
+    setEditCode(code);
+    setEditCodeLoading(false);
+  }
+
+  async function handleSaveEditLibrary() {
+    if (!editingLibrary) return;
+    const ok = await catalog.updateLibrary(editingLibrary.id, {
+      name: editName,
+      code: editCode,
+    });
+    if (ok) {
+      setEditingLibrary(null);
+    }
+  }
+
+  async function handleToggleLibraryActive(library: LibraryRecord) {
+    setTogglingLibraryId(library.id);
+    await catalog.updateLibrary(library.id, { active: !library.active });
+    setTogglingLibraryId(null);
+  }
+
+  async function handleConfirmDeleteLibrary() {
+    if (!deletingLibrary) return;
+    const ok = await catalog.deleteLibrary(deletingLibrary.id);
+    if (ok) {
+      setDeletingLibrary(null);
+    }
+  }
+
   return (
     <div className="space-y-10 pb-10">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -299,16 +303,17 @@ function OrganizationLibrariesPage() {
               Bibliotecas documentais
             </h1>
             <p className="max-w-3xl text-sm leading-6 text-slate-600">
-              Cada biblioteca representa um ambiente documental do empreendimento,
-              provisionado por fase e governado por um template fixo da plataforma.
+              Cada biblioteca representa um ambiente documental do
+              empreendimento, provisionado por fase e governado por um template
+              fixo da plataforma.
             </p>
           </div>
         </div>
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button className="h-12 gap-2 rounded-xl bg-[#2f7cf6] px-5 text-white hover:bg-[#1f6ce6]">
-              <Plus className="h-4 w-4" />
+            <Button className="h-14 gap-2 rounded-xl bg-[#2f7cf6] px-6 text-base font-semibold text-white hover:bg-[#1f6ce6]">
+              <Plus className="h-5 w-5" />
               Nova biblioteca
             </Button>
           </DialogTrigger>
@@ -362,13 +367,19 @@ function OrganizationLibrariesPage() {
                   {enterpriseMode === "existing" ? (
                     <div className="space-y-2">
                       <Label>Empreendimento</Label>
-                      <Select value={enterpriseId} onValueChange={setEnterpriseId}>
+                      <Select
+                        value={enterpriseId}
+                        onValueChange={setEnterpriseId}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione" />
                         </SelectTrigger>
                         <SelectContent>
                           {catalog.enterprises.map((enterprise) => (
-                            <SelectItem key={enterprise.id} value={enterprise.id}>
+                            <SelectItem
+                              key={enterprise.id}
+                              value={enterprise.id}
+                            >
                               {enterprise.name}
                             </SelectItem>
                           ))}
@@ -428,7 +439,8 @@ function OrganizationLibrariesPage() {
                     <SelectContent>
                       {catalog.phaseTemplates.map((template) => (
                         <SelectItem key={template.id} value={template.code}>
-                          {template.display_name} · {template.reference_standard}
+                          {template.display_name} ·{" "}
+                          {template.reference_standard}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -475,7 +487,10 @@ function OrganizationLibrariesPage() {
               <Button variant="outline" onClick={() => setOpen(false)}>
                 Cancelar
               </Button>
-              <Button onClick={handleCreateLibrary} disabled={!canSubmit || catalog.saving}>
+              <Button
+                onClick={handleCreateLibrary}
+                disabled={!canSubmit || catalog.saving}
+              >
                 Criar biblioteca
               </Button>
             </DialogFooter>
@@ -483,60 +498,36 @@ function OrganizationLibrariesPage() {
         </Dialog>
       </div>
 
-      {/* ============================================================
-          HERO / CARD DE DESTAQUE
-          Reestruturado de grid 2-colunas para overlay full-bleed:
-          a imagem ocupa o card inteiro como plano de fundo, com
-          gradiente por cima para dar contraste ao texto. Isso resolve
-          o problema de a imagem "encolher" dentro de uma coluna fixa.
-      ============================================================ */}
-      <section className="relative overflow-hidden shadow-[0_24px_60px_-28px_rgba(7,29,61,0.65)]">
-        <div className="relative min-h-[600px] w-full bg-[#071d3d] lg:min-h-[680px]">
-          {/* Imagem de fundo cobrindo o card inteiro */}
-          <img
-            src={heroImageUrl}
-            alt={featuredPublication?.titulo ?? "Destaque das bibliotecas"}
-            className="absolute inset-0 h-full w-full object-cover"
-            style={{
-              objectPosition:
-                featuredPublication?.imagem_foco ?? "center center",
-            }}
-          />
-
-          {/* Gradiente da esquerda para a direita, garantindo contraste do texto sobre a foto */}
-          <div className="absolute inset-0 bg-gradient-to-r from-[#071d3d] via-[#071d3d]/78 to-[#071d3d]/10" />
-          {/* Reforço sutil de baixo para cima, para o CTA e os dots não se perderem na foto */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" />
-          {/* Glow decorativo no canto superior direito, como no design original */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(29, 128, 235, 0.28),transparent_55%)]" />
-
-          {/* Conteúdo textual sobreposto */}
-          <div className="relative flex h-full min-h-[600px] flex-col justify-between gap-8 p-8 text-white lg:min-h-[680px] lg:p-16">
-            <div className="max-w-2xl space-y-5">
+      <section className="overflow-hidden rounded-[30px] bg-[#071d3d] shadow-[0_32px_80px_-30px_rgba(7,29,61,0.75)]">
+        <div className="grid min-h-[360px] lg:grid-cols-[1.02fr_0.98fr]">
+          <div className="relative flex flex-col justify-between gap-8 p-8 text-white lg:p-10">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(88,168,255,0.32),transparent_42%)]" />
+            <div className="relative space-y-5">
               <Badge className="w-fit rounded-full border-cyan-400/35 bg-cyan-500/10 px-3 text-[11px] uppercase tracking-[0.14em] text-cyan-200 hover:bg-cyan-500/10">
                 Destaque
               </Badge>
               <p className="text-sm text-blue-100/75">
                 {formatLongDate(
-                  featuredPublication?.data_publicacao ?? new Date().toISOString(),
+                  featuredPublication?.data_publicacao ??
+                    new Date().toISOString(),
                 )}
               </p>
-              <div className="space-y-4">
-                <h2 className="text-4xl font-semibold leading-tight tracking-tight lg:text-[3.25rem]">
+              <div className="max-w-xl space-y-4">
+                <h2 className="text-3xl font-semibold leading-tight tracking-tight lg:text-[2.55rem]">
                   {featuredPublication?.titulo ??
                     "Nova matriz de segregação de funções e permissões"}
                 </h2>
-                <p className="max-w-xl text-base leading-7 text-blue-100/80 lg:text-lg">
+                <p className="max-w-lg text-sm leading-7 text-blue-100/80">
                   {featuredPublication?.resumo ??
                     "Atualizamos a matriz para reforçar a segurança da informação e garantir maior rastreabilidade nos processos de aprovação."}
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex flex-wrap items-center gap-3">
               <Button
                 type="button"
-                className="h-14 rounded-2xl bg-white px-8 text-base font-semibold text-slate-900 shadow-[0_10px_24px_-8px_rgba(0,0,0,0.45)] transition-all hover:-translate-y-0.5 hover:bg-slate-100 hover:shadow-[0_14px_28px_-8px_rgba(0,0,0,0.5)]"
+                className="h-14 rounded-xl bg-white px-7 text-base font-semibold text-slate-900 hover:bg-slate-100"
                 onClick={() => {
                   if (featuredPublication) {
                     void handleOpenPublication(featuredPublication);
@@ -546,119 +537,59 @@ function OrganizationLibrariesPage() {
                 Acessar documento
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
-
-              {heroSlides.length > 1 && (
-                <div className="ml-auto hidden items-center gap-2 lg:flex">
-                  {heroSlides.map((slide, index) => (
-                    <button
-                      key={slide.id}
-                      type="button"
-                      aria-label={`Ir para destaque ${index + 1}`}
-                      onClick={() => setActiveHeroSlide(index)}
-                      className={cn(
-                        "h-2 rounded-full transition-all",
-                        index === activeHeroSlide ? "w-6 bg-white" : "w-2 bg-white/40 hover:bg-white/60",
-                      )}
-                    />
-                  ))}
-                </div>
-              )}
+              <div className="ml-auto hidden items-center gap-2 lg:flex">
+                <span className="h-2 w-2 rounded-full bg-white" />
+                <span className="h-2 w-2 rounded-full bg-white/40" />
+                <span className="h-2 w-2 rounded-full bg-white/40" />
+              </div>
             </div>
           </div>
 
-          {/* Setas de navegação do carrossel */}
-          {heroSlides.length > 1 && (
-            <>
-              <button
-                type="button"
-                onClick={handleHeroPrev}
-                aria-label="Destaque anterior"
-                className="absolute left-4 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm transition hover:bg-black/50 lg:flex"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                onClick={handleHeroNext}
-                aria-label="Próximo destaque"
-                className="absolute right-4 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm transition hover:bg-black/50 lg:flex"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
-            </>
-          )}
+          <div className="relative min-h-[280px] bg-[#071d3d]">
+            <img
+              src={heroImagePreview ?? buildHeroImageUrl(featuredPublication)}
+              alt={featuredPublication?.titulo ?? "Destaque das bibliotecas"}
+              className="h-full w-full object-cover"
+            />
+            {/* Sombra/gradiente contínua: mais escura junto à emenda com o
+                painel de texto (esquerda no desktop, topo no mobile) e
+                esmaecendo para transparente sobre a foto — é isso que costura
+                visualmente os dois lados em um único card. */}
+            <div className="absolute inset-0 bg-gradient-to-b from-[#071d3d]/70 via-[#071d3d]/20 to-transparent lg:bg-gradient-to-r lg:from-[#071d3d]/70 lg:via-[#071d3d]/22 lg:to-transparent" />
+            <div className="pointer-events-none absolute inset-y-0 left-0 hidden w-24 bg-gradient-to-r from-[#071d3d]/50 to-transparent lg:block" />
 
-          {/* Controles de administrador para a imagem de destaque */}
-          {isAdmin && (
-            <div className="absolute right-4 top-4 flex gap-2">
-              {(heroImagePreview || featuredPublication?.imagem_url) && (
+            {isAdmin && (
+              <div className="absolute right-4 top-4 z-10 flex flex-col items-end gap-2">
+                <input
+                  ref={heroImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleHeroImageChange}
+                />
                 <Button
                   type="button"
                   size="sm"
                   variant="secondary"
-                  className="h-9 gap-1.5 rounded-lg bg-black/40 text-white backdrop-blur-sm hover:bg-black/55"
-                  onClick={handleRemoveHeroImage}
-                  disabled={uploadingHeroImage}
+                  disabled={uploadingHeroImage || !featuredPublication}
+                  onClick={() => heroImageInputRef.current?.click()}
+                  className="h-11 gap-2 rounded-xl bg-white/90 px-4 text-sm font-medium text-slate-900 shadow-md backdrop-blur hover:bg-white"
                 >
-                  <X className="h-3.5 w-3.5" />
-                  Remover
+                  {uploadingHeroImage ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ImagePlus className="h-4 w-4" />
+                  )}
+                  {uploadingHeroImage ? "Enviando..." : "Alterar imagem"}
                 </Button>
-              )}
-              <Button
-                type="button"
-                size="sm"
-                className="h-9 gap-1.5 rounded-lg bg-white/95 text-slate-900 shadow-sm hover:bg-white"
-                disabled={uploadingHeroImage || !featuredPublication}
-                onClick={() => heroFileInputRef.current?.click()}
-              >
-                {uploadingHeroImage ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ImagePlus className="h-3.5 w-3.5" />
+                {heroImageError && (
+                  <p className="max-w-[220px] rounded-lg bg-rose-50/95 px-2.5 py-1.5 text-right text-xs text-rose-600 shadow-sm">
+                    {heroImageError}
+                  </p>
                 )}
-                {heroImagePreview ? "Trocar imagem" : "Inserir imagem"}
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="h-9 gap-1.5 rounded-lg bg-black/40 text-white backdrop-blur-sm hover:bg-black/55"
-                    disabled={uploadingHeroImage || !featuredPublication}
-                  >
-                    <Crosshair className="h-3.5 w-3.5" />
-                    Enquadrar
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Enquadramento da imagem</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {PUBLICATION_IMAGE_FOCUS_OPTIONS.map((option) => (
-                    <DropdownMenuItem
-                      key={option.value}
-                      onClick={() => {
-                        if (!featuredPublication) return;
-                        void publications.updatePublicationImageFocus(
-                          featuredPublication.id,
-                          option.value,
-                        );
-                      }}
-                    >
-                      {option.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <input
-                ref={heroFileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleHeroImageSelect}
-              />
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
       </section>
 
@@ -672,7 +603,11 @@ function OrganizationLibrariesPage() {
               Acompanhe as publicações mais recentes da organização.
             </p>
           </div>
-          <Button asChild variant="ghost" className="gap-2 px-0 text-sky-700 hover:text-sky-800">
+          <Button
+            asChild
+            variant="ghost"
+            className="gap-2 px-0 text-sky-700 hover:text-sky-800"
+          >
             <Link to="/authenticated/organizacao/noticias">
               Ver todas as notícias
               <ArrowRight className="h-4 w-4" />
@@ -680,33 +615,12 @@ function OrganizationLibrariesPage() {
           </Button>
         </div>
 
-        {isAdmin && (
-          <div className="flex justify-end">
-            <CreatePublicationDialog
-              onCreate={publications.createPublication}
-              onAttachImage={publications.updatePublicationImage}
-            />
-          </div>
-        )}
-
-        {publications.error && (
-          <div className="rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {publications.error}
-          </div>
-        )}
-
         {newsroomPublications.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {newsroomPublications.map((publication) => (
               <OrganizationPublicationCard
                 key={publication.id}
                 publication={publication}
-                isAdmin={isAdmin}
-                onEditPublication={publications.updatePublication}
-                onDeletePublication={publications.deletePublication}
-                onUpdateImage={publications.updatePublicationImage}
-                onUpdateImageFocus={publications.updatePublicationImageFocus}
-                onRemoveImage={publications.removePublicationImage}
                 onOpen={() => {
                   void handleOpenPublication(publication);
                 }}
@@ -731,7 +645,9 @@ function OrganizationLibrariesPage() {
             </p>
           </div>
           <div className="text-sm font-medium text-sky-700">
-            {accessibleLibraries.length} biblioteca{accessibleLibraries.length === 1 ? "" : "s"} ativa{accessibleLibraries.length === 1 ? "" : "s"}
+            {accessibleLibraries.length} biblioteca
+            {accessibleLibraries.length === 1 ? "" : "s"} ativa
+            {accessibleLibraries.length === 1 ? "" : "s"}
           </div>
         </div>
 
@@ -743,7 +659,10 @@ function OrganizationLibrariesPage() {
                   to="/authenticated/biblioteca/$bibliotecaId/dashboard"
                   params={{ bibliotecaId: library.id }}
                   onClick={() => setStoredActiveLibraryId(library.id)}
-                  className="block rounded-[22px] border border-slate-200 bg-white p-5 pr-14 transition-all hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-lg"
+                  className={cn(
+                    "block rounded-[22px] border border-slate-200 bg-white p-5 pr-14 transition-all hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-lg",
+                    !library.active && "opacity-60",
+                  )}
                 >
                   <div className="space-y-4">
                     <div className="flex items-center gap-3">
@@ -767,15 +686,25 @@ function OrganizationLibrariesPage() {
                       </div>
                     </div>
 
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "rounded-full",
-                        phaseBadgeClass(library.phase_template?.code),
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "rounded-full",
+                          phaseBadgeClass(library.phase_template?.code),
+                        )}
+                      >
+                        {library.phase_template?.display_name ?? "Ativa"}
+                      </Badge>
+                      {!library.active && (
+                        <Badge
+                          variant="outline"
+                          className="rounded-full border-slate-300 bg-slate-100 text-slate-600"
+                        >
+                          Desativada
+                        </Badge>
                       )}
-                    >
-                      {library.phase_template?.display_name ?? "Ativa"}
-                    </Badge>
+                    </div>
 
                     <p className="min-h-[44px] text-sm leading-6 text-slate-500">
                       {library.phase_template?.reference_standard ??
@@ -800,35 +729,156 @@ function OrganizationLibrariesPage() {
                   </div>
                 </Link>
 
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-3 top-3 h-9 w-9 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                      onClick={(event) => event.stopPropagation()}
-                      aria-label="Opções da biblioteca"
-                    >
-                      <Settings className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>Edição da biblioteca</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem disabled>Editar nome da biblioteca</DropdownMenuItem>
-                    <DropdownMenuItem disabled>Editar empreendimento</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {isAdmin && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-3 top-3 h-9 w-9 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                        onClick={(event) => event.stopPropagation()}
+                        aria-label="Opções da biblioteca"
+                      >
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>
+                        Edição da biblioteca
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleOpenEditLibrary(library);
+                        }}
+                      >
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Editar nome e código
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={togglingLibraryId === library.id}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleToggleLibraryActive(library);
+                        }}
+                      >
+                        <Power className="mr-2 h-4 w-4" />
+                        {library.active
+                          ? "Desativar biblioteca"
+                          : "Ativar biblioteca"}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="text-rose-600 focus:text-rose-600"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setDeletingLibrary(library);
+                        }}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Excluir biblioteca
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             ))}
           </div>
         ) : (
           <div className="rounded-[26px] border border-dashed border-slate-200 bg-white p-6 text-sm text-slate-500">
-            Nenhuma biblioteca encontrada ainda. Crie a primeira biblioteca para começar.
+            Nenhuma biblioteca encontrada ainda. Crie a primeira biblioteca para
+            começar.
           </div>
         )}
       </section>
+
+      <Dialog
+        open={Boolean(editingLibrary)}
+        onOpenChange={(next) => !next && setEditingLibrary(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar biblioteca</DialogTitle>
+            <DialogDescription>
+              Altere o nome de exibição ou o código do projeto vinculado a esta
+              biblioteca.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="space-y-2">
+              <Label>Nome da biblioteca</Label>
+              <Input
+                value={editName}
+                onChange={(event) => setEditName(event.target.value)}
+                placeholder="Ex.: Revamp 2026"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Código</Label>
+              <Input
+                value={editCode}
+                onChange={(event) => setEditCode(event.target.value)}
+                placeholder={
+                  editCodeLoading ? "Carregando..." : "Ex.: PROJ-0142"
+                }
+                disabled={editCodeLoading}
+              />
+            </div>
+          </div>
+
+          {catalog.error && (
+            <p className="text-sm text-rose-600">{catalog.error}</p>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingLibrary(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveEditLibrary}
+              disabled={catalog.saving || editName.trim().length < 3}
+            >
+              Salvar alterações
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deletingLibrary)}
+        onOpenChange={(next) => !next && setDeletingLibrary(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Excluir biblioteca</DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja excluir "{deletingLibrary?.name}"? Esta
+              ação não pode ser desfeita. Se houver documentos nesta biblioteca,
+              a exclusão será bloqueada.
+            </DialogDescription>
+          </DialogHeader>
+
+          {catalog.error && (
+            <p className="text-sm text-rose-600">{catalog.error}</p>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingLibrary(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDeleteLibrary}
+              disabled={catalog.saving}
+            >
+              Excluir definitivamente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <section className="space-y-4">
         <div>
@@ -836,7 +886,8 @@ function OrganizationLibrariesPage() {
             Entenda como funciona
           </h2>
           <p className="text-sm text-slate-500">
-            Organize, controle e compartilhe documentos com segurança e eficiência.
+            Organize, controle e compartilhe documentos com segurança e
+            eficiência.
           </p>
         </div>
 
@@ -878,7 +929,12 @@ function OrganizationLibrariesPage() {
                 className="rounded-[22px] border border-slate-200 bg-white p-5"
               >
                 <div className="space-y-4">
-                  <div className={cn("flex h-11 w-11 items-center justify-center rounded-2xl", item.iconClass)}>
+                  <div
+                    className={cn(
+                      "flex h-11 w-11 items-center justify-center rounded-2xl",
+                      item.iconClass,
+                    )}
+                  >
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="space-y-2">
