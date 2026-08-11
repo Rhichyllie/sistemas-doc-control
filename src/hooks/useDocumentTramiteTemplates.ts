@@ -4,6 +4,8 @@ import { useLibraryScope } from "@/contexts/library-context";
 import { getErrorMessage } from "@/lib/errorUtils";
 import { supabase } from "@/lib/supabase";
 import {
+  buildSequentialTramiteCode,
+  extractHighestSequenceFromCodes,
   generateTramiteCode,
   type DocumentTramiteGraph,
   type DocumentTramiteTemplate,
@@ -436,6 +438,45 @@ export function useDocumentTramiteTemplates() {
     void refresh();
   }, [refresh]);
 
+  const getNextTramiteCode = useCallback(
+    async (
+      orgId: string,
+      fallbackSuffix?: string | null,
+    ): Promise<string> => {
+      const knownLocal = [
+        ...templates.map((template) => template.code),
+        ...(
+          loadLocalTramiteStore(orgId).templates as DocumentTramiteTemplate[]
+        ).map((template) => template.code),
+      ].filter((code): code is string => typeof code === "string" && code.length > 0);
+      const highestLocal = extractHighestSequenceFromCodes(knownLocal);
+      const query = supabase
+        .from("document_tramite_templates")
+        .select("code", { count: "exact" })
+        .eq("org_id", orgId)
+        .limit(1000)
+        .order("created_at", { ascending: false });
+      try {
+        const remoteCodes = await query;
+        if (!remoteCodes.error && Array.isArray(remoteCodes.data)) {
+          const all = new Set(knownLocal);
+          for (const row of remoteCodes.data) {
+            if (row && typeof row.code === "string") all.add(row.code);
+          }
+          const highestAll = Math.max(
+            highestLocal,
+            extractHighestSequenceFromCodes(Array.from(all)),
+          );
+          return buildSequentialTramiteCode(highestAll + 1, fallbackSuffix);
+        }
+      } catch {
+        // ignore remote failure, use local
+      }
+      return buildSequentialTramiteCode(highestLocal + 1, fallbackSuffix);
+    },
+    [templates],
+  );
+
   const migrateLocalStoreToRemote = useCallback(
     async (
       orgId: string,
@@ -448,8 +489,13 @@ export function useDocumentTramiteTemplates() {
     ): Promise<boolean> => {
       try {
         for (const localTemplate of localStore.templates) {
-          const code = localTemplate.code
-            || generateTramiteCode(localTemplate.name);
+          const hasExplicitSequential = /^TRM[-_]\d{4,}/i.test(
+            localTemplate.code ?? "",
+          );
+          const code =
+            localTemplate.code && hasExplicitSequential
+              ? localTemplate.code
+              : await getNextTramiteCode(orgId, localTemplate.code);
           const insertTemplate = {
             org_id: orgId,
             library_id: localTemplate.library_id ?? defaultLibraryId,
@@ -642,7 +688,15 @@ export function useDocumentTramiteTemplates() {
         setIsSaving(true);
         setError(null);
         const now = new Date().toISOString();
-        const code = generateTramiteCode(input.code || input.name);
+        const explicitSequential = /^TRM[-_]\d{4,}/i.test(input.code ?? "");
+        const suffixCandidate = explicitSequential ? undefined : input.code;
+        const code =
+          input.code && explicitSequential
+            ? input.code
+            : await getNextTramiteCode(
+                profile.org_id,
+                suffixCandidate ?? null,
+              );
         const validation = validateTramiteGraph(input.graph);
         const templateId = createLocalIdentifier("tramite");
         const versionId = createLocalIdentifier("tramite-version");
@@ -705,7 +759,12 @@ export function useDocumentTramiteTemplates() {
       }
       setIsSaving(true);
       setError(null);
-      const code = generateTramiteCode(input.code || input.name);
+      const explicitSequential = /^TRM[-_]\d{4,}/i.test(input.code ?? "");
+      const suffixCandidate = explicitSequential ? undefined : input.code;
+      const code =
+        input.code && explicitSequential
+          ? input.code
+          : await getNextTramiteCode(profile.org_id, suffixCandidate ?? null);
       const validation = validateTramiteGraph(input.graph);
       const templateResult = await supabase
         .from("document_tramite_templates")
@@ -1284,6 +1343,7 @@ export function useDocumentTramiteTemplates() {
     isLocalMode,
     canManage,
     refresh,
+    getNextTramiteCode,
     createTemplate,
     updateTemplate,
     ensureDraftVersion,

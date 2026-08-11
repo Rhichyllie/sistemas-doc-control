@@ -1063,9 +1063,7 @@ export function DocumentTramiteAdmin() {
     const name = `Fluxo ${selectedDocument.code ?? "DOC"} - ${selectedDocument.title}`;
     const id = await catalog.createTemplate({
       name,
-      code: generateTramiteCode(
-        `${selectedDocument.code ?? selectedDocument.title}-${flowTypeLabel}`,
-      ),
+      code: selectedDocument.code ?? undefined,
       description: `Fluxo de aprovação ${flowTypeLabel} vinculado ao documento ${selectedDocument.code ?? selectedDocument.title}.`,
       template_scope: selectedDocument.project_id ? "project" : "area_type",
       doc_type: selectedDocument.doc_type || null,
@@ -1119,9 +1117,7 @@ export function DocumentTramiteAdmin() {
     const sourceGraph = selectedSourceTemplate.current_version.graph;
     const id = await catalog.createTemplate({
       name: `${selectedSourceTemplate.name} · ${selectedDocument.code ?? selectedDocument.title}`,
-      code: generateTramiteCode(
-        `${selectedSourceTemplate.code}-${selectedDocument.code ?? selectedDocument.title}`,
-      ),
+      code: selectedSourceTemplate.code ? `${selectedSourceTemplate.code}` : undefined,
       description:
         selectedSourceTemplate.description?.trim() ||
         `Fluxo criado a partir do modelo ${selectedSourceTemplate.name}.`,
@@ -1162,7 +1158,6 @@ export function DocumentTramiteAdmin() {
 
     const id = await catalog.createTemplate({
       name: normalizedName,
-      code: generateTramiteCode(normalizedName),
       description: newModelDescription.trim() || null,
       template_scope: "organization",
       metadata: {

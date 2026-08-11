@@ -357,3 +357,31 @@ export function generateTramiteCode(name: string) {
     .slice(0, 36);
   return normalized || "TRAMITE";
 }
+
+export function buildSequentialTramiteCode(sequence: number, suffix?: string | null) {
+  const padded = String(Math.max(1, Math.floor(sequence || 1))).padStart(4, "0");
+  const base = `TRM-${padded}`;
+  if (!suffix) return base;
+  const normalizedSuffix = String(suffix)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24);
+  return normalizedSuffix ? `${base}-${normalizedSuffix}` : base;
+}
+
+export function extractHighestSequenceFromCodes(codes: string[]): number {
+  const numericPattern = /TRM[-_](\d{4,})/i;
+  let highest = 0;
+  for (const code of codes) {
+    if (!code) continue;
+    const match = code.match(numericPattern);
+    if (match && match[1]) {
+      const value = Number.parseInt(match[1], 10);
+      if (Number.isFinite(value) && value > highest) highest = value;
+    }
+  }
+  return highest;
+}
