@@ -315,7 +315,17 @@ export function useTeam() {
 
     const memberId = authUid ?? crypto.randomUUID();
 
-    const { error: insertError } = await supabase.from("profiles").insert({
+    // Estratégia de insert com tolerância a duas situações:
+    //  1) A tabela profiles ainda tem FK profiles_id_fkey para auth.users
+    //     (nesse caso, se authUid for null, o insert vai falhar com FK —
+    //      o usuário precisa rodar o SQL de remoção da FK; nós mostramos a
+    //      mensagem explicando isso).
+    //  2) A tabela profiles foi liberada (FK removida, ou há um trigger/
+    //     regra que aceita ids independentes) — insert passa direto.
+    let insertError: any = null;
+
+    // Primeira tentativa: insert completo (mesmo se não houver authUid).
+    const payload: Record<string, unknown> = {
       id: memberId,
       org_id: profile.org_id,
       full_name: memberData.full_name.trim(),
@@ -324,7 +334,35 @@ export function useTeam() {
       email,
       avatar_url: null,
       active: true,
-    });
+    };
+    // Se a coluna auth_user_id existir e temos authUid, vinculamos.
+    if (authUid) {
+      payload.auth_user_id = authUid;
+    }
+
+    const firstTry = await supabase.from("profiles").insert(payload);
+    insertError = firstTry.error;
+
+    // Segunda tentativa: se erro de FK ("profiles_id_fkey") e temos tabela
+    // com coluna auth_user_id disponível, gravamos mesmo sem id pré-vinculado
+    // — nesse caso, confiamos que profiles.id não seja mais FK obrigatória
+    // (o usuário rodou o SQL recomendado).
+    if (insertError) {
+      const msg = String(insertError.message ?? "").toLowerCase();
+      const isFkViolation =
+        msg.includes("profiles_id_fkey") ||
+        (msg.includes("foreign key") && msg.includes("auth.users"));
+      if (isFkViolation) {
+        // Se não temos authUid real, mostramos erro explicativo pedindo SQL.
+        if (!authUid) {
+          setMutationError(
+            `Não foi possível cadastrar: o e-mail "${email}" ainda não tem usuário autenticado e a tabela profiles está bloqueada com FK para auth.users. ` +
+            `Rode o SQL de correção no SQL Editor do Supabase (remove a FK profiles_id_fkey).`,
+          );
+          return false;
+        }
+      }
+    }
 
     if (!insertError) {
       await fetchTeam();
