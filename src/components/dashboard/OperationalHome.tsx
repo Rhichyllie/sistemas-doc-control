@@ -192,9 +192,11 @@ export function OperationalHome() {
   const workCenter = useDocumentWorkCenter();
   const canSeeAllInstances = workCenter.canViewOrganization;
   const isEmptyP12 = workCenter.tramiteStatus === "not_installed" || workCenter.tramiteStatus === "restricted";
-  const hasTramiteWorkItems = workCenter.workItems.some(
-    (item) => item.origin === "tramite" || item.type === "approval",
+  const hasActiveTramiteInstances = (workCenter.activeInstances ?? []).length > 0;
+  const hasSuggestedTramitesOnly = !hasActiveTramiteInstances && workCenter.workItems.some(
+    (item) => item.type === "suggested_tramite",
   );
+  const hasOnlyAttentionAlerts = !hasActiveTramiteInstances && !hasSuggestedTramitesOnly;
   const [typeFilter, setTypeFilter] =
     useState<OperationalActivityType | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<
@@ -413,22 +415,34 @@ export function OperationalHome() {
               emptyTitle={
                 isEmptyP12
                   ? "Ciclo de execução de trâmites (P12.1) ainda não instalado"
-                  : hasTramiteWorkItems
-                    ? "Existem fluxos em andamento, nada pendente de você"
-                    : "Nenhuma pendência agora"
+                  : hasSuggestedTramitesOnly
+                    ? "Trâmites sugeridos aguardando início"
+                    : hasActiveTramiteInstances
+                      ? "Existem fluxos em andamento, nada pendente de você"
+                      : hasOnlyAttentionAlerts
+                        ? "Sem aprovações pendentes de sua ação"
+                        : "Nenhuma pendência agora"
               }
               emptyDescription={
                 isEmptyP12
                   ? "No Supabase, abra o SQL Editor e execute a migration 20260630121000_p12_1_document_tramite_execution.sql. Isso cria as tabelas de instâncias e etapas de aprovação."
-                  : hasTramiteWorkItems
-                    ? "Assim que um passo for atribuído diretamente a você ou ao seu grupo de aprovação, ele aparecerá aqui."
-                    : "Quando houver aprovações ou documentos aguardando sua ação, eles aparecem aqui."
+                  : hasSuggestedTramitesOnly
+                    ? "Documentos como DOC-052563 já possuem modelo de trâmite recomendado — inicie a execução para começar a aprovação."
+                    : hasActiveTramiteInstances
+                      ? "Assim que um passo for atribuído diretamente a você ou ao seu grupo de aprovação, ele aparecerá aqui."
+                      : hasOnlyAttentionAlerts
+                        ? "Os itens listados em Atenção operacional exigem reclassificação — após resolver, o fluxo de aprovação começará normalmente."
+                        : "Quando houver aprovações ou documentos aguardando sua ação, eles aparecem aqui."
               }
               emptyIcon={
                 isEmptyP12 ? (
                   <AlertTriangle className="h-5 w-5 text-amber-500" />
-                ) : hasTramiteWorkItems ? (
+                ) : hasSuggestedTramitesOnly ? (
+                  <GitBranch className="h-5 w-5 text-indigo-500" />
+                ) : hasActiveTramiteInstances ? (
                   <CheckSquare2 className="h-5 w-5 text-emerald-500" />
+                ) : hasOnlyAttentionAlerts ? (
+                  <Filter className="h-5 w-5 text-slate-400" />
                 ) : undefined
               }
               emptyPrimaryAction={

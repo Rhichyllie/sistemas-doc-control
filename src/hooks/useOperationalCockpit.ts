@@ -3,6 +3,7 @@ import { useAuthContext } from '@/contexts/AuthContext'
 import { useApprovalQueue } from '@/hooks/useApprovalQueue'
 import { type AuditEntry, useAuditTrail } from '@/hooks/useAuditTrail'
 import { useDocuments, type Document } from '@/hooks/useDocuments'
+import { useDocumentWorkCenter } from '@/hooks/useDocumentWorkCenter'
 import { useNotifications, type Notification } from '@/hooks/useNotifications'
 import { useWorkflowActors } from '@/hooks/useWorkflowActors'
 
@@ -200,6 +201,7 @@ export function useOperationalCockpit() {
     error: documentsError,
     schemaFallback: documentsSchemaFallback,
   } = useDocuments()
+  const workCenter = useDocumentWorkCenter()
   const {
     queue,
     loading: queueLoading,
@@ -211,13 +213,13 @@ export function useOperationalCockpit() {
   const { entries, loading: auditLoading, error: auditError } = useAuditTrail()
   const { groupMembers } = useWorkflowActors()
 
+  const now = new Date().toISOString()
+  const managerialView = profile?.role === 'admin' || profile?.role === 'manager'
   const result = useMemo(() => {
     const documentsById = new Map(documents.map((document) => [document.id, document]))
     const activityItems: OperationalActivityItem[] = []
     const correctionDocumentIds = new Set<string>()
     const relevantReviewDocumentIds = new Set<string>()
-    const managerialView = profile?.role === 'admin' || profile?.role === 'manager'
-    const now = new Date().toISOString()
 
     for (const item of queue) {
       const isCompletedStatus = ['approved', 'completed', 'rejected'].includes(item.doc_status)
@@ -399,6 +401,82 @@ export function useOperationalCockpit() {
       })
     }
 
+    for (const wi of workCenter.workItems) {
+      if (
+        wi.type !== "suggested_tramite" &&
+        wi.type !== "tramite_step" &&
+        wi.type !== "approval"
+      ) {
+        continue
+      }
+      if (!managerialView && !wi.isMine) continue
+      const alreadyMapped = activityItems.some(
+        (existing) =>
+          existing.documentId === wi.documentId &&
+          (existing.type === "approval_pending" ||
+            existing.type === "review_pending" ||
+            existing.type === "overdue"),
+      )
+      if (alreadyMapped) continue
+      if (wi.type === "suggested_tramite") {
+        activityItems.push({
+          id: `suggested-tramite-cockpit-${wi.id}`,
+          type: "review_pending",
+          title: "Iniciar trâmite aplicável",
+          description: wi.description ?? "Modelo de aprovação recomendado para este documento.",
+          documentId: wi.documentId,
+          documentCode: wi.documentCode,
+          documentTitle: wi.documentTitle,
+          projectName: wi.projectName,
+          area: wi.area,
+          status: "Aguardando início",
+          priority: managerialView ? "low" : "high",
+          dueAt: null,
+          createdAt: wi.createdAt,
+          suggestedAction: "Iniciar trâmite",
+          target: "document",
+        })
+        continue
+      }
+      const remaining =
+        typeof wi.businessDaysRemaining === "number"
+          ? wi.businessDaysRemaining
+          : typeof wi.dueAt === "string"
+            ? Math.ceil(
+                (new Date(wi.dueAt).getTime() - new Date(now).getTime()) /
+                  (1000 * 60 * 60 * 24),
+              )
+            : null
+      const isOverdue =
+        (wi.statusLabel && wi.statusLabel.toLowerCase().includes("atras")) ||
+        (remaining !== null && remaining < 0)
+      const nearing = remaining !== null && remaining >= 0 && remaining <= 3
+      activityItems.push({
+        id: `workcenter-${wi.id}`,
+        type: isOverdue ? "overdue" : nearing ? "nearing_due" : "review_pending",
+        title:
+          wi.type === "approval"
+            ? isOverdue
+              ? "Aprovação atrasada"
+              : "Aprovação pendente"
+            : isOverdue
+              ? "Etapa de trâmite atrasada"
+              : `Etapa de trâmite: ${wi.title}`,
+        description: wi.description ?? wi.statusLabel ?? wi.title,
+        documentId: wi.documentId,
+        documentCode: wi.documentCode,
+        documentTitle: wi.documentTitle,
+        projectName: wi.projectName,
+        area: wi.area,
+        status: wi.statusLabel ?? (isOverdue ? "Atrasado" : "Pendente"),
+        priority: isOverdue ? "critical" : nearing ? "high" : wi.priority as OperationalPriority,
+        dueAt: wi.dueAt,
+        createdAt: wi.createdAt,
+        suggestedAction: managerialView && !wi.isMine ? "Acompanhar" : wi.actionLabel ?? "Revisar e decidir",
+        target: "approval",
+      })
+    }
+
     const sortedItems = sortActivityItems(activityItems)
     const actionableItems = sortedItems.filter((item) =>
       !['recent_update', 'informational', 'completed_by_me'].includes(item.type)
@@ -439,7 +517,18 @@ export function useOperationalCockpit() {
       recentActivitiesSource: entries.length ? ('audit_trail' as const) : ('documents' as const),
       generatedAt: now,
     }
-  }, [documents, entries, groupMembers, notifications, profile, queue, unreadCount])
+  }, [
+    documents,
+    entries,
+    groupMembers,
+    notifications,
+    now,
+    managerialView,
+    profile,
+    queue,
+    unreadCount,
+    workCenter.workItems,
+  ])
 
   const error = documentsError ?? queueError
   const warnings = [
@@ -452,7 +541,12 @@ export function useOperationalCockpit() {
 
   return {
     profile,
-    isLoading: documentsLoading || queueLoading || notificationsLoading || auditLoading,
+    isLoading:
+      documentsLoading ||
+      queueLoading ||
+      workCenter.isLoading ||
+      notificationsLoading ||
+      auditLoading,
     error,
     warnings,
     ...result,

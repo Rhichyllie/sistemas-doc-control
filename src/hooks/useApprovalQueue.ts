@@ -80,7 +80,17 @@ interface QueueRow {
 
 type QueueQueryMode = 'enterprise' | 'enterprise_without_project' | 'legacy_sla' | 'legacy_base'
 
-const ACTIVE_DOCUMENT_STATUSES = new Set(['in_review', 'pending_approval'])
+const ACTIVE_DOCUMENT_STATUSES = new Set([
+  'in_review',
+  'pending_approval',
+  'review_pending',
+  'pending_review',
+  'submitted',
+  'under_review',
+  'awaiting_approval',
+  'in_tramite',
+  'draft',
+])
 
 function first<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null
