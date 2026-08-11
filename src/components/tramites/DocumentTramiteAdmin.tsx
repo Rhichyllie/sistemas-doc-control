@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertCircle,
+  CheckCircle2,
   Eye,
   Filter,
   GitBranch,
@@ -11,11 +13,13 @@ import {
   ShieldAlert,
   ShieldCheck,
   Trash2,
+  XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { DocumentTramiteModeler } from "@/components/tramites/DocumentTramiteModeler";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -46,6 +51,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDocuments, type Document } from "@/hooks/useDocuments";
 import { useDocumentTramiteInstances } from "@/hooks/useDocumentTramiteInstances";
 import { useDocumentTramiteTemplates } from "@/hooks/useDocumentTramiteTemplates";
+import { useApprovalFlow } from "@/hooks/useApprovalFlow";
 import { useLocalData } from "@/hooks/use-local-data";
 import { useOperationalCalendar } from "@/hooks/useOperationalCalendar";
 import { useProjectOptions } from "@/hooks/useProjectOptions";
@@ -96,6 +102,7 @@ interface ProcessRow {
   projectId: string | null;
   docType: string | null;
   area: string | null;
+  currentStepId: string | null;
   currentStepLabel: string;
   responsibleName: string;
   statusBucket: Exclude<ProcessStateFilter, "all">;
@@ -528,6 +535,7 @@ export function DocumentTramiteAdmin() {
   const { disciplines } = useLocalData();
   const actors = useWorkflowActors();
   const operationalCalendar = useOperationalCalendar();
+  const { actOnStep, loading: actionLoading } = useApprovalFlow()
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [creationMode, setCreationMode] = useState<FlowCreationMode>("manual");
@@ -547,6 +555,10 @@ export function DocumentTramiteAdmin() {
   const [selectedProcessRowId, setSelectedProcessRowId] = useState<string | null>(
     null,
   );
+  const [selectedProcessForAction, setSelectedProcessForAction] = useState<ProcessRow | null>(null)
+  const [processAction, setProcessAction] = useState<'approve' | 'reject' | null>(null)
+  const [processActionComment, setProcessActionComment] = useState('')
+  const [processActionError, setProcessActionError] = useState<string | null>(null)
   const profileGroupIds = useMemo(
     () =>
       new Set(
@@ -753,6 +765,7 @@ export function DocumentTramiteAdmin() {
         projectId: document?.project_id ?? template?.project_id ?? null,
         docType: document?.doc_type ?? template?.doc_type ?? null,
         area: document?.area ?? template?.area ?? null,
+        currentStepId: currentStep?.id ?? null,
         currentStepLabel: currentStep?.label ?? "Sem etapa ativa",
         responsibleName,
         statusBucket,
@@ -822,6 +835,7 @@ export function DocumentTramiteAdmin() {
         projectId: sourceDocument.project_id ?? template.project_id ?? null,
         docType: sourceDocument.doc_type ?? template.doc_type ?? null,
         area: sourceDocument.area ?? template.area ?? null,
+        currentStepId: null,
         currentStepLabel: firstNode?.label ?? "Fluxo modelado",
         responsibleName: firstNode
           ? resolveFlowResponsibleName(firstNode, usersById, groupsById, null)
@@ -1177,6 +1191,52 @@ export function DocumentTramiteAdmin() {
     }
   }
 
+  function openProcessAction(row: ProcessRow, action: 'approve' | 'reject') {
+    setSelectedProcessForAction(row)
+    setProcessAction(action)
+    setProcessActionComment('')
+    setProcessActionError(null)
+  }
+
+  function closeProcessActionDialog() {
+    setSelectedProcessForAction(null)
+    setProcessAction(null)
+    setProcessActionComment('')
+    setProcessActionError(null)
+  }
+
+  async function handleConfirmProcessAction() {
+    if (!selectedProcessForAction || !processAction) return
+    if (!selectedProcessForAction.currentStepId) {
+      toast.error('Não há etapa ativa para decisão neste fluxo.')
+      return
+    }
+    if (processAction === 'reject' && !processActionComment.trim()) {
+      setProcessActionError('Informe o motivo da rejeição.')
+      return
+    }
+
+    const success = await actOnStep({
+      documentId: selectedProcessForAction.documentId,
+      stepId: selectedProcessForAction.currentStepId,
+      action: processAction,
+      comment: processActionComment.trim() || undefined,
+    })
+
+    if (success) {
+      toast.success(
+        processAction === 'approve'
+          ? 'Etapa aprovada — fluxo segue para a próxima etapa.'
+          : 'Correção solicitada ao autor.',
+      )
+      closeProcessActionDialog()
+    } else {
+      setProcessActionError(
+        'Não foi possível registrar sua decisão. Verifique as permissões e tente novamente.',
+      )
+    }
+  }
+
   function resetCreationDialog() {
     setForm(EMPTY_FORM);
     setCreationMode("manual");
@@ -1496,9 +1556,6 @@ export function DocumentTramiteAdmin() {
                   <th className="px-4 py-3 font-medium text-slate-600">
                     Prazo da etapa
                   </th>
-                  <th className="px-4 py-3 font-medium text-slate-600">
-                    Status
-                  </th>
                   <th className="px-4 py-3 text-right font-medium text-slate-600">
                     Ações
                   </th>
@@ -1507,7 +1564,7 @@ export function DocumentTramiteAdmin() {
               <tbody className="divide-y divide-slate-200 bg-white">
                 {executions.isLoading && tableProcessRows.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10">
+                    <td colSpan={7} className="px-4 py-10">
                       <div className="flex items-center justify-center gap-2 text-slate-500">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Carregando processos...
@@ -1517,6 +1574,7 @@ export function DocumentTramiteAdmin() {
                 ) : filteredProcessRows.length > 0 ? (
                   filteredProcessRows.map((row) => {
                     const statusMeta = getProcessStatusMeta(row.statusBucket);
+                    const canDecide = row.isMine && Boolean(row.currentStepId);
                     return (
                       <tr
                         key={row.id}
@@ -1594,36 +1652,58 @@ export function DocumentTramiteAdmin() {
                             {formatDateTime(row.dueAt)}
                           </div>
                         </td>
-                        <td className="px-4 py-3 align-top">
-                          <Badge
-                            variant="outline"
-                            className={cn("rounded-full", statusMeta.badgeClass)}
-                          >
-                            {row.statusLabel}
-                          </Badge>
-                        </td>
                         <td className="px-4 py-3 text-right align-top">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              if (row.templateId) {
-                                setEditingId(row.templateId);
-                              }
-                            }}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
+                          <div className="inline-flex items-center gap-2 justify-end">
+                            {canDecide && (
+                              <>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openProcessAction(row, 'approve');
+                                  }}
+                                >
+                                  <CheckCircle2 className="h-4 w-4 mr-1" />
+                                  Aprovar
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openProcessAction(row, 'reject');
+                                  }}
+                                >
+                                  <XCircle className="h-4 w-4 mr-1" />
+                                  Reprovar
+                                </Button>
+                              </>
+                            )}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                if (row.templateId) {
+                                  setEditingId(row.templateId);
+                                }
+                              }}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center">
+                    <td colSpan={7} className="px-4 py-10 text-center">
                       <div className="space-y-1 text-sm text-slate-500">
                         <p className="font-medium text-slate-700">
                           {executions.schemaStatus === "not_installed"
@@ -2215,6 +2295,96 @@ export function DocumentTramiteAdmin() {
             >
               {catalog.isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
               Criar modelo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(selectedProcessForAction && processAction)}
+        onOpenChange={(open) => {
+          if (!open) closeProcessActionDialog()
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {processAction === 'approve'
+                ? 'Aprovar etapa do fluxo'
+                : 'Solicitar correção'}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedProcessForAction
+                ? `${selectedProcessForAction.documentCode ?? 'Sem código'} — ${selectedProcessForAction.documentTitle}`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-600">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-slate-800">
+                  Etapa atual:
+                </span>
+                <span className="text-slate-700">
+                  {selectedProcessForAction?.currentStepLabel ??
+                    'Sem etapa ativa'}
+                </span>
+                <span className="text-slate-300">·</span>
+                <span className="text-slate-500">
+                  Responsável: {selectedProcessForAction?.responsibleName ?? '—'}
+                </span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="process-action-comment">
+                {processAction === 'approve'
+                  ? 'Análise ou observação (opcional)'
+                  : 'Motivo da correção (obrigatório)'}
+              </Label>
+              <Textarea
+                id="process-action-comment"
+                rows={4}
+                value={processActionComment}
+                onChange={(event) => {
+                  setProcessActionComment(event.target.value)
+                  if (processActionError) setProcessActionError(null)
+                }}
+                placeholder={
+                  processAction === 'approve'
+                    ? 'Descreva o parecer da análise (opcional) ou deixe em branco para aprovar direto.'
+                    : 'Informe o que precisa ser ajustado pelo autor antes de seguir o fluxo.'
+                }
+              />
+              {processActionError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Atenção</AlertTitle>
+                  <AlertDescription>{processActionError}</AlertDescription>
+                </Alert>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeProcessActionDialog}
+              disabled={actionLoading}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleConfirmProcessAction()}
+              disabled={actionLoading}
+              variant={processAction === 'approve' ? 'default' : 'destructive'}
+            >
+              {actionLoading && (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              )}
+              {processAction === 'approve'
+                ? 'Confirmar aprovação'
+                : 'Solicitar correção'}
             </Button>
           </DialogFooter>
         </DialogContent>
