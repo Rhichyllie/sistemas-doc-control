@@ -48,6 +48,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useDocuments, type Document } from "@/hooks/useDocuments";
 import { useDocumentTramiteInstances } from "@/hooks/useDocumentTramiteInstances";
 import { useDocumentTramiteTemplates } from "@/hooks/useDocumentTramiteTemplates";
@@ -1468,8 +1474,9 @@ export function DocumentTramiteAdmin() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+    <TooltipProvider delayDuration={150}>
+      <div className="space-y-8">
+        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col justify-between gap-5 xl:flex-row xl:items-center">
           <div>
             <Badge
@@ -1716,6 +1723,15 @@ export function DocumentTramiteAdmin() {
                     const statusMeta = getProcessStatusMeta(row.statusBucket);
                     const canDecide =
                       (row.isMine || isManager) && Boolean(row.currentStepId);
+                    let decideDisabledReason: string | null = null;
+                    if (!row.currentStepId) {
+                      decideDisabledReason =
+                        "Fluxo ainda não iniciado. Clique em 'Iniciar fluxo' (canto superior direito) para poder decidir etapas.";
+                    } else if (!row.isMine && !isManager) {
+                      decideDisabledReason =
+                        "Esta etapa está atribuída a outro usuário/grupo. Apenas o responsável pela etapa ou um gestor pode aprovar/reprovar.";
+                    }
+                    const decideDisabled = decideDisabledReason !== null;
                     return (
                       <tr
                         key={row.id}
@@ -1799,34 +1815,70 @@ export function DocumentTramiteAdmin() {
                         </td>
                         <td className="px-4 py-3 text-right align-top">
                           <div className="inline-flex items-center gap-2 justify-end">
-                            {canDecide && (
-                              <>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className="bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    openProcessAction(row, 'approve');
-                                  }}
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs"
+                                    disabled={decideDisabled}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      if (decideDisabled) {
+                                        if (decideDisabledReason) toast.info(decideDisabledReason);
+                                        return;
+                                      }
+                                      openProcessAction(row, 'approve');
+                                    }}
+                                  >
+                                    <CheckCircle2 className="h-4 w-4 mr-1" />
+                                    Aprovar
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              {decideDisabledReason && (
+                                <TooltipContent
+                                  side="top"
+                                  align="end"
+                                  className="max-w-[320px] text-xs text-slate-700"
                                 >
-                                  <CheckCircle2 className="h-4 w-4 mr-1" />
-                                  Aprovar
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    openProcessAction(row, 'reject');
-                                  }}
+                                  {decideDisabledReason}
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="destructive"
+                                    disabled={decideDisabled}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      if (decideDisabled) {
+                                        if (decideDisabledReason) toast.info(decideDisabledReason);
+                                        return;
+                                      }
+                                      openProcessAction(row, 'reject');
+                                    }}
+                                  >
+                                    <XCircle className="h-4 w-4 mr-1" />
+                                    Reprovar
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              {decideDisabledReason && (
+                                <TooltipContent
+                                  side="top"
+                                  align="end"
+                                  className="max-w-[320px] text-xs text-slate-700"
                                 >
-                                  <XCircle className="h-4 w-4 mr-1" />
-                                  Reprovar
-                                </Button>
-                              </>
-                            )}
+                                  {decideDisabledReason}
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
                             <Button
                               type="button"
                               size="sm"
@@ -2534,7 +2586,8 @@ export function DocumentTramiteAdmin() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }
 
