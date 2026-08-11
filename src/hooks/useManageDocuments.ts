@@ -80,10 +80,6 @@ export function useManageDocuments() {
       setError("Usuário não autenticado.");
       return null;
     }
-    if (!libraryId) {
-      setError("Selecione uma biblioteca antes de atualizar o documento.");
-      return null;
-    }
 
     setLoading(true);
     setError(null);
@@ -102,17 +98,26 @@ export function useManageDocuments() {
         updated_at: now,
       };
 
-      const { error: updateError } = await supabase
-        .from("documents")
-        .update(basePayload)
-        .eq("id", documentId)
-        .eq("org_id", profile.org_id)
-        .eq("library_id", libraryId);
+      const baseMatch: Record<string, unknown> = {
+        id: documentId,
+        org_id: profile.org_id,
+      };
+      if (libraryId) baseMatch.library_id = libraryId;
+
+      const buildUpdateQuery = (payload: Record<string, unknown>) => {
+        const q = supabase.from("documents").update(payload);
+        Object.entries(baseMatch).forEach(([key, value]) => {
+          q.eq(key, value);
+        });
+        return q;
+      };
+
+      const { error: updateError } = await buildUpdateQuery(basePayload);
 
       if (updateError && isMissingDocumentsSchema(updateError)) {
         const localDocuments = loadLocalDocuments(profile.org_id);
         const nextDocuments = localDocuments.map((document) =>
-          document.id === documentId && document.library_id === libraryId
+          (!libraryId || document.library_id === libraryId) && document.id === documentId
             ? {
                 ...document,
                 ...basePayload,
@@ -148,12 +153,7 @@ export function useManageDocuments() {
         updated_at: now,
       };
 
-      const { error: optionalError } = await supabase
-        .from("documents")
-        .update(optionalPayload)
-        .eq("id", documentId)
-        .eq("org_id", profile.org_id)
-        .eq("library_id", libraryId);
+      const { error: optionalError } = await buildUpdateQuery(optionalPayload);
 
       if (optionalError && !isOptionalRegisterFieldError(optionalError)) {
         throw optionalError;
@@ -180,26 +180,25 @@ export function useManageDocuments() {
       setError("Usuário não autenticado.");
       return null;
     }
-    if (!libraryId) {
-      setError("Selecione uma biblioteca antes de excluir o documento.");
-      return null;
-    }
 
     setLoading(true);
     setError(null);
 
     try {
-      const { error: deleteError } = await supabase
-        .from("documents")
-        .delete()
-        .eq("id", documentId)
-        .eq("org_id", profile.org_id)
-        .eq("library_id", libraryId);
+      const match: Record<string, unknown> = { id: documentId, org_id: profile.org_id };
+      if (libraryId) match.library_id = libraryId;
+
+      const deleteQuery = supabase.from("documents").delete();
+      Object.entries(match).forEach(([key, value]) => {
+        deleteQuery.eq(key, value);
+      });
+      const { error: deleteError } = await deleteQuery;
 
       if (deleteError && isMissingDocumentsSchema(deleteError)) {
         const nextDocuments = loadLocalDocuments(profile.org_id).filter(
           (document) =>
-            document.id !== documentId || document.library_id !== libraryId,
+            document.id !== documentId ||
+            (libraryId ? document.library_id !== libraryId : false),
         );
         saveLocalDocuments(profile.org_id, nextDocuments);
         return {
