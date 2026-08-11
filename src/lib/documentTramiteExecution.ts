@@ -33,6 +33,7 @@ export interface DocumentTramiteInstance {
   document_version_id: string | null;
   template_id: string;
   template_version_id: string;
+  project_id: string | null;
   code: string | null;
   status: TramiteExecutionStatus;
   current_node_keys: string[];

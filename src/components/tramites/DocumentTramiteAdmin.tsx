@@ -68,6 +68,7 @@ import { useWorkflowActors } from "@/hooks/useWorkflowActors";
 import { DOC_TYPES } from "@/lib/constants";
 import type {
   DocumentTramiteAssignmentType,
+  DocumentTramiteNode,
   DocumentTramiteNodeType,
 } from "@/lib/documentTramiteModel";
 import {
@@ -827,11 +828,11 @@ export function DocumentTramiteAdmin() {
         instanceId: instance.id,
         templateId: template?.id ?? null,
         documentId: instance.document_id,
-        documentCode: document?.code ?? instance.code ?? null,
-        documentTitle: document?.title ?? template?.name ?? "Documento",
-        templateName: template?.name ?? "Fluxo sem modelo identificado",
+        documentCode: document?.code ?? template?.name ?? instance.id,
+        documentTitle: document?.title ?? template?.description ?? instance.id,
+        templateName: template?.name ?? "Fluxo manual",
         projectName,
-        projectId: document?.project_id ?? template?.project_id ?? null,
+        projectId: document?.project_id ?? instance.project_id ?? null,
         docType: document?.doc_type ?? template?.doc_type ?? null,
         area: document?.area ?? template?.area ?? null,
         currentStepId: currentStep?.id ?? null,
@@ -840,37 +841,70 @@ export function DocumentTramiteAdmin() {
         currentStepLabel: currentStep?.label ?? "Sem etapa ativa",
         responsibleName,
         statusBucket,
-        statusLabel: getProcessStatusMeta(statusBucket).label,
-        isMine: Boolean(isStepMine || canDelegate),
+        statusLabel:
+          instance.status === "completed"
+            ? "Concluído"
+            : instance.status === "cancelled"
+              ? "Cancelado"
+              : instance.status === "failed"
+                ? "Falha"
+                : instance.status === "active"
+                  ? "Em andamento"
+                  : "Ativo",
+        isMine: isStepMine,
         canDelegate,
-        progress:
-          totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0,
+        progress: totalSteps ? Math.round((completedSteps / totalSteps) * 100) : 0,
         totalSteps,
         completedSteps,
-        dueAt: currentStep?.due_at ?? instance.due_at,
-        startedAt: instance.started_at,
+        dueAt: currentStep?.due_at ?? instance.updated_at,
+        startedAt: instance.started_at ?? instance.created_at,
       } satisfies ProcessRow;
     });
   }, [
-    actors.groups,
-    executions.instances,
-    profile?.id,
-    profile?.role,
-    profileGroupIds,
+    availabilityState,
     documentsById,
+    executions.instances,
     groupsById,
+    notificationState.schemaStatus,
+    profile,
+    profileGroupIds,
     projectsById,
     stepsByInstanceId,
     templatesById,
     usersById,
-    availabilityState,
-    notificationState.schemaStatus,
   ]);
+
   const plannedProcessRows = useMemo(() => {
     const templatesWithExecution = new Set(
       executions.instances.map((instance) => instance.template_id),
     );
     const rows: ProcessRow[] = [];
+
+    function isNodeAssignedToProfile(
+      node: DocumentTramiteNode,
+      document: Document | undefined | null,
+      currentProfile: { id: string; role: string } | null,
+      groupIds: Set<string>,
+    ) {
+      if (!currentProfile) return false;
+      const assignment = (node.assignment_type ?? "none") as DocumentTramiteAssignmentType;
+      if (
+        assignment === "none" ||
+        assignment === "author" ||
+        assignment === "document_owner"
+      ) {
+        return document?.author_id === currentProfile.id;
+      }
+      if (assignment === "specific_user") {
+        return node.assignee_user_id === currentProfile.id;
+      }
+      if (assignment === "approval_group") {
+        return Boolean(
+          node.assignee_group_id && groupIds.has(node.assignee_group_id),
+        );
+      }
+      return assignment === "role" && node.required_role === currentProfile.role;
+    }
 
     for (const template of catalog.templates) {
       if (templatesWithExecution.has(template.id)) continue;
@@ -891,6 +925,18 @@ export function DocumentTramiteAdmin() {
       const firstNode = actionableNodes[0] ?? null;
       const statusBucket: Exclude<ProcessStateFilter, "all"> =
         template.status === "archived" ? "cancelled" : "active";
+      const documentFull = documentsState.documents.find(
+        (d) => d.id === sourceDocument.id,
+      );
+      const firstNodeIsMine = Boolean(
+        firstNode &&
+          isNodeAssignedToProfile(
+            firstNode,
+            documentFull,
+            profile ? { id: profile.id, role: profile.role } : null,
+            profileGroupIds,
+          ),
+      );
 
       rows.push({
         id: `template-${template.id}`,
@@ -910,15 +956,15 @@ export function DocumentTramiteAdmin() {
         docType: sourceDocument.doc_type ?? template.doc_type ?? null,
         area: sourceDocument.area ?? template.area ?? null,
         currentStepId: null,
-        currentStepNodeType: null,
-        currentStepAssignmentType: null,
+        currentStepNodeType: firstNode?.node_type ?? null,
+        currentStepAssignmentType: firstNode?.assignment_type ?? null,
         currentStepLabel: firstNode?.label ?? "Fluxo modelado",
         responsibleName: firstNode
           ? resolveFlowResponsibleName(firstNode, usersById, groupsById, null)
           : "Aguardando definição",
         statusBucket,
         statusLabel: getTemplateStatusLabel(template.status),
-        isMine: false,
+        isMine: firstNodeIsMine,
         canDelegate: false,
         progress: 0,
         totalSteps: actionableNodes.length,
@@ -935,6 +981,8 @@ export function DocumentTramiteAdmin() {
     documentsState.documents,
     executions.instances,
     groupsById,
+    profile,
+    profileGroupIds,
     projects.projects,
     projectsById,
     usersById,
@@ -1284,36 +1332,166 @@ export function DocumentTramiteAdmin() {
 
   async function handleConfirmProcessAction() {
     if (!selectedProcessForAction || !processAction) return
-    if (!selectedProcessForAction.currentStepId) {
-      toast.error('Não há etapa ativa para decisão neste fluxo.')
-      return
-    }
     if (processAction === 'reject' && !processActionComment.trim()) {
       setProcessActionError('Informe o motivo da rejeição.')
       return
     }
 
+    let currentRow: ProcessRow = selectedProcessForAction;
+
+    try {
+      if (currentRow.rowType === 'template' && currentRow.templateId && !currentRow.currentStepId) {
+        toast.loading('Iniciando o fluxo automaticamente…', { id: 'start-instance-for-action' });
+        await execution.startInstance({
+          documentId: currentRow.documentId,
+          templateId: currentRow.templateId,
+          templateVersionId: templatesById.get(currentRow.templateId)?.current_version?.id ?? null,
+        });
+        await Promise.all([executions.refresh(), catalog.refresh()]);
+        const liveInstances = executions.instances ?? [];
+        const matchedInstance = liveInstances.find(
+          (inst) => inst.template_id === currentRow.templateId && inst.document_id === currentRow.documentId,
+        );
+        toast.dismiss('start-instance-for-action');
+        if (!matchedInstance) {
+          setProcessActionError('Fluxo iniciado, mas não foi possível recuperar a etapa ativa. Atualize a página e tente novamente.');
+          toast.error('Fluxo iniciado. Atualize a página para continuar.');
+          return;
+        }
+        const matchedTemplate = templatesById.get(currentRow.templateId) ?? null;
+        const liveSteps = (executions.steps ?? []).filter(
+          (step) => step.instance_id === matchedInstance.id,
+        );
+        const liveDocument = documentsById.get(matchedInstance.document_id) ?? null;
+        const liveActionableSteps = liveSteps.filter(
+          (step) => step.node_type !== 'start' && step.node_type !== 'end',
+        );
+        const liveCurrentStep =
+          liveActionableSteps.find((step) => step.status === 'active') ??
+          liveActionableSteps.find((step) => step.status === 'pending') ??
+          null;
+        if (!liveCurrentStep) {
+          setProcessActionError('Fluxo iniciado sem etapa ativa detectada. Atualize a página para prosseguir.');
+          toast.error('Fluxo iniciado sem etapa ativa. Atualize a página para continuar.');
+          return;
+        }
+        const liveIsMine =
+          (() => {
+            if (!profile) return false;
+            const assignment = (liveCurrentStep.assignment_type ?? 'none') as DocumentTramiteAssignmentType;
+            if (
+              assignment === 'none' ||
+              assignment === 'author' ||
+              assignment === 'document_owner'
+            ) {
+              return liveDocument?.author_id === profile.id;
+            }
+            if (assignment === 'specific_user') {
+              return liveCurrentStep.assignee_user_id === profile.id;
+            }
+            if (assignment === 'approval_group') {
+              return Boolean(
+                liveCurrentStep.assignee_group_id && profileGroupIds.has(liveCurrentStep.assignee_group_id),
+              );
+            }
+            return assignment === 'role' && liveCurrentStep.required_role === profile.role;
+          })();
+        currentRow = {
+          id: matchedInstance.id,
+          rowType: 'instance',
+          instanceId: matchedInstance.id,
+          templateId: matchedTemplate?.id ?? null,
+          documentId: matchedInstance.document_id,
+          documentCode: liveDocument?.code ?? matchedInstance.document_id,
+          documentTitle: liveDocument?.title ?? matchedInstance.document_id,
+          templateName: matchedTemplate?.name ?? 'Fluxo manual',
+          projectName:
+            liveDocument?.project?.name ??
+            (liveDocument?.project_id
+              ? projectsById.get(liveDocument.project_id)?.name ?? 'Sem projeto'
+              : 'Sem projeto'),
+          projectId: liveDocument?.project_id ?? matchedInstance.project_id ?? null,
+          docType: liveDocument?.doc_type ?? matchedTemplate?.doc_type ?? null,
+          area: liveDocument?.area ?? matchedTemplate?.area ?? null,
+          currentStepId: liveCurrentStep.id,
+          currentStepNodeType: liveCurrentStep.node_type ?? null,
+          currentStepAssignmentType: liveCurrentStep.assignment_type ?? null,
+          currentStepLabel: liveCurrentStep.label ?? 'Sem etapa ativa',
+          responsibleName:
+            liveCurrentStep.assignment_type === 'specific_user'
+              ? usersById.get(liveCurrentStep.assignee_user_id ?? '') ?? 'Usuário atribuído'
+              : liveCurrentStep.assignment_type === 'approval_group'
+                ? groupsById.get(liveCurrentStep.assignee_group_id ?? '') ?? 'Grupo atribuído'
+                : liveCurrentStep.assignment_type === 'role'
+                  ? `Papel: ${liveCurrentStep.required_role ?? 'workflow'}`
+                  : liveCurrentStep.assignment_type === 'author' ||
+                      liveCurrentStep.assignment_type === 'document_owner' ||
+                      !liveCurrentStep.assignment_type ||
+                      (liveCurrentStep.assignment_type as DocumentTramiteAssignmentType) === 'none'
+                    ? liveDocument?.author?.full_name ?? 'Autor do documento'
+                    : 'Aguardando definição',
+          statusBucket: matchedInstance.status === 'completed'
+            ? 'completed'
+            : matchedInstance.status === 'cancelled' || matchedInstance.status === 'failed'
+              ? 'cancelled'
+              : liveIsMine
+                ? 'my_action'
+                : matchedInstance.status === 'active'
+                  ? 'waiting_others'
+                  : 'active',
+          statusLabel: matchedInstance.status ?? 'Ativo',
+          isMine: liveIsMine,
+          canDelegate: false,
+          progress: liveActionableSteps.length
+            ? Math.round(
+                (liveActionableSteps.filter(
+                  (s) => s.status === 'completed' || s.status === 'skipped',
+                ).length /
+                  liveActionableSteps.length) *
+                  100,
+              )
+            : 0,
+          totalSteps: liveActionableSteps.length,
+          completedSteps: liveActionableSteps.filter(
+            (s) => s.status === 'completed' || s.status === 'skipped',
+          ).length,
+          dueAt: liveCurrentStep.due_at ?? matchedInstance.updated_at,
+          startedAt: matchedInstance.started_at ?? matchedInstance.created_at,
+        } satisfies ProcessRow;
+      }
+
+      if (!currentRow.currentStepId) {
+        setProcessActionError('Não há etapa ativa para decisão neste fluxo.');
+        return;
+      }
+    } catch (error) {
+      toast.dismiss('start-instance-for-action');
+      setProcessActionError((error as Error)?.message || 'Erro ao preparar a etapa para decisão.');
+      toast.error('Não foi possível iniciar a etapa. Tente novamente.');
+      return;
+    }
+
     const decisionOptions =
-      selectedProcessForAction.currentStepNodeType
-        ? getStepDecisionOptions(selectedProcessForAction.currentStepNodeType)
+      currentRow.currentStepNodeType
+        ? getStepDecisionOptions(currentRow.currentStepNodeType)
         : null;
-    const hasLegacyApprovalRow = !selectedProcessForAction.currentStepNodeType ||
+    const hasLegacyApprovalRow = !currentRow.currentStepNodeType ||
       (decisionOptions?.some(
         (option) => option.value === 'approved' || option.value === 'rejected',
       ) ?? false);
 
     let success = false;
-    const document = documentsById.get(selectedProcessForAction.documentId);
+    const document = documentsById.get(currentRow.documentId);
     const availability =
-      selectedProcessForAction.currentStepAssignmentType === 'specific_user' &&
-        selectedProcessForAction.canDelegate
-        ? selectedProcessForAction.responsibleName
+      currentRow.currentStepAssignmentType === 'specific_user' &&
+        currentRow.canDelegate
+        ? currentRow.responsibleName
           ? null
           : null
-        : selectedProcessForAction.currentStepAssignmentType === 'specific_user'
+        : currentRow.currentStepAssignmentType === 'specific_user'
           ? (() => {
               const relatedStep = executions.steps.find(
-                (step) => step.id === selectedProcessForAction.currentStepId,
+                (step) => step.id === currentRow.currentStepId,
               );
               return relatedStep?.assignee_user_id
                 ? availabilityState.getAvailability(relatedStep.assignee_user_id, {
@@ -1327,7 +1505,7 @@ export function DocumentTramiteAdmin() {
           : null;
     const delegated = Boolean(
       profile?.id &&
-        selectedProcessForAction.canDelegate &&
+        currentRow.canDelegate &&
         notificationState.schemaStatus === 'enterprise' &&
         profile.role !== 'admin' &&
         profile.role !== 'manager' &&
@@ -1335,17 +1513,17 @@ export function DocumentTramiteAdmin() {
     );
 
     try {
-      if (hasLegacyApprovalRow && !selectedProcessForAction.rowType ||
-        (!selectedProcessForAction.currentStepNodeType &&
+      if (hasLegacyApprovalRow && !currentRow.rowType ||
+        (!currentRow.currentStepNodeType &&
           !executions.steps.some(
-            (step) => step.id === selectedProcessForAction.currentStepId,
+            (step) => step.id === currentRow.currentStepId,
           ))) {
         success = await actOnStep({
-          documentId: selectedProcessForAction.documentId,
-          stepId: selectedProcessForAction.currentStepId,
+          documentId: currentRow.documentId,
+          stepId: currentRow.currentStepId,
           action: processAction,
           comment: processActionComment.trim() || undefined,
-        })
+        });
       } else {
         const decision =
           processAction === 'approve'
@@ -1355,7 +1533,7 @@ export function DocumentTramiteAdmin() {
                 (option) => option.value === 'needs_correction' || option.value === 'rejected',
               )?.value ?? 'needs_correction';
         const result = await execution.completeStep({
-          stepId: selectedProcessForAction.currentStepId,
+          stepId: currentRow.currentStepId,
           decision,
           comment: processActionComment.trim() || null,
           metadata: {
@@ -1721,15 +1899,34 @@ export function DocumentTramiteAdmin() {
                 ) : filteredProcessRows.length > 0 ? (
                   filteredProcessRows.map((row) => {
                     const statusMeta = getProcessStatusMeta(row.statusBucket);
-                    const canDecide =
-                      (row.isMine || isManager) && Boolean(row.currentStepId);
+                    const canDecideNow =
+                      row.currentStepId !== null
+                        ? (row.isMine || isManager)
+                        : row.rowType === 'template'
+                          ? (row.isMine || isManager) && Boolean(row.currentStepNodeType)
+                          : false;
                     let decideDisabledReason: string | null = null;
-                    if (!row.currentStepId) {
+                    if (row.rowType === 'template' && !row.currentStepNodeType) {
                       decideDisabledReason =
-                        "Fluxo ainda não iniciado. Clique em 'Iniciar fluxo' (canto superior direito) para poder decidir etapas.";
-                    } else if (!row.isMine && !isManager) {
+                        "Modelo de trâmite vazio (sem etapas configuradas). Edite o modelo e adicione nós de aprovação/revisão primeiro.";
+                    } else if (row.rowType === 'instance' && !row.currentStepId) {
+                      decideDisabledReason =
+                        "Nenhuma etapa ativa no momento. O fluxo foi concluído, cancelado ou aguarda etapas externas.";
+                    } else if (
+                      row.rowType === 'instance' &&
+                      !row.isMine &&
+                      !isManager &&
+                      row.currentStepId
+                    ) {
                       decideDisabledReason =
                         "Esta etapa está atribuída a outro usuário/grupo. Apenas o responsável pela etapa ou um gestor pode aprovar/reprovar.";
+                    } else if (
+                      row.rowType === 'template' &&
+                      !row.isMine &&
+                      !isManager
+                    ) {
+                      decideDisabledReason =
+                        "A primeira etapa deste fluxo não está atribuída a você. Apenas o responsável ou um gestor pode começar o fluxo decidindo diretamente.";
                     }
                     const decideDisabled = decideDisabledReason !== null;
                     return (
@@ -1782,9 +1979,13 @@ export function DocumentTramiteAdmin() {
                             </p>
                             <p className="mt-1 text-xs text-slate-500">
                               {row.isMine
-                                ? 'Minha ação'
-                                : isManager && Boolean(row.currentStepId)
-                                  ? 'Atuação como gestor'
+                                ? row.rowType === 'template'
+                                  ? 'Minha ação · inicia o fluxo automaticamente'
+                                  : 'Minha ação'
+                                : isManager && (row.currentStepId || row.rowType === 'template' && row.currentStepNodeType)
+                                  ? row.rowType === 'template'
+                                    ? 'Atuação como gestor · inicia o fluxo automaticamente'
+                                    : 'Atuação como gestor'
                                   : 'Aguardando outros'}
                             </p>
                           </div>
