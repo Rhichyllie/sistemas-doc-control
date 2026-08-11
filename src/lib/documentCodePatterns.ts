@@ -253,9 +253,6 @@ export function validateCodePattern(
   const tokens = tokenMatches.map((match) => match[1].trim());
 
   if (!expression) errors.push("Informe o padrão de código.");
-  if (!tokens.includes("SEQ")) {
-    errors.push("O padrão precisa conter o token {SEQ}.");
-  }
   const unknownTokens = [
     ...new Set(
       tokens.filter(

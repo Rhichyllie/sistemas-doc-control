@@ -170,6 +170,20 @@ const TOKEN_DESCRIPTORS: Record<DocumentCodeTokenType, TokenDescriptor> = {
 
 export const DOCUMENT_CODE_PATTERN_PRESETS: DocumentCodePatternPreset[] = [
   {
+    id: "project-only",
+    name: "Código do projeto",
+    description: "Usa apenas o código definido no projeto/biblioteca.",
+    expression: "{PROJECT}",
+    example: "PROJ_XLZ",
+  },
+  {
+    id: "project-type",
+    name: "Projeto + tipo documental",
+    description: "Código do projeto e tipo, sem sequência numérica.",
+    expression: "{PROJECT}-{TYPE}",
+    example: "PROJ_XLZ-ET",
+  },
+  {
     id: "simple",
     name: "Padrão simples",
     description: "Prefixo, área, tipo documental e sequência.",
@@ -189,20 +203,6 @@ export const DOCUMENT_CODE_PATTERN_PRESETS: DocumentCodePatternPreset[] = [
     description: "Separa a numeração por contexto anual.",
     expression: "{PREFIX}-{AREA}-{TYPE}-{YEAR}-{SEQ}",
     example: "TR-ENG-ET-2026-0001",
-  },
-  {
-    id: "organization",
-    name: "Padrão por organização",
-    description: "Usa o código da organização, tipo e sequência.",
-    expression: "{ORG}-{TYPE}-{SEQ}",
-    example: "ACME-ET-0001",
-  },
-  {
-    id: "generic",
-    name: "Padrão documental genérico",
-    description: "Combina prefixo, tipo, ano e sequência.",
-    expression: "{PREFIX}-{TYPE}-{YEAR}-{SEQ}",
-    example: "TR-CERT-2026-0001",
   },
 ];
 

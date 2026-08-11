@@ -124,11 +124,11 @@ function normalizePattern(value: unknown): DocumentCodePattern | null {
     doc_type: typeof value.doc_type === "string" ? value.doc_type : null,
     area: typeof value.area === "string" ? value.area : null,
     project_id: typeof value.project_id === "string" ? value.project_id : null,
-    prefix: typeof value.prefix === "string" ? value.prefix : "TR",
+    prefix: typeof value.prefix === "string" ? value.prefix : "",
     pattern:
       typeof value.pattern === "string"
         ? value.pattern
-        : "{PREFIX}-{AREA}-{TYPE}-{SEQ}",
+        : "{PROJECT}",
     separator: typeof value.separator === "string" ? value.separator : "-",
     sequence_padding:
       Number.isInteger(value.sequence_padding) &&
@@ -169,7 +169,7 @@ function mutationPayload(
     doc_type: normalizeCodeToken(input.doc_type) || null,
     area: normalizeCodeToken(input.area) || null,
     project_id: input.project_id || null,
-    prefix: normalizeCodeToken(input.prefix || "TR") || "TR",
+    prefix: normalizeCodeToken(input.prefix || "") || "",
     pattern: input.pattern.trim().toUpperCase(),
     separator: input.separator || "-",
     sequence_padding: input.sequence_padding ?? 4,

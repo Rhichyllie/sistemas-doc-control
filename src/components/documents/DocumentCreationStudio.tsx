@@ -426,8 +426,7 @@ export function DocumentCreationStudio() {
                 <SelectItem value="none">Sem projeto</SelectItem>
                 {intelligence.projects.map((project) => (
                   <SelectItem key={project.id} value={project.id}>
-                    {project.code ? `${project.code} · ` : ""}
-                    {project.name}
+                    {project.code ?? project.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -435,13 +434,14 @@ export function DocumentCreationStudio() {
             {intelligence.selectedProject && (
               <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
                 <strong className="text-foreground">
-                  {intelligence.selectedProject.code} ·{" "}
-                  {intelligence.selectedProject.name}
+                  {intelligence.selectedProject.code ??
+                    intelligence.selectedProject.name}
                 </strong>
-                <p className="mt-1">
-                  Este documento poderá usar o projeto em códigos, regras e
-                  auditoria.
-                </p>
+                {intelligence.selectedProject.code && (
+                  <p className="mt-1">
+                    {intelligence.selectedProject.name}
+                  </p>
+                )}
                 <p className="mt-1">
                   {[
                     intelligence.selectedProject.client_name
