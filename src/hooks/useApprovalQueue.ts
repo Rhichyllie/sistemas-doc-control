@@ -462,11 +462,12 @@ export function useApprovalQueue() {
       try {
         let tramiteQuery = supabase
           .from('document_tramite_instance_steps')
-          .select(TRAMITE_STEP_SELECT)
+          .select(TRAMITE_STEP_SELECT, { count: 'exact' })
           .eq('org_id', currentProfile.org_id)
-          .in('status', ['pending', 'active', 'completed'])
+          .in('status', ['pending', 'active', 'completed', 'blocked'])
           .in('node_type', ['review', 'approval', 'correction', 'evidence', 'mandatory_reading', 'custom', 'draft', 'publication'])
           .order('created_at', { ascending: false })
+          .limit(500)
         if (libraryId) tramiteQuery = tramiteQuery.eq('document.library_id', libraryId)
         const tramiteResult = await tramiteQuery
         if (!tramiteResult.error) {
@@ -483,31 +484,28 @@ export function useApprovalQueue() {
         .filter((row) => {
           if (!row.document?.id) return false
           if (row.status === 'completed') {
-            return row.completed_by === currentProfile.id
+            return isManager || row.completed_by === currentProfile.id
           }
-          const isActiveStep = row.status === 'active'
-            || (row.status === 'pending' && (
-              row.assignee_user_id === currentProfile.id
-              || (row.assignee_group_id && userGroupIds.has(row.assignee_group_id))
-            ))
-          if (isManager && isActiveStep) return true
           const assignmentType = row.assignment_type ?? (
             row.assignee_user_id ? 'specific_user'
               : row.assignee_group_id ? 'approval_group'
                 : row.required_role ? 'role'
                   : 'none'
           )
+          if (isManager) {
+            return row.status === 'active' || row.status === 'pending' || row.status === 'blocked'
+          }
           if (assignmentType === 'specific_user' || row.assignee_user_id) {
-            if (row.assignee_user_id === currentProfile.id && isActiveStep) return true
+            if (row.assignee_user_id === currentProfile.id) return row.status !== 'completed'
           }
           if (assignmentType === 'approval_group' || row.assignee_group_id) {
-            if (row.assignee_group_id && userGroupIds.has(row.assignee_group_id) && isActiveStep) return true
+            if (row.assignee_group_id && userGroupIds.has(row.assignee_group_id)) return row.status !== 'completed'
           }
           if (assignmentType === 'role' || row.required_role) {
-            if (row.required_role === currentProfile.role && isActiveStep) return true
+            if (row.required_role === currentProfile.role) return row.status !== 'completed'
           }
           if (assignmentType === 'author' || assignmentType === 'document_owner') {
-            if (row.document.author_id === currentProfile.id && isActiveStep) return true
+            if (row.document.author_id === currentProfile.id) return row.status !== 'completed'
           }
           return row.completed_by === currentProfile.id
         })

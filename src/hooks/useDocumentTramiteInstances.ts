@@ -134,9 +134,7 @@ export function useDocumentTramiteInstances({
     setSchemaStatus(loadedInstances.length ? "ready" : "empty");
 
     if (loadAllSteps) {
-      const instanceIds = loadedInstances
-        .filter((item) => item.status === "active")
-        .map((item) => item.id);
+      const instanceIds = loadedInstances.map((item) => item.id);
       if (!instanceIds.length) {
         clearDetails();
         setIsLoading(false);

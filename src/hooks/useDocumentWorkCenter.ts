@@ -301,7 +301,11 @@ export function useDocumentWorkCenter() {
     }
 
     for (const step of tramiteState.steps.filter(
-      (item) => item.status === "active",
+      (item) =>
+        item.status === "active" ||
+        item.status === "pending" ||
+        item.status === "blocked" ||
+        (isManager && item.status === "completed"),
     )) {
       const document = documentsById.get(step.document_id);
       if (!document) continue;
@@ -603,7 +607,7 @@ export function useDocumentWorkCenter() {
     const allInstancesRaw = tramiteState.instances
       .filter((instance) =>
         isManager
-          ? ["active", "completed", "cancelled", "failed"].includes(instance.status)
+          ? ["active", "pending", "completed", "cancelled", "failed"].includes(instance.status)
           : instance.status === "active",
       )
       .map((instance) => {

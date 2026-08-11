@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
+  CheckSquare2,
   Clock,
   Code2,
   FilePlus2,
@@ -190,6 +191,10 @@ export function OperationalHome() {
   const cockpit = useOperationalCockpit();
   const workCenter = useDocumentWorkCenter();
   const canSeeAllInstances = workCenter.canViewOrganization;
+  const isEmptyP12 = workCenter.tramiteStatus === "not_installed" || workCenter.tramiteStatus === "restricted";
+  const hasTramiteWorkItems = workCenter.workItems.some(
+    (item) => item.origin === "tramite" || item.type === "approval",
+  );
   const [typeFilter, setTypeFilter] =
     useState<OperationalActivityType | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<
@@ -405,20 +410,41 @@ export function OperationalHome() {
               className="border-0 shadow-none"
               title=""
               description=""
-              emptyTitle="Nenhuma pendência agora"
-              emptyDescription="Quando houver aprovações ou documentos aguardando sua ação, eles aparecem aqui."
+              emptyTitle={
+                isEmptyP12
+                  ? "Ciclo de execução de trâmites (P12.1) ainda não instalado"
+                  : hasTramiteWorkItems
+                    ? "Existem fluxos em andamento, nada pendente de você"
+                    : "Nenhuma pendência agora"
+              }
+              emptyDescription={
+                isEmptyP12
+                  ? "No Supabase, abra o SQL Editor e execute a migration 20260630121000_p12_1_document_tramite_execution.sql. Isso cria as tabelas de instâncias e etapas de aprovação."
+                  : hasTramiteWorkItems
+                    ? "Assim que um passo for atribuído diretamente a você ou ao seu grupo de aprovação, ele aparecerá aqui."
+                    : "Quando houver aprovações ou documentos aguardando sua ação, eles aparecem aqui."
+              }
+              emptyIcon={
+                isEmptyP12 ? (
+                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+                ) : hasTramiteWorkItems ? (
+                  <CheckSquare2 className="h-5 w-5 text-emerald-500" />
+                ) : undefined
+              }
               emptyPrimaryAction={
-                <Button
-                  asChild
-                  variant="outline"
-                  size="sm"
-                  className="mt-3 border-sky-100 bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-800"
-                >
-                  <Link to="/authenticated/documents">
-                    Criar novo documento
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                </Button>
+                isEmptyP12 ? undefined : (
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 border-sky-100 bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-800"
+                  >
+                    <Link to="/authenticated/documents">
+                      Criar novo documento
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
+                )
               }
               showAllLink
             />

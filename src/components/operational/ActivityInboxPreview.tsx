@@ -17,6 +17,7 @@ interface ActivityInboxPreviewProps {
   className?: string
   emptyTitle?: string
   emptyDescription?: string
+  emptyIcon?: React.ReactNode
   emptyPrimaryAction?: React.ReactNode
 }
 
@@ -47,6 +48,7 @@ export function ActivityInboxPreview({
   className,
   emptyTitle = 'Nenhuma atividade pendente agora.',
   emptyDescription = 'Quando houver revisões, aprovações ou documentos para corrigir, eles aparecerão aqui.',
+  emptyIcon,
   emptyPrimaryAction,
 }: ActivityInboxPreviewProps) {
   const visibleItems = typeof limit === 'number' ? items.slice(0, limit) : items
@@ -69,6 +71,7 @@ export function ActivityInboxPreview({
           <EmptyState
             title={emptyTitle}
             description={emptyDescription}
+            icon={emptyIcon}
             primaryAction={emptyPrimaryAction}
           />
         ) : (

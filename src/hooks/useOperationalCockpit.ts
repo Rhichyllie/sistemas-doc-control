@@ -223,24 +223,22 @@ export function useOperationalCockpit() {
       const isCompletedStatus = ['approved', 'completed', 'rejected'].includes(item.doc_status)
       if (isCompletedStatus) continue
 
-      const isActionRequired = (
-        (item.assignee_user_id === profile?.id)
-        || (item.assignee_id === profile?.id)
-        || (
+      const isMineOrManager =
+        managerialView ||
+        (item.assignee_user_id === profile?.id) ||
+        (item.assignee_id === profile?.id) ||
+        (
           item.assignment_type === 'group'
           && item.assignee_group_id
           && groupMembers.some(
             (gm) => gm.user_id === profile?.id && gm.group_id === item.assignee_group_id
           )
-        )
-        || (
+        ) ||
+        (
           item.assignment_type === 'role'
           && item.required_role
           && profile?.role === item.required_role
         )
-        || managerialView
-      )
-      if (!isActionRequired) continue
 
       const overdue = item.overdue
       const assignedActor =
@@ -249,6 +247,28 @@ export function useOperationalCockpit() {
           : item.assignment_type === 'user'
             ? item.assignee_user_name ?? item.assignee_name ?? 'usuário responsável'
             : item.assignee_name ?? 'responsável do papel'
+      if (!managerialView && !isMineOrManager) continue
+      if (managerialView && !isMineOrManager) {
+        activityItems.push({
+          id: `approval-monitor-${item.stepId}`,
+          type: overdue ? 'overdue' : 'review_pending',
+          title: overdue ? 'Passo de aprovação atrasado (equipe)' : 'Passo pendente (equipe)',
+          description: `${item.step_label} aguarda ${assignedActor} para ${item.title ?? 'decisão'}.`,
+          documentId: item.documentId,
+          documentCode: item.code,
+          documentTitle: item.title,
+          projectName: item.project_name,
+          area: item.area,
+          status: overdue ? 'Atrasado' : item.days_until_due === 0 ? 'Vence hoje' : 'Acompanhamento',
+          priority: overdue ? 'critical' : item.days_until_due !== null && item.days_until_due <= 3 ? 'high' : 'low',
+          dueAt: item.due_at,
+          createdAt: item.created_at,
+          suggestedAction: 'Acompanhar',
+          target: 'approval',
+        })
+        continue
+      }
+
       activityItems.push({
         id: `approval-${item.stepId}`,
         type: overdue ? 'overdue' : 'approval_pending',
