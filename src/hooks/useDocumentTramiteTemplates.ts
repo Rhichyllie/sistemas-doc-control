@@ -248,6 +248,41 @@ function saveLocalTramiteStore(
   );
 }
 
+function clearLocalTramiteStore(orgId: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(getLocalDocumentTramiteStorageKey(orgId));
+}
+
+function hasLocalIdentifiers(value: string): boolean {
+  return (
+    value.startsWith("tramite-")
+    || value.startsWith("tramite-version-")
+    || value.startsWith("tramite-node-")
+    || value.startsWith("tramite-edge-")
+  );
+}
+
+function newCleanUuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const randomBytes = (size: number): string => {
+    let out = "";
+    const chars = "abcdef0123456789";
+    for (let i = 0; i < size; i += 1) {
+      out += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return out;
+  };
+  return [
+    randomBytes(8),
+    randomBytes(4),
+    `4${randomBytes(3)}`,
+    `${["8", "9", "a", "b"][Math.floor(Math.random() * 4)]}${randomBytes(3)}`,
+    randomBytes(12),
+  ].join("-");
+}
+
 export function useDocumentTramiteTemplates() {
   const { profile } = useAuthContext();
   const { libraryId } = useLibraryScope();
@@ -351,16 +386,185 @@ export function useDocumentTramiteTemplates() {
       .filter(isRecord)
       .map((value) => normalizeTemplate(value, normalizedVersions))
       .filter((value): value is DocumentTramiteTemplate => Boolean(value));
-    setVersions(normalizedVersions);
     setTemplates(normalizedTemplates);
+    setVersions(normalizedVersions);
+
+    // Se já existem templates salvos localmente com IDs não-UUID (tramite-*),
+    // faz a migração automática: insere tudo no banco e apaga do localStorage.
+    const localStore = loadLocalTramiteStore(profile.org_id);
+    const needsMigration =
+      localStore.templates.length > 0
+      && localStore.templates.some((t) => hasLocalIdentifiers(t.id));
+    if (needsMigration && canManage) {
+      setError("Migrando trâmites locais para o banco…");
+      const migratedOk = await migrateLocalStoreToRemote(
+        profile.org_id,
+        profile.id,
+        libraryId ?? null,
+        localStore,
+      );
+      if (migratedOk) {
+        clearLocalTramiteStore(profile.org_id);
+        setError(null);
+        // Recarrega do banco com os registros recém-inseridos.
+        await refresh();
+        return;
+      }
+      setError(
+        "Não foi possível migrar os trâmites locais. Eles continuam disponíveis neste navegador.",
+      );
+    }
+
     setIsLocalMode(false);
     setSchemaStatus(normalizedTemplates.length ? "ready" : "empty");
     setIsLoading(false);
-  }, [libraryId, profile?.org_id]);
+  }, [libraryId, profile?.id, profile?.org_id, canManage]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const migrateLocalStoreToRemote = useCallback(
+    async (
+      orgId: string,
+      actorId: string,
+      defaultLibraryId: string | null,
+      localStore: {
+        templates: DocumentTramiteTemplate[];
+        versions: DocumentTramiteTemplateVersion[];
+      },
+    ): Promise<boolean> => {
+      try {
+        for (const localTemplate of localStore.templates) {
+          // 1. Cria o template limpo no banco (o Supabase gera o id UUID).
+          const code = localTemplate.code
+            || generateTramiteCode(localTemplate.name);
+          const insertTemplate = {
+            org_id: orgId,
+            library_id: localTemplate.library_id ?? defaultLibraryId,
+            code,
+            name: localTemplate.name.trim(),
+            description: localTemplate.description?.trim() || null,
+            status: "draft" as const,
+            template_scope: localTemplate.template_scope ?? "organization",
+            doc_type: localTemplate.doc_type ?? null,
+            area: localTemplate.area ?? null,
+            project_id: localTemplate.project_id ?? null,
+            is_default: localTemplate.is_default ?? false,
+            is_active: localTemplate.is_active,
+            created_by: actorId,
+            updated_by: actorId,
+            metadata: {
+              ...(localTemplate.metadata ?? {}),
+              migrated_from_local_id: localTemplate.id,
+            },
+          };
+          const templateRes = await supabase
+            .from("document_tramite_templates")
+            .insert(insertTemplate)
+            .select("id")
+            .single();
+          if (templateRes.error || !templateRes.data) {
+            // Se der erro de UNIQUE no code, ignora esse template (já existe).
+            const isDuplicate =
+              /unique|duplic/i.test(
+                [
+                  templateRes.error?.code,
+                  templateRes.error?.message,
+                  templateRes.error?.details,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              );
+            if (!isDuplicate) return false;
+            continue;
+          }
+          const newTemplateId = String(templateRes.data.id);
+
+          // 2. Mapa de versão-local → nova versão (para atualizar FKs).
+          const localVersions = localStore.versions
+            .filter((v) => v.template_id === localTemplate.id)
+            .sort((a, b) => a.version_number - b.version_number);
+
+          const localVersionIdToNew: Record<string, string> = {};
+          for (const localVersion of localVersions) {
+            const versionRes = await supabase
+              .from("document_tramite_template_versions")
+              .insert({
+                org_id: orgId,
+                template_id: newTemplateId,
+                version_number: localVersion.version_number || 1,
+                status: normalizeStatus(localVersion.status),
+                graph: serializeTramiteGraph(localVersion.graph),
+                validation: localVersion.validation ?? {},
+                nodes_count: localVersion.nodes_count || 0,
+                edges_count: localVersion.edges_count || 0,
+                created_by: actorId,
+                published_by:
+                  localVersion.status === "published" ? actorId : null,
+                published_at: localVersion.published_at ?? null,
+                metadata: {
+                  ...(localVersion.metadata ?? {}),
+                  migrated_from_local_id: localVersion.id,
+                },
+              })
+              .select("id")
+              .single();
+            if (versionRes.error || !versionRes.data) return false;
+            localVersionIdToNew[localVersion.id] = String(
+              versionRes.data.id,
+            );
+          }
+
+          // 3. Atualiza current_version_id e status do template com a versão mais recente.
+          const localCurrentId = localTemplate.current_version
+            ? localVersionIdToNew[localTemplate.current_version.id]
+            : undefined;
+          const fallbackVersionId =
+            localCurrentId
+            ?? (localVersions.length
+              ? localVersionIdToNew[
+                localVersions[localVersions.length - 1].id
+              ]
+              : undefined);
+          const anyPublished = localVersions.some(
+            (v) => v.status === "published",
+          );
+          const updatePayload: Record<string, unknown> = {
+            updated_by: actorId,
+            status: anyPublished ? "published" : "draft",
+            published_by: anyPublished ? actorId : null,
+            published_at: anyPublished
+              ? localTemplate.published_at ?? new Date().toISOString()
+              : null,
+          };
+          if (fallbackVersionId) {
+            updatePayload.current_version_id = fallbackVersionId;
+          }
+          await supabase
+            .from("document_tramite_templates")
+            .update(updatePayload)
+            .eq("id", newTemplateId);
+
+          // 4. Evento de criação / migração.
+          if (fallbackVersionId) {
+            await supabase.from("document_tramite_events").insert({
+              org_id: orgId,
+              template_id: newTemplateId,
+              version_id: fallbackVersionId,
+              event_type: "created",
+              actor_id: actorId,
+              metadata: { migrated_from_local: true },
+            });
+          }
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [],
+  );
 
   const createTemplate = useCallback(
     async (input: DocumentTramiteTemplateInput) => {
