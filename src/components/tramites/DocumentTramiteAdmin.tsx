@@ -52,11 +52,22 @@ import { useDocuments, type Document } from "@/hooks/useDocuments";
 import { useDocumentTramiteInstances } from "@/hooks/useDocumentTramiteInstances";
 import { useDocumentTramiteTemplates } from "@/hooks/useDocumentTramiteTemplates";
 import { useApprovalFlow } from "@/hooks/useApprovalFlow";
+import { useDocumentTramiteExecution } from "@/hooks/useDocumentTramiteExecution";
 import { useLocalData } from "@/hooks/use-local-data";
+import { useNotifications } from "@/hooks/useNotifications";
 import { useOperationalCalendar } from "@/hooks/useOperationalCalendar";
 import { useProjectOptions } from "@/hooks/useProjectOptions";
+import { useTeamAvailability } from "@/hooks/useTeamAvailability";
 import { useWorkflowActors } from "@/hooks/useWorkflowActors";
 import { DOC_TYPES } from "@/lib/constants";
+import type {
+  DocumentTramiteAssignmentType,
+  DocumentTramiteNodeType,
+} from "@/lib/documentTramiteModel";
+import {
+  getStepDecisionOptions,
+  type DocumentTramiteInstanceStep,
+} from "@/lib/documentTramiteExecution";
 import { addBusinessDaysLocal } from "@/lib/operationalCalendar";
 import {
   createEmptyTramiteGraph,
@@ -103,11 +114,14 @@ interface ProcessRow {
   docType: string | null;
   area: string | null;
   currentStepId: string | null;
+  currentStepNodeType: DocumentTramiteNodeType | null;
+  currentStepAssignmentType: DocumentTramiteAssignmentType | null;
   currentStepLabel: string;
   responsibleName: string;
   statusBucket: Exclude<ProcessStateFilter, "all">;
   statusLabel: string;
   isMine: boolean;
+  canDelegate: boolean;
   progress: number;
   totalSteps: number;
   completedSteps: number;
@@ -535,7 +549,10 @@ export function DocumentTramiteAdmin() {
   const { disciplines } = useLocalData();
   const actors = useWorkflowActors();
   const operationalCalendar = useOperationalCalendar();
-  const { actOnStep, loading: actionLoading } = useApprovalFlow()
+  const availabilityState = useTeamAvailability();
+  const notificationState = useNotifications();
+  const { actOnStep, loading: approvalActionLoading } = useApprovalFlow();
+  const execution = useDocumentTramiteExecution(executions.refresh);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [creationMode, setCreationMode] = useState<FlowCreationMode>("manual");
@@ -692,6 +709,32 @@ export function DocumentTramiteAdmin() {
     return grouped;
   }, [executions.steps]);
   const processRows = useMemo(() => {
+    function isStepAssignedToProfile(
+      step: DocumentTramiteInstanceStep,
+      document: Document | undefined | null,
+      currentProfile: { id: string; role: string } | null,
+      groupIds: Set<string>,
+    ) {
+      if (!currentProfile) return false;
+      const assignment = (step.assignment_type ?? "none") as DocumentTramiteAssignmentType;
+      if (
+        assignment === "none" ||
+        assignment === "author" ||
+        assignment === "document_owner"
+      ) {
+        return document?.author_id === currentProfile.id;
+      }
+      if (assignment === "specific_user") {
+        return step.assignee_user_id === currentProfile.id;
+      }
+      if (assignment === "approval_group") {
+        return Boolean(
+          step.assignee_group_id && groupIds.has(step.assignee_group_id),
+        );
+      }
+      return assignment === "role" && step.required_role === currentProfile.role;
+    }
+
     return executions.instances.map((instance) => {
       const document = documentsById.get(instance.document_id) ?? null;
       const template = templatesById.get(instance.template_id) ?? null;
@@ -706,28 +749,42 @@ export function DocumentTramiteAdmin() {
         actionableSteps.find((step) => step.status === "active") ??
         actionableSteps.find((step) => step.status === "pending") ??
         null;
+
       const isStepMine =
         currentStep !== null &&
-        ((currentStep.assignment_type === "none" ||
-          currentStep.assignment_type === "author" ||
-          currentStep.assignment_type === "document_owner") &&
-          document?.author_id === profile?.id ||
-          (currentStep.assignment_type === "specific_user" &&
-            currentStep.assignee_user_id === profile?.id) ||
-          (currentStep.assignment_type === "approval_group" &&
-            Boolean(
-              currentStep.assignee_group_id &&
-                profileGroupIds.has(currentStep.assignee_group_id),
-            )) ||
-          (currentStep.assignment_type === "role" &&
-            currentStep.required_role === profile?.role));
+        isStepAssignedToProfile(
+          currentStep,
+          document,
+          profile ? { id: profile.id, role: profile.role } : null,
+          profileGroupIds,
+        );
+
+      const assigneeAvailability =
+        currentStep?.assignee_user_id
+          ? availabilityState.getAvailability(currentStep.assignee_user_id, {
+              projectId: document?.project_id ?? null,
+              docType: document?.doc_type ?? null,
+              area: document?.area ?? null,
+              stepType: currentStep.node_type,
+            })
+          : null;
+      const canDelegate = Boolean(
+        profile?.id &&
+          currentStep &&
+          notificationState.schemaStatus === "enterprise" &&
+          profile.role !== "admin" &&
+          profile.role !== "manager" &&
+          currentStep.assignment_type === "specific_user" &&
+          assigneeAvailability?.substituteUserId === profile.id &&
+          currentStep.assignee_user_id !== profile.id,
+      );
 
       const statusBucket: Exclude<ProcessStateFilter, "all"> =
         instance.status === "completed"
           ? "completed"
           : instance.status === "cancelled" || instance.status === "failed"
             ? "cancelled"
-            : isStepMine
+            : isStepMine || canDelegate
               ? "my_action"
               : instance.status === "active"
                 ? "waiting_others"
@@ -747,7 +804,9 @@ export function DocumentTramiteAdmin() {
             : currentStep?.assignment_type === "role"
               ? `Papel: ${currentStep.required_role ?? "workflow"}`
               : currentStep?.assignment_type === "author" ||
-                  currentStep?.assignment_type === "document_owner"
+                  currentStep?.assignment_type === "document_owner" ||
+                  !currentStep?.assignment_type ||
+                  (currentStep.assignment_type as DocumentTramiteAssignmentType) === "none"
                 ? document?.author?.full_name ?? "Autor do documento"
                 : "Aguardando definição";
       const totalSteps = actionableSteps.length;
@@ -766,11 +825,14 @@ export function DocumentTramiteAdmin() {
         docType: document?.doc_type ?? template?.doc_type ?? null,
         area: document?.area ?? template?.area ?? null,
         currentStepId: currentStep?.id ?? null,
+        currentStepNodeType: currentStep?.node_type ?? null,
+        currentStepAssignmentType: currentStep?.assignment_type ?? null,
         currentStepLabel: currentStep?.label ?? "Sem etapa ativa",
         responsibleName,
         statusBucket,
         statusLabel: getProcessStatusMeta(statusBucket).label,
-        isMine: Boolean(isStepMine),
+        isMine: Boolean(isStepMine || canDelegate),
+        canDelegate,
         progress:
           totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0,
         totalSteps,
@@ -791,6 +853,8 @@ export function DocumentTramiteAdmin() {
     stepsByInstanceId,
     templatesById,
     usersById,
+    availabilityState,
+    notificationState.schemaStatus,
   ]);
   const plannedProcessRows = useMemo(() => {
     const templatesWithExecution = new Set(
@@ -836,6 +900,8 @@ export function DocumentTramiteAdmin() {
         docType: sourceDocument.doc_type ?? template.doc_type ?? null,
         area: sourceDocument.area ?? template.area ?? null,
         currentStepId: null,
+        currentStepNodeType: null,
+        currentStepAssignmentType: null,
         currentStepLabel: firstNode?.label ?? "Fluxo modelado",
         responsibleName: firstNode
           ? resolveFlowResponsibleName(firstNode, usersById, groupsById, null)
@@ -843,6 +909,7 @@ export function DocumentTramiteAdmin() {
         statusBucket,
         statusLabel: getTemplateStatusLabel(template.status),
         isMine: false,
+        canDelegate: false,
         progress: 0,
         totalSteps: actionableNodes.length,
         completedSteps: 0,
@@ -1216,12 +1283,81 @@ export function DocumentTramiteAdmin() {
       return
     }
 
-    const success = await actOnStep({
-      documentId: selectedProcessForAction.documentId,
-      stepId: selectedProcessForAction.currentStepId,
-      action: processAction,
-      comment: processActionComment.trim() || undefined,
-    })
+    const decisionOptions =
+      selectedProcessForAction.currentStepNodeType
+        ? getStepDecisionOptions(selectedProcessForAction.currentStepNodeType)
+        : null;
+    const hasLegacyApprovalRow = !selectedProcessForAction.currentStepNodeType ||
+      (decisionOptions?.some(
+        (option) => option.value === 'approved' || option.value === 'rejected',
+      ) ?? false);
+
+    let success = false;
+    const document = documentsById.get(selectedProcessForAction.documentId);
+    const availability =
+      selectedProcessForAction.currentStepAssignmentType === 'specific_user' &&
+        selectedProcessForAction.canDelegate
+        ? selectedProcessForAction.responsibleName
+          ? null
+          : null
+        : selectedProcessForAction.currentStepAssignmentType === 'specific_user'
+          ? (() => {
+              const relatedStep = executions.steps.find(
+                (step) => step.id === selectedProcessForAction.currentStepId,
+              );
+              return relatedStep?.assignee_user_id
+                ? availabilityState.getAvailability(relatedStep.assignee_user_id, {
+                    projectId: document?.project_id ?? null,
+                    docType: document?.doc_type ?? null,
+                    area: document?.area ?? null,
+                    stepType: relatedStep.node_type,
+                  })
+                : null;
+            })()
+          : null;
+    const delegated = Boolean(
+      profile?.id &&
+        selectedProcessForAction.canDelegate &&
+        notificationState.schemaStatus === 'enterprise' &&
+        profile.role !== 'admin' &&
+        profile.role !== 'manager' &&
+        availability?.substituteUserId === profile.id,
+    );
+
+    try {
+      if (hasLegacyApprovalRow && !selectedProcessForAction.rowType ||
+        (!selectedProcessForAction.currentStepNodeType &&
+          !executions.steps.some(
+            (step) => step.id === selectedProcessForAction.currentStepId,
+          ))) {
+        success = await actOnStep({
+          documentId: selectedProcessForAction.documentId,
+          stepId: selectedProcessForAction.currentStepId,
+          action: processAction,
+          comment: processActionComment.trim() || undefined,
+        })
+      } else {
+        const decision =
+          processAction === 'approve'
+            ? decisionOptions?.find((option) => option.value === 'approved')
+                ?.value ?? 'completed'
+            : decisionOptions?.find(
+                (option) => option.value === 'needs_correction' || option.value === 'rejected',
+              )?.value ?? 'needs_correction';
+        const result = await execution.completeStep({
+          stepId: selectedProcessForAction.currentStepId,
+          decision,
+          comment: processActionComment.trim() || null,
+          metadata: {
+            source: 'tramite_admin_list',
+            delegated_confirmation: delegated,
+          },
+        });
+        success = Boolean(result) && !('error' in (result as { error?: unknown }));
+      }
+    } catch (error) {
+      success = false;
+    }
 
     if (success) {
       toast.success(
@@ -2369,17 +2505,17 @@ export function DocumentTramiteAdmin() {
               type="button"
               variant="outline"
               onClick={closeProcessActionDialog}
-              disabled={actionLoading}
+              disabled={approvalActionLoading || execution.isCompleting}
             >
               Cancelar
             </Button>
             <Button
               type="button"
               onClick={() => void handleConfirmProcessAction()}
-              disabled={actionLoading}
+              disabled={approvalActionLoading || execution.isCompleting}
               variant={processAction === 'approve' ? 'default' : 'destructive'}
             >
-              {actionLoading && (
+              {(approvalActionLoading || execution.isCompleting) && (
                 <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
               )}
               {processAction === 'approve'
