@@ -328,15 +328,27 @@ export function useDocumentTramiteTemplates() {
             : "Ciclo P-12 não instalado. Você pode modelar trâmites localmente neste navegador.",
         );
       } else {
-        setTemplates([]);
-        setVersions([]);
-        setIsLocalMode(false);
-        setSchemaStatus("restricted");
+        const realMessage = getErrorMessage(
+          templatesResult.error,
+          "Verifique RLS, papel e organização.",
+        );
+        const localFallback = loadLocalTramiteStore(profile.org_id);
+        // Usa store local APENAS se houver dados e o erro for de permissão.
+        if (localFallback.templates.length) {
+          setTemplates(localFallback.templates);
+          setVersions(localFallback.versions);
+          setIsLocalMode(true);
+          setSchemaStatus(
+            localFallback.templates.length ? "ready" : "empty",
+          );
+        } else {
+          setTemplates([]);
+          setVersions([]);
+          setIsLocalMode(false);
+          setSchemaStatus("restricted");
+        }
         setError(
-          `Não foi possível carregar os trâmites. ${getErrorMessage(
-            templatesResult.error,
-            "Verifique RLS, papel e organização.",
-          )}`,
+          `Não foi possível carregar os trâmites (${realMessage}).`,
         );
       }
       setIsLoading(false);
