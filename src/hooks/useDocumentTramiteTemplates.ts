@@ -448,7 +448,6 @@ export function useDocumentTramiteTemplates() {
     ): Promise<boolean> => {
       try {
         for (const localTemplate of localStore.templates) {
-          // 1. Cria o template limpo no banco (o Supabase gera o id UUID).
           const code = localTemplate.code
             || generateTramiteCode(localTemplate.name);
           const insertTemplate = {
@@ -477,7 +476,6 @@ export function useDocumentTramiteTemplates() {
             .select("id")
             .single();
           if (templateRes.error || !templateRes.data) {
-            // Se der erro de UNIQUE no code, ignora esse template (já existe).
             const isDuplicate =
               /unique|duplic/i.test(
                 [
@@ -492,8 +490,6 @@ export function useDocumentTramiteTemplates() {
             continue;
           }
           const newTemplateId = String(templateRes.data.id);
-
-          // 2. Mapa de versão-local → nova versão (para atualizar FKs).
           const localVersions = localStore.versions
             .filter((v) => v.template_id === localTemplate.id)
             .sort((a, b) => a.version_number - b.version_number);
@@ -528,7 +524,6 @@ export function useDocumentTramiteTemplates() {
             );
           }
 
-          // 3. Atualiza current_version_id e status do template com a versão mais recente.
           const localCurrentId = localTemplate.current_version
             ? localVersionIdToNew[localTemplate.current_version.id]
             : undefined;
@@ -558,7 +553,6 @@ export function useDocumentTramiteTemplates() {
             .update(updatePayload)
             .eq("id", newTemplateId);
 
-          // 4. Evento de criação / migração.
           if (fallbackVersionId) {
             await supabase.from("document_tramite_events").insert({
               org_id: orgId,
@@ -576,6 +570,62 @@ export function useDocumentTramiteTemplates() {
       }
     },
     [],
+  );
+
+  const ensureRemoteTemplateId = useCallback(
+    async (templateId: string): Promise<string | null> => {
+      if (!profile?.id || !profile.org_id) return null;
+      if (!hasLocalIdentifiers(templateId)) {
+        const checkRes = await supabase
+          .from("document_tramite_templates")
+          .select("id", { head: true, count: "exact" })
+          .eq("id", templateId)
+          .eq("org_id", profile.org_id);
+        if ((checkRes.count ?? 0) > 0) return templateId;
+      }
+      const localTemplates = templates.filter(
+        (t) => t.id === templateId || hasLocalIdentifiers(templateId),
+      );
+      const localVersions = versions.filter((v) => v.template_id === templateId);
+      if (!localTemplates.length) {
+        setError("Modelo de trâmite não encontrado para migração.");
+        return null;
+      }
+      const singleStore = {
+        templates: localTemplates,
+        versions: localVersions,
+      };
+      const ok = await migrateLocalStoreToRemote(
+        profile.org_id,
+        profile.id,
+        libraryId ?? null,
+        singleStore,
+      );
+      if (!ok) {
+        setError("Não foi possível salvar o modelo no banco do Supabase.");
+        return null;
+      }
+      const found = await supabase
+        .from("document_tramite_templates")
+        .select("id")
+        .eq("org_id", profile.org_id)
+        .eq("code", localTemplates[0].code)
+        .maybeSingle();
+      if (found.data?.id) {
+        await refresh();
+        return String(found.data.id);
+      }
+      return null;
+    },
+    [
+      libraryId,
+      migrateLocalStoreToRemote,
+      profile?.id,
+      profile?.org_id,
+      refresh,
+      templates,
+      versions,
+    ],
   );
 
   const createTemplate = useCallback(
@@ -763,10 +813,15 @@ export function useDocumentTramiteTemplates() {
         return true;
       }
       setIsSaving(true);
+      const remoteId = await ensureRemoteTemplateId(templateId);
+      if (!remoteId) {
+        setIsSaving(false);
+        return false;
+      }
       const result = await supabase
         .from("document_tramite_templates")
         .update({ ...updates, updated_by: profile.id })
-        .eq("id", templateId);
+        .eq("id", remoteId);
       setIsSaving(false);
       if (result.error) {
         setError(getErrorMessage(result.error, "Não foi possível atualizar."));
@@ -775,7 +830,7 @@ export function useDocumentTramiteTemplates() {
       await refresh();
       return true;
     },
-    [canManage, profile?.id, refresh],
+    [canManage, ensureRemoteTemplateId, profile?.id, refresh],
   );
 
   const ensureDraftVersion = useCallback(
@@ -843,11 +898,13 @@ export function useDocumentTramiteTemplates() {
         .filter((version) => version.template_id === templateId)
         .sort((left, right) => right.version_number - left.version_number)[0];
       if (!source || !profile?.id || !profile.org_id) return null;
+      const remoteId = await ensureRemoteTemplateId(templateId);
+      if (!remoteId) return null;
       const result = await supabase
         .from("document_tramite_template_versions")
         .insert({
           org_id: profile.org_id,
-          template_id: templateId,
+          template_id: remoteId,
           version_number: source.version_number + 1,
           status: "draft",
           graph: serializeTramiteGraph(source.graph),
@@ -872,7 +929,7 @@ export function useDocumentTramiteTemplates() {
       await refresh();
       return normalized;
     },
-    [profile?.id, profile?.org_id, refresh, versions],
+    [ensureRemoteTemplateId, profile?.id, profile?.org_id, refresh, versions],
   );
 
   const saveGraph = useCallback(
@@ -923,7 +980,12 @@ export function useDocumentTramiteTemplates() {
       }
       setIsSaving(true);
       setError(null);
-      const version = await ensureDraftVersion(templateId);
+      const remoteId = await ensureRemoteTemplateId(templateId);
+      if (!remoteId) {
+        setIsSaving(false);
+        return false;
+      }
+      const version = await ensureDraftVersion(remoteId);
       if (!version) {
         setIsSaving(false);
         return false;
@@ -1013,10 +1075,10 @@ export function useDocumentTramiteTemplates() {
         supabase
           .from("document_tramite_templates")
           .update({ updated_by: profile.id })
-          .eq("id", templateId),
+          .eq("id", remoteId),
         supabase.from("document_tramite_events").insert({
           org_id: profile.org_id,
-          template_id: templateId,
+          template_id: remoteId,
           version_id: version.id,
           event_type: "updated",
           actor_id: profile.id,
@@ -1030,7 +1092,7 @@ export function useDocumentTramiteTemplates() {
       await refresh();
       return true;
     },
-    [canManage, ensureDraftVersion, profile?.id, profile?.org_id, refresh],
+    [canManage, ensureDraftVersion, ensureRemoteTemplateId, profile?.id, profile?.org_id, refresh],
   );
 
   const publishTemplate = useCallback(
@@ -1082,8 +1144,13 @@ export function useDocumentTramiteTemplates() {
       }
       setIsSaving(true);
       setError(null);
+      const remoteId = await ensureRemoteTemplateId(templateId);
+      if (!remoteId) {
+        setIsSaving(false);
+        return false;
+      }
       const rpc = await supabase.rpc("publish_document_tramite_template", {
-        p_template_id: templateId,
+        p_template_id: remoteId,
       });
       if (!rpc.error) {
         setIsSaving(false);
@@ -1101,7 +1168,7 @@ export function useDocumentTramiteTemplates() {
       setIsSaving(false);
       return false;
     },
-    [canManage, profile?.id, profile?.org_id, refresh],
+    [canManage, ensureRemoteTemplateId, profile?.id, profile?.org_id, refresh],
   );
 
   const archiveTemplate = useCallback(
@@ -1132,10 +1199,15 @@ export function useDocumentTramiteTemplates() {
 
       setIsSaving(true);
       setError(null);
+      const remoteId = await ensureRemoteTemplateId(templateId);
+      if (!remoteId) {
+        setIsSaving(false);
+        return false;
+      }
       const result = await supabase
         .from("document_tramite_templates")
         .delete()
-        .eq("id", templateId)
+        .eq("id", remoteId)
         .eq("org_id", profile.org_id);
 
       if (!result.error) {
@@ -1157,6 +1229,7 @@ export function useDocumentTramiteTemplates() {
     },
     [
       canManage,
+      ensureRemoteTemplateId,
       isLocalMode,
       profile?.id,
       profile?.org_id,
