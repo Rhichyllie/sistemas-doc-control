@@ -4,6 +4,7 @@ import { useApprovalQueue } from '@/hooks/useApprovalQueue'
 import { type AuditEntry, useAuditTrail } from '@/hooks/useAuditTrail'
 import { useDocuments, type Document } from '@/hooks/useDocuments'
 import { useNotifications, type Notification } from '@/hooks/useNotifications'
+import { useWorkflowActors } from '@/hooks/useWorkflowActors'
 
 export type OperationalActivityType =
   | 'approval_pending'
@@ -208,6 +209,7 @@ export function useOperationalCockpit() {
   } = useApprovalQueue()
   const { notifications, unreadCount, loading: notificationsLoading } = useNotifications()
   const { entries, loading: auditLoading, error: auditError } = useAuditTrail()
+  const { groupMembers } = useWorkflowActors()
 
   const result = useMemo(() => {
     const documentsById = new Map(documents.map((document) => [document.id, document]))
@@ -219,38 +221,26 @@ export function useOperationalCockpit() {
 
     for (const item of queue) {
       const isCompletedStatus = ['approved', 'completed', 'rejected'].includes(item.doc_status)
-      const wasCompletedByMe = (
-        isCompletedStatus
-        && (
-          item.assignee_user_id === profile?.id
-          || item.assignee_id === profile?.id
-          || item.author_name === profile?.full_name
+      if (isCompletedStatus) continue
+
+      const isActionRequired = (
+        (item.assignee_user_id === profile?.id)
+        || (item.assignee_id === profile?.id)
+        || (
+          item.assignment_type === 'group'
+          && item.assignee_group_id
+          && groupMembers.some(
+            (gm) => gm.user_id === profile?.id && gm.group_id === item.assignee_group_id
+          )
         )
+        || (
+          item.assignment_type === 'role'
+          && item.required_role
+          && profile?.role === item.required_role
+        )
+        || managerialView
       )
-      if (isCompletedStatus) {
-        const decisionLabel =
-          item.doc_status === 'approved' ? 'Aprovado'
-          : item.doc_status === 'rejected' ? 'Rejeitado'
-          : 'Concluído'
-        activityItems.push({
-          id: `approval-completed-${item.stepId}`,
-          type: 'completed_by_me',
-          title: `Atividade ${decisionLabel.toLowerCase()}`,
-          description: `${item.step_label} — ${decisionLabel}.`,
-          documentId: item.documentId,
-          documentCode: item.code,
-          documentTitle: item.title,
-          projectName: item.project_name,
-          area: item.area,
-          status: decisionLabel,
-          priority: wasCompletedByMe ? 'medium' : 'low',
-          dueAt: null,
-          createdAt: item.created_at,
-          suggestedAction: 'Ver histórico',
-          target: 'document',
-        })
-        continue
-      }
+      if (!isActionRequired) continue
 
       const overdue = item.overdue
       const assignedActor =
@@ -270,7 +260,7 @@ export function useOperationalCockpit() {
         projectName: item.project_name,
         area: item.area,
         status: overdue ? 'Atrasado' : item.days_until_due === 0 ? 'Vence hoje' : 'Pendente',
-        priority: overdue ? 'critical' : item.days_until_due !== null && item.days_until_due <= 2 ? 'high' : 'medium',
+        priority: overdue ? 'critical' : item.days_until_due !== null && item.days_until_due <= 3 ? 'high' : 'medium',
         dueAt: item.due_at,
         createdAt: item.created_at,
         suggestedAction: 'Revisar e decidir',
@@ -429,7 +419,7 @@ export function useOperationalCockpit() {
       recentActivitiesSource: entries.length ? ('audit_trail' as const) : ('documents' as const),
       generatedAt: now,
     }
-  }, [documents, entries, notifications, profile, queue, unreadCount])
+  }, [documents, entries, groupMembers, notifications, profile, queue, unreadCount])
 
   const error = documentsError ?? queueError
   const warnings = [

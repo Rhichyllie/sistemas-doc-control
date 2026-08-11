@@ -482,7 +482,15 @@ export function useApprovalQueue() {
       const tramiteItems: QueueItem[] = tramiteRows
         .filter((row) => {
           if (!row.document?.id) return false
-          if (isManager) return true
+          if (row.status === 'completed') {
+            return row.completed_by === currentProfile.id
+          }
+          const isActiveStep = row.status === 'active'
+            || (row.status === 'pending' && (
+              row.assignee_user_id === currentProfile.id
+              || (row.assignee_group_id && userGroupIds.has(row.assignee_group_id))
+            ))
+          if (isManager && isActiveStep) return true
           const assignmentType = row.assignment_type ?? (
             row.assignee_user_id ? 'specific_user'
               : row.assignee_group_id ? 'approval_group'
@@ -490,19 +498,18 @@ export function useApprovalQueue() {
                   : 'none'
           )
           if (assignmentType === 'specific_user' || row.assignee_user_id) {
-            if (row.assignee_user_id === currentProfile.id) return true
+            if (row.assignee_user_id === currentProfile.id && isActiveStep) return true
           }
           if (assignmentType === 'approval_group' || row.assignee_group_id) {
-            if (row.assignee_group_id && userGroupIds.has(row.assignee_group_id)) return true
+            if (row.assignee_group_id && userGroupIds.has(row.assignee_group_id) && isActiveStep) return true
           }
           if (assignmentType === 'role' || row.required_role) {
-            if (row.required_role === currentProfile.role) return true
+            if (row.required_role === currentProfile.role && isActiveStep) return true
           }
           if (assignmentType === 'author' || assignmentType === 'document_owner') {
-            if (row.document.author_id === currentProfile.id) return true
+            if (row.document.author_id === currentProfile.id && isActiveStep) return true
           }
-          if (row.completed_by === currentProfile.id) return true
-          return false
+          return row.completed_by === currentProfile.id
         })
         .map((row, idx) => {
           const document = row.document

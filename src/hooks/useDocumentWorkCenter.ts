@@ -31,6 +31,8 @@ import { supabase } from "@/lib/supabase";
 
 export type WorkCenterSchemaStatus = "ready" | "not_installed" | "restricted";
 
+export type DeadlineMode = "operational_calendar" | "simple_date";
+
 export interface DocumentWorkCenterInstance {
   id: string;
   documentId: string;
@@ -44,7 +46,7 @@ export interface DocumentWorkCenterInstance {
   progress: number;
   dueAt: string | null;
   dueAtSuggested: boolean;
-  deadlineMode: "operational_calendar" | "simple_date";
+  deadlineMode: DeadlineMode;
   isOverdue: boolean;
   isMine: boolean;
   updatedAt: string;
@@ -598,8 +600,12 @@ export function useDocumentWorkCenter() {
       });
     }
 
-    const activeInstances: DocumentWorkCenterInstance[] = tramiteState.instances
-      .filter((instance) => instance.status === "active")
+    const allInstancesRaw = tramiteState.instances
+      .filter((instance) =>
+        isManager
+          ? ["active", "completed", "cancelled", "failed"].includes(instance.status)
+          : instance.status === "active",
+      )
       .map((instance) => {
         const document = documentsById.get(instance.document_id);
         const instanceSteps = stepsByInstance.get(instance.id) ?? [];
@@ -648,9 +654,9 @@ export function useDocumentWorkCenter() {
           progress: summary.progress,
           dueAt: effectiveInstanceDueAt,
           dueAtSuggested: !summary.nextDueAt && Boolean(effectiveInstanceDueAt),
-          deadlineMode: calendarState.canUseCalendar
+          deadlineMode: (calendarState.canUseCalendar
             ? "operational_calendar"
-            : "simple_date",
+            : "simple_date") as DeadlineMode,
           isOverdue: effectiveInstanceDueAt
             ? (daysUntilWorkItem(effectiveInstanceDueAt) ?? 0) < 0
             : summary.isOverdue,
@@ -663,9 +669,21 @@ export function useDocumentWorkCenter() {
     const accessibleItems = isManager
       ? sortedItems
       : sortedItems.filter((item) => item.isMine);
-    const accessibleInstances = activeInstances.filter(
-      (instance) => instance.isMine,
-    );
+    const accessibleInstances = isManager
+      ? allInstancesRaw.sort(
+          (left, right) =>
+            Number(right.isOverdue) - Number(left.isOverdue) ||
+            new Date(right.updatedAt).getTime() -
+              new Date(left.updatedAt).getTime(),
+        )
+      : allInstancesRaw
+          .filter((instance) => instance.isMine)
+          .sort(
+            (left, right) =>
+              Number(right.isOverdue) - Number(left.isOverdue) ||
+              new Date(right.updatedAt).getTime() -
+                new Date(left.updatedAt).getTime(),
+          );
     const accessibleRecentDocuments = isManager
       ? documentsState.documents
       : documentsState.documents.filter(
@@ -674,12 +692,8 @@ export function useDocumentWorkCenter() {
     return {
       workItems: accessibleItems,
       groups: groupWorkItems(accessibleItems),
-      activeInstances: accessibleInstances.sort(
-        (left, right) =>
-          Number(right.isOverdue) - Number(left.isOverdue) ||
-          new Date(right.updatedAt).getTime() -
-            new Date(left.updatedAt).getTime(),
-      ),
+      activeInstances: accessibleInstances,
+      allInstancesIsManager: isManager,
       recentDocuments: [...accessibleRecentDocuments]
         .sort(
           (left, right) =>

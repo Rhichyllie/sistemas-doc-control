@@ -189,6 +189,7 @@ export function OperationalHome() {
   const home = useOperationalHome();
   const cockpit = useOperationalCockpit();
   const workCenter = useDocumentWorkCenter();
+  const canSeeAllInstances = workCenter.canViewOrganization;
   const [typeFilter, setTypeFilter] =
     useState<OperationalActivityType | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<
@@ -222,19 +223,31 @@ export function OperationalHome() {
   const attentionItems = useMemo(
     () =>
       workCenter.workItems
-        .filter(
-          (item) =>
-            item.priority === "critical" ||
-            item.type === "attention" ||
-            item.type === "suggested_tramite" ||
-            (item.type === "tramite_step" && !item.responsibleName),
-        )
-        .slice(0, 6),
+        .filter((item) => {
+          if (item.priority === "critical") return true
+          if (item.type === "attention") return true
+          if (item.type === "suggested_tramite") return true
+          if (item.type === "tramite_step" && !item.responsibleName) return true
+          if (
+            (item.type === "tramite_step" || item.type === "approval")
+            && item.dueAt
+          ) {
+            const due = new Date(item.dueAt)
+            const now = new Date()
+            const diffMs = due.getTime() - now.getTime()
+            const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+            return diffDays >= 0 && diffDays <= 3
+          }
+          return false
+        })
+        .slice(0, 8),
     [workCenter.workItems],
   );
 
   const metrics: MetricCard[] = useMemo(() => {
-    const inProgress = workCenter.activeInstances.length;
+    const inProgress = workCenter.activeInstances.filter(
+      (instance) => canSeeAllInstances ? true : !instance.isOverdue,
+    ).length;
     const reviewPending = cockpit.kpis.nearingReview;
     const operationalAlerts = attentionItems.length;
     return [
@@ -245,7 +258,7 @@ export function OperationalHome() {
         accent: "bg-gradient-to-b from-sky-200 to-sky-400",
       },
       {
-        label: "Em tramitação",
+        label: canSeeAllInstances ? "Fluxos em tramitação (Gestão)" : "Em tramitação",
         hint: inProgress > 0 ? `${inProgress} fluxo(s) ativo(s)` : "Nenhum fluxo ativo",
         value: inProgress,
         accent: "bg-gradient-to-b from-emerald-200 to-emerald-400",
@@ -265,7 +278,7 @@ export function OperationalHome() {
         accent: "bg-gradient-to-b from-rose-200 to-rose-400",
       },
     ];
-  }, [cockpit.kpis, workCenter.activeInstances.length, attentionItems.length]);
+  }, [cockpit.kpis, workCenter.activeInstances, attentionItems.length, canSeeAllInstances]);
 
   return (
     <div className="space-y-8">
@@ -487,119 +500,129 @@ export function OperationalHome() {
         </Card>
       </section>
 
-      <section>
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader>
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                <GitBranch className="h-4.5 w-4.5 text-indigo-600" />
-                Trâmites em execução
-              </CardTitle>
-              <CardDescription>
-                Progresso das instâncias ativas — as ações continuam no fluxo
-                do documento
-              </CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {workCenter.isLoading ? (
-              <div className="grid gap-3 lg:grid-cols-2">
-                <Skeleton className="h-36" />
-                <Skeleton className="h-36" />
+      {canSeeAllInstances && (
+        <section>
+          <Card className="border-slate-200 shadow-sm">
+            <CardHeader>
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <GitBranch className="h-4.5 w-4.5 text-indigo-600" />
+                  Trâmites em execução
+                </CardTitle>
+                <CardDescription>
+                  Visão completa de Administrador/Gestor — todos os fluxos e
+                  seus status
+                </CardDescription>
               </div>
-            ) : workCenter.activeInstances.length ? (
-              <div className="grid gap-3 lg:grid-cols-2">
-                {workCenter.activeInstances.map((instance) => (
-                  <div
-                    key={instance.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-5"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-slate-800">
-                          {instance.templateName}
-                        </p>
-                        <p className="mt-1 text-sm text-slate-500">
-                          {[instance.documentCode, instance.documentTitle]
-                            .filter(Boolean)
-                            .join(" — ")}
-                        </p>
-                      </div>
-                      <Badge
-                        variant={
-                          instance.isOverdue ? "destructive" : "secondary"
-                        }
-                      >
-                        {instance.isOverdue ? "Atrasado" : "Em execução"}
-                      </Badge>
-                    </div>
-                    <div className="mt-5 flex items-center gap-3">
-                      <Progress value={instance.progress} />
-                      <span className="text-sm font-medium text-slate-700">
-                        {instance.progress}%
-                      </span>
-                    </div>
-                    <p className="mt-3 text-xs text-slate-500">
-                      {instance.activeStepLabels.length
-                        ? `Etapa ativa: ${instance.activeStepLabels.join(", ")}`
-                        : "Sem etapa ativa legível."}
-                      {" · "}
-                      {formatDate(instance.dueAt)}
-                    </p>
-                    {instance.dueAt && (
-                      <p className="mt-1 text-xs text-slate-500">
-                        {getDeadlineModeLabel(instance.deadlineMode)}
-                        {instance.dueAtSuggested
-                          ? " · prazo sugerido, não persistido"
-                          : ""}
-                      </p>
-                    )}
-                    <div className="mt-5">
-                      <Button
-                        asChild
-                        variant="outline"
-                        size="sm"
-                        className="border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800"
-                      >
-                        <Link
-                          to="/authenticated/documents/$documentId"
-                          params={{ documentId: instance.documentId }}
-                          hash="document-tramite-execution"
+            </CardHeader>
+            <CardContent>
+              {workCenter.isLoading ? (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <Skeleton className="h-36" />
+                  <Skeleton className="h-36" />
+                </div>
+              ) : workCenter.activeInstances.length ? (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {workCenter.activeInstances.map((instance) => (
+                    <div
+                      key={instance.id}
+                      className="rounded-2xl border border-slate-200 bg-white p-5"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-800">
+                            {instance.templateName}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {[instance.documentCode, instance.documentTitle]
+                              .filter(Boolean)
+                              .join(" — ")}
+                          </p>
+                        </div>
+                        <Badge
+                          variant={
+                            instance.isOverdue
+                              ? "destructive"
+                              : (workCenter.allInstancesIsManager && !instance.isMine)
+                                ? "outline"
+                                : "secondary"
+                          }
                         >
-                          Ver execução
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </Link>
-                      </Button>
+                          {instance.isOverdue
+                            ? "Atrasado"
+                            : instance.isMine
+                              ? "Minha responsabilidade"
+                              : "Em execução"}
+                        </Badge>
+                      </div>
+                      <div className="mt-5 flex items-center gap-3">
+                        <Progress value={instance.progress} />
+                        <span className="text-sm font-medium text-slate-700">
+                          {instance.progress}%
+                        </span>
+                      </div>
+                      <p className="mt-3 text-xs text-slate-500">
+                        {instance.activeStepLabels.length
+                          ? `Etapa ativa: ${instance.activeStepLabels.join(", ")}`
+                          : "Sem etapa ativa legível."}
+                        {" · "}
+                        {formatDate(instance.dueAt)}
+                      </p>
+                      {instance.dueAt && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {getDeadlineModeLabel(instance.deadlineMode)}
+                          {instance.dueAtSuggested
+                            ? " · prazo sugerido, não persistido"
+                            : ""}
+                        </p>
+                      )}
+                      <div className="mt-5">
+                        <Button
+                          asChild
+                          variant="outline"
+                          size="sm"
+                          className="border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800"
+                        >
+                          <Link
+                            to="/authenticated/documents/$documentId"
+                            params={{ documentId: instance.documentId }}
+                            hash="document-tramite-execution"
+                          >
+                            Ver execução
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </Link>
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/40 px-4 py-12 text-center">
-                <ArrowRight className="h-8 w-8 text-slate-400" />
-                <p className="mt-4 text-sm font-semibold text-slate-800">
-                  Nenhum trâmite em execução
-                </p>
-                <p className="mt-1.5 max-w-md text-xs text-slate-500">
-                  Não há instâncias ativas neste momento. Inicie um trâmite a
-                  partir de um documento ou modelo.
-                </p>
-                <Button
-                  asChild
-                  variant="outline"
-                  size="sm"
-                  className="mt-4 border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800"
-                >
-                  <Link to="/authenticated/documentos/tramites">
-                    Ver modelos de tramitação
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </section>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/40 px-4 py-12 text-center">
+                  <ArrowRight className="h-8 w-8 text-slate-400" />
+                  <p className="mt-4 text-sm font-semibold text-slate-800">
+                    Nenhum trâmite em execução
+                  </p>
+                  <p className="mt-1.5 max-w-md text-xs text-slate-500">
+                    Não há instâncias ativas neste momento. Inicie um trâmite a
+                    partir de um documento ou modelo.
+                  </p>
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800"
+                  >
+                    <Link to="/authenticated/documentos/tramites">
+                      Ver modelos de tramitação
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+      )}
     </div>
   );
 }
