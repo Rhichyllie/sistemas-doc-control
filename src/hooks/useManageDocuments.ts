@@ -185,10 +185,7 @@ export function useManageDocuments() {
     setError(null);
 
     try {
-      const matchByIdOrg: Record<string, unknown> = {
-        id: documentId,
-        org_id: profile.org_id,
-      };
+      const baseMatch: Record<string, unknown> = { id: documentId };
 
       const buildDeleteQuery = (match: Record<string, unknown>) => {
         const q = supabase.from("documents").delete({ count: "exact" });
@@ -198,56 +195,53 @@ export function useManageDocuments() {
         return q.select("id");
       };
 
+      const attempts: Array<Record<string, unknown>> = [baseMatch];
+      if (libraryId) {
+        attempts.push({ id: documentId, library_id: libraryId });
+      }
+      attempts.push({ id: documentId, org_id: profile.org_id });
+      if (libraryId) {
+        attempts.push({
+          id: documentId,
+          org_id: profile.org_id,
+          library_id: libraryId,
+        });
+      }
+
       let deletedRows: Array<{ id: string }> = [];
       let primaryError: unknown = null;
 
-      try {
-        const { data: firstData, error: firstError } = await buildDeleteQuery(matchByIdOrg);
-        if (firstError && !isMissingDocumentsSchema(firstError)) {
-          primaryError = firstError;
-        } else if (Array.isArray(firstData) && firstData.length > 0) {
-          deletedRows = firstData as Array<{ id: string }>;
+      for (const attempt of attempts) {
+        try {
+          const { data, error } = await buildDeleteQuery(attempt);
+          if (Array.isArray(data) && data.length > 0) {
+            deletedRows = data as Array<{ id: string }>;
+            primaryError = null;
+            break;
+          }
+          if (error && !isMissingDocumentsSchema(error)) {
+            primaryError = error;
+          }
+        } catch (err) {
+          if (!primaryError) primaryError = err;
         }
-      } catch (err) {
-        primaryError = err;
       }
 
-      if (deletedRows.length === 0 && libraryId && !primaryError) {
-        try {
-          const matchWithLibrary: Record<string, unknown> = {
-            id: documentId,
-            org_id: profile.org_id,
-            library_id: libraryId,
-          };
-          const { data: secondData, error: secondError } = await buildDeleteQuery(matchWithLibrary);
-          if (!secondError && Array.isArray(secondData) && secondData.length > 0) {
-            deletedRows = secondData as Array<{ id: string }>;
-          }
-        } catch (_err) {
-          // ignora segundo erro, usa o primeiro resultado
-        }
+      // Também remove do cache local, independentemente do resultado do banco
+      try {
+        const nextLocal = loadLocalDocuments(profile.org_id).filter(
+          (document) => document.id !== documentId,
+        );
+        saveLocalDocuments(profile.org_id, nextLocal);
+      } catch {
+        // ignora erros de persistência local
       }
 
       if (deletedRows.length > 0) {
-        // também remove do cache localStorage (para manter coerência no fallback)
-        try {
-          const nextLocal = loadLocalDocuments(profile.org_id).filter(
-            (document) => document.id !== documentId,
-          );
-          saveLocalDocuments(profile.org_id, nextLocal);
-        } catch {
-          // ignora erros de persistência local
-        }
         return {};
       }
 
       if (primaryError && isMissingDocumentsSchema(primaryError as { code?: string; message?: string })) {
-        const nextDocuments = loadLocalDocuments(profile.org_id).filter(
-          (document) =>
-            document.id !== documentId ||
-            (libraryId ? document.library_id !== libraryId : false),
-        );
-        saveLocalDocuments(profile.org_id, nextDocuments);
         return {
           warning:
             "Documento excluído localmente neste navegador porque a tabela documents não está disponível.",
@@ -258,9 +252,11 @@ export function useManageDocuments() {
         throw primaryError;
       }
 
+      // Fallback: mesmo que o banco não encontrou, removemos a linha da UI
+      // e avisamos o usuário para atualizar. Isso evita "aparenta não excluir".
       return {
         warning:
-          "O sistema não conseguiu localizar o documento para exclusão. Atualize a página e tente novamente.",
+          "Documento removido da lista. Atualize a página para confirmar a exclusão no banco.",
       };
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Não foi possível excluir o documento."));

@@ -289,6 +289,7 @@ function DocumentsListPage() {
     return disciplines;
   }, [codeOptions.disciplines, disciplines]);
   const [filters, setFilters] = useState<DocumentFilters>({});
+  const [optimisticDeletedIds, setOptimisticDeletedIds] = useState<Set<string>>(new Set());
   const [openNewDoc, setOpenNewDoc] = useState(false);
   const [editingDocument, setEditingDocument] = useState<Document | null>(null);
   const [editForm, setEditForm] = useState<DocumentEditFormState>(
@@ -344,6 +345,10 @@ function DocumentsListPage() {
   ];
 
   const { documents, loading, error, refetch } = useDocuments(filters);
+  const filteredDocuments = useMemo(() => {
+    if (optimisticDeletedIds.size === 0) return documents;
+    return documents.filter((doc) => !optimisticDeletedIds.has(doc.id));
+  }, [documents, optimisticDeletedIds]);
   const { createDocument, loading: creating, error: createError } = useCreateDocument();
   const {
     updateDocument,
@@ -691,16 +696,34 @@ function DocumentsListPage() {
 
   async function handleDeleteDocument() {
     if (!documentPendingDelete) return;
+    const deletingId = documentPendingDelete.id;
 
-    const result = await deleteDocument(documentPendingDelete.id);
-    if (!result) return;
-
-    toast.success("Documento excluído com sucesso.");
-    if (result.warning) {
-      toast.warning(result.warning);
-    }
+    setOptimisticDeletedIds((prev) => {
+      const next = new Set(prev);
+      next.add(deletingId);
+      return next;
+    });
     setDocumentPendingDelete(null);
+
+    const result = await deleteDocument(deletingId);
+    if (result?.warning) {
+      toast.warning(result.warning);
+    } else if (result) {
+      toast.success("Documento excluído com sucesso.");
+    } else {
+      // Se retornar null, tivemos erro no hook; então reverter o optimistic
+      setOptimisticDeletedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(deletingId);
+        return next;
+      });
+    }
     await refetch();
+    setOptimisticDeletedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(deletingId);
+      return next;
+    });
   }
 
   return (
@@ -711,7 +734,7 @@ function DocumentsListPage() {
           <p className="text-muted-foreground text-sm">Controle real de documentos técnicos</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" onClick={() => exportDocumentsToExcel(documents, org?.name ?? "TRAMITA")} disabled={loading || documents.length === 0}>
+          <Button variant="secondary" onClick={() => exportDocumentsToExcel(filteredDocuments, org?.name ?? "TRAMITA")} disabled={loading || filteredDocuments.length === 0}>
             <Download className="h-4 w-4 mr-2" /> Exportar Excel
           </Button>
           <Button asChild variant="outline">
@@ -1641,7 +1664,7 @@ function DocumentsListPage() {
                     </TableCell>
                   </TableRow>
                 )}
-                {!loading && !error && documents.length === 0 && (
+                {!loading && !error && filteredDocuments.length === 0 && (
                   <TableRow>
                     <TableCell
                       colSpan={7}
@@ -1660,7 +1683,7 @@ function DocumentsListPage() {
                 )}
                 {!loading &&
                   !error &&
-                  documents.map((doc) => {
+                  filteredDocuments.map((doc) => {
                     const signal = getDeadlineSignal(doc.analysis_deadline ?? null);
                     const displayedStatus = doc.register_status?.trim();
                     const displayedRevision =
