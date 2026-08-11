@@ -185,16 +185,63 @@ export function useManageDocuments() {
     setError(null);
 
     try {
-      const match: Record<string, unknown> = { id: documentId, org_id: profile.org_id };
-      if (libraryId) match.library_id = libraryId;
+      const matchByIdOrg: Record<string, unknown> = {
+        id: documentId,
+        org_id: profile.org_id,
+      };
 
-      const deleteQuery = supabase.from("documents").delete();
-      Object.entries(match).forEach(([key, value]) => {
-        deleteQuery.eq(key, value);
-      });
-      const { error: deleteError } = await deleteQuery;
+      const buildDeleteQuery = (match: Record<string, unknown>) => {
+        const q = supabase.from("documents").delete({ count: "exact" });
+        Object.entries(match).forEach(([key, value]) => {
+          q.eq(key, value);
+        });
+        return q.select("id").single();
+      };
 
-      if (deleteError && isMissingDocumentsSchema(deleteError)) {
+      let primaryError: unknown = null;
+      let deletedId: string | null = null;
+
+      try {
+        const { data: firstDeleted, error: firstError } = await buildDeleteQuery(matchByIdOrg);
+        if (firstError && !isMissingDocumentsSchema(firstError)) {
+          primaryError = firstError;
+        } else if (firstDeleted) {
+          deletedId = (firstDeleted as unknown as { id: string })?.id ?? null;
+        }
+      } catch (err) {
+        primaryError = err;
+      }
+
+      if (!deletedId && libraryId && !primaryError) {
+        try {
+          const matchWithLibrary: Record<string, unknown> = {
+            id: documentId,
+            org_id: profile.org_id,
+            library_id: libraryId,
+          };
+          const { data: secondDeleted, error: secondError } = await buildDeleteQuery(matchWithLibrary);
+          if (!secondError && secondDeleted) {
+            deletedId = (secondDeleted as unknown as { id: string })?.id ?? null;
+          }
+        } catch (_err) {
+          // ignora segundo erro, usa o primeiro resultado
+        }
+      }
+
+      if (deletedId) {
+        // também remove do cache localStorage (para manter coerência no fallback)
+        try {
+          const nextLocal = loadLocalDocuments(profile.org_id).filter(
+            (document) => document.id !== documentId,
+          );
+          saveLocalDocuments(profile.org_id, nextLocal);
+        } catch {
+          // ignora erros de persistência local
+        }
+        return {};
+      }
+
+      if (primaryError && isMissingDocumentsSchema(primaryError as { code?: string; message?: string })) {
         const nextDocuments = loadLocalDocuments(profile.org_id).filter(
           (document) =>
             document.id !== documentId ||
@@ -207,11 +254,14 @@ export function useManageDocuments() {
         };
       }
 
-      if (deleteError) {
-        throw deleteError;
+      if (primaryError) {
+        throw primaryError;
       }
 
-      return {};
+      return {
+        warning:
+          "O sistema não conseguiu localizar o documento para exclusão. Atualize a página e tente novamente.",
+      };
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Não foi possível excluir o documento."));
       return null;

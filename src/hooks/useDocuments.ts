@@ -223,7 +223,9 @@ export function useDocuments(filters: DocumentFilters = {}) {
           .eq('org_id', currentProfile.org_id)
           .order('created_at', { ascending: false })
 
-        if (libraryId) query = query.eq('library_id', libraryId)
+        if (libraryId) {
+          query = query.or(`library_id.eq.${libraryId},library_id.is.null`)
+        }
 
         if (filters.status) query = query.eq('status', filters.status)
         if (filters.doc_type) query = query.eq('doc_type', filters.doc_type)
