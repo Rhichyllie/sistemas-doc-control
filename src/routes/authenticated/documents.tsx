@@ -386,7 +386,55 @@ function DocumentsListPage() {
   });
 
   const statusOptions = useMemo(() => DOC_STATUS, []);
-  const typeOptions = useMemo(() => DOC_TYPES, []);
+  const editTypeOptions = useMemo(() => {
+    if (documentTypeOptions.length > 0 &&
+      !documentTypeOptions.every((item) => item.value === item.label && DOC_TYPES.find((d) => d.value === item.value))) {
+      return documentTypeOptions;
+    }
+    return codeOptions.docTypes.length > 0
+      ? codeOptions.docTypes.map((t) => ({
+          value: t.code,
+          label: t.code + (t.label ? ` · ${t.label}` : ""),
+        }))
+      : DOC_TYPES;
+  }, [codeOptions.docTypes, documentTypeOptions]);
+  const editAreaOptions = useMemo(() => {
+    if (codeOptions.areas.length > 0) {
+      return codeOptions.areas.map((a) => ({
+        value: a.code,
+        label: a.code + (a.label ? ` - ${a.label}` : ""),
+      }));
+    }
+    if (areaOptions.length > 0 &&
+      !areaOptions.every((item) => (AREAS as readonly string[]).includes(item.value))) {
+      return areaOptions;
+    }
+    return AREAS.map((a) => ({ value: a, label: a }));
+  }, [areaOptions, codeOptions.areas]);
+  const editDisciplineOptions = useMemo(() => {
+    if (disciplineOptions.length > 0 &&
+      codeOptions.disciplines.length > 0 &&
+      disciplineOptions[0]?.id &&
+      typeof (disciplineOptions[0] as unknown as DocumentCodeOption).code !== "undefined") {
+      return codeOptions.disciplines.map((d) => ({
+        id: d.id,
+        code: d.code,
+        name: d.label,
+      }));
+    }
+    if (disciplineOptions.length > 0 && disciplineOptions[0]?.id) {
+      return disciplineOptions as unknown as Array<{ id: string; code: string | null; name: string }>;
+    }
+    return disciplines.map((d) => ({
+      id: d.id,
+      code: d.code ?? null,
+      name: d.name,
+    }));
+  }, [disciplineOptions, codeOptions.disciplines, disciplines]);
+  const typeOptions = useMemo(
+    () => editTypeOptions,
+    [editTypeOptions],
+  );
   const showEditQualityReviewFields =
     editForm.doc_type === "PRO" && editForm.area === "QUA";
   const computedAnalysisDeadline = useMemo(() => {
@@ -1531,14 +1579,14 @@ function DocumentsListPage() {
               <SelectTrigger><SelectValue placeholder="Tipo" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os tipos</SelectItem>
-                {typeOptions.map((type) => <SelectItem key={type.value} value={type.value}>{type.value}</SelectItem>)}
+                {typeOptions.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={filters.area ?? "all"} onValueChange={(value) => setFilters({ ...filters, area: value === "all" ? undefined : value })}>
               <SelectTrigger><SelectValue placeholder="Área" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas as áreas</SelectItem>
-                {AREAS.map((area) => <SelectItem key={area} value={area}>{area}</SelectItem>)}
+                {editAreaOptions.map((area) => <SelectItem key={area.value} value={area.value}>{area.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -1754,7 +1802,7 @@ function DocumentsListPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Sem disciplina</SelectItem>
-                    {disciplines.map((discipline) => (
+                    {editDisciplineOptions.map((discipline) => (
                       <SelectItem key={discipline.id} value={discipline.id}>
                         {discipline.code ? `${discipline.code} · ` : ""}
                         {discipline.name}
@@ -1787,9 +1835,9 @@ function DocumentsListPage() {
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
-                    {AREAS.map((area) => (
-                      <SelectItem key={area} value={area}>
-                        {area}
+                    {editAreaOptions.map((area) => (
+                      <SelectItem key={area.value} value={area.value}>
+                        {area.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
