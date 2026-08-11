@@ -5,21 +5,21 @@ import {
   ArrowRight,
   CheckSquare2,
   Clock,
-  Code2,
+  FileCheck2,
   FilePlus2,
+  FileStack,
+  FileText,
   Filter,
   GitBranch,
-  Inbox,
-  ScrollText,
-  RefreshCw,
-  FileStack,
   Hash,
-  FileCheck2,
+  Inbox,
+  RefreshCw,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ActivityInboxPreview } from "@/components/operational/ActivityInboxPreview";
+import { DocumentRouterLink } from "@/components/documents/DocumentRouterLink";
 import {
   Card,
   CardContent,
@@ -53,6 +53,59 @@ function formatDate(value?: string | null) {
     dateStyle: "short",
     timeStyle: value.includes("T") ? "short" : undefined,
   }).format(date);
+}
+
+function renderAttentionBody(
+  item: {
+    title: string
+    priority: "critical" | "high" | "medium" | "low"
+    documentCode?: string | null
+    documentTitle?: string
+    documentId: string
+    externalLink?: string | null
+    origin?: string
+  },
+  externalOverride: string | null,
+) {
+  const external = externalOverride ?? item.externalLink ?? null
+  return (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-medium text-slate-800">{item.title}</p>
+        <Badge
+          variant={
+            item.priority === "critical"
+              ? "destructive"
+              : item.priority === "high"
+                ? "default"
+                : "secondary"
+          }
+        >
+          {item.priority === "critical"
+            ? "Crítico"
+            : item.priority === "high"
+              ? "Alto"
+              : item.priority === "medium"
+                ? "Médio"
+                : "Baixo"}
+        </Badge>
+      </div>
+      {(item.documentCode || item.documentTitle) && (
+        <div className="mt-1">
+          <DocumentRouterLink
+            documentId={item.documentId}
+            externalLink={external}
+            className="line-clamp-2 text-xs font-medium text-slate-600 underline-offset-2 hover:underline"
+            onClick={(e) => {
+              e.stopPropagation()
+            }}
+          >
+            {[item.documentCode, item.documentTitle].filter(Boolean).join(" — ")}
+          </DocumentRouterLink>
+        </div>
+      )}
+    </>
+  )
 }
 
 const TYPE_OPTIONS: { value: OperationalActivityType | "all"; label: string }[] =
@@ -481,47 +534,37 @@ export function OperationalHome() {
                 <Skeleton key={index} className="h-20 w-full" />
               ))
             ) : attentionItems.length ? (
-              attentionItems.map((item) => (
-                <Link
-                  key={item.id}
-                  to="/authenticated/documents/$documentId"
-                  params={{ documentId: item.documentId }}
-                  hash={
-                    item.origin === "tramite"
-                      ? "document-tramite-execution"
-                      : undefined
-                  }
-                  className="block rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm font-medium text-slate-800">
-                      {item.title}
-                    </p>
-                    <Badge
-                      variant={
-                        item.priority === "critical"
-                          ? "destructive"
-                          : item.priority === "high"
-                            ? "default"
-                            : "secondary"
-                      }
-                    >
-                      {item.priority === "critical"
-                        ? "Crítico"
-                        : item.priority === "high"
-                          ? "Alto"
-                          : item.priority === "medium"
-                            ? "Médio"
-                            : "Baixo"}
-                    </Badge>
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-xs text-slate-500">
-                    {[item.documentCode, item.documentTitle]
-                      .filter(Boolean)
-                      .join(" — ")}
-                  </p>
-                </Link>
-              ))
+              attentionItems.map((item) => {
+                const itemExternal = (item as any).externalLink ?? null
+                const cardClass =
+                  "block rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                const hash =
+                  item.origin === "tramite"
+                    ? "document-tramite-execution"
+                    : undefined
+                const Wrapper = itemExternal ? (
+                  <a
+                    key={item.id}
+                    href={itemExternal}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cardClass}
+                  >
+                    {renderAttentionBody(item, itemExternal)}
+                  </a>
+                ) : (
+                  <Link
+                    key={item.id}
+                    to="/authenticated/documents/$documentId"
+                    params={{ documentId: item.documentId }}
+                    hash={hash}
+                    className={cardClass}
+                  >
+                    {renderAttentionBody(item, null)}
+                  </Link>
+                )
+                return Wrapper
+              })
             ) : (
               <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-4 py-10 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">

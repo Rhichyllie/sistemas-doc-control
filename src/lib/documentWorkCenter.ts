@@ -31,6 +31,7 @@ export interface DocumentWorkItem {
   docType: string;
   area: string;
   documentStatus: string;
+  externalLink: string | null;
   dueAt: string | null;
   dueAtSuggested?: boolean;
   deadlineMode?: DocumentDeadlineMode;

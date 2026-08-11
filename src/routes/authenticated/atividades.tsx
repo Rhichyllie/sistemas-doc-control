@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { ArrowRight, FileText, GitBranch, Plus } from 'lucide-react'
 import { ActivityInboxPreview } from '@/components/operational/ActivityInboxPreview'
+import { DocumentRouterLink } from '@/components/documents/DocumentRouterLink'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -159,24 +160,44 @@ function ActivitiesPage() {
                     <Skeleton key={index} className="h-12 w-full" />
                   ))
                 ) : workCenter.recentDocuments.length ? (
-                  workCenter.recentDocuments.map((document) => (
-                    <Link
-                      key={document.id}
-                      to="/authenticated/documents/$documentId"
-                      params={{ documentId: document.id }}
-                      className="flex items-center justify-between gap-3 rounded-lg p-2 hover:bg-muted"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium">
-                          {document.code || 'Sem código'} — {document.title}
+                  workCenter.recentDocuments.map((document) => {
+                    const externalLink = (document as any)?.external_link ?? null
+                    const docWrapper = externalLink
+                      ? (children: React.ReactNode) => (
+                        <a
+                          key={document.id}
+                          href={externalLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-between gap-3 rounded-lg p-2 hover:bg-muted"
+                        >
+                          {children}
+                        </a>
+                      )
+                      : (children: React.ReactNode) => (
+                        <Link
+                          key={document.id}
+                          to="/authenticated/documents/$documentId"
+                          params={{ documentId: document.id }}
+                          className="flex items-center justify-between gap-3 rounded-lg p-2 hover:bg-muted"
+                        >
+                          {children}
+                        </Link>
+                      )
+                    return docWrapper(
+                      <>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">
+                            {document.code || 'Sem código'} — {document.title}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {document.status.replaceAll('_', ' ')}
+                          </span>
                         </span>
-                        <span className="text-xs text-muted-foreground">
-                          {document.status.replaceAll('_', ' ')}
-                        </span>
-                      </span>
-                      <ArrowRight className="h-4 w-4 shrink-0" />
-                    </Link>
-                  ))
+                        <ArrowRight className="h-4 w-4 shrink-0" />
+                      </>,
+                    )
+                  })
                 ) : (
                   <p className="text-sm text-muted-foreground">
                     Nenhum documento recente disponível.
@@ -214,11 +235,15 @@ function ActivitiesPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-semibold">{instance.templateName}</p>
-                          <p className="mt-1 text-sm text-muted-foreground">
+                          <DocumentRouterLink
+                            documentId={instance.documentId}
+                            externalLink={instance.externalLink}
+                            className="mt-1 text-sm text-muted-foreground"
+                          >
                             {[instance.documentCode, instance.documentTitle]
                               .filter(Boolean)
-                              .join(' — ')}
-                          </p>
+                              .join(' — ') || 'Documento não associado'}
+                          </DocumentRouterLink>
                         </div>
                         <Badge variant={instance.isOverdue ? 'destructive' : 'secondary'}>
                           {instance.isOverdue ? 'Atrasado' : 'Em execução'}

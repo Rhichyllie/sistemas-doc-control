@@ -28,6 +28,7 @@ export interface OperationalActivityItem {
   documentId: string | null
   documentCode: string | null
   documentTitle: string | null
+  externalLink: string | null
   projectName: string | null
   area: string | null
   status: string
@@ -251,6 +252,7 @@ export function useOperationalCockpit() {
             : item.assignee_name ?? 'responsável do papel'
       if (!managerialView && !isMineOrManager) continue
       if (managerialView && !isMineOrManager) {
+        const document = item.documentId ? documentsById.get(item.documentId) : undefined
         activityItems.push({
           id: `approval-monitor-${item.stepId}`,
           type: overdue ? 'overdue' : 'review_pending',
@@ -259,6 +261,7 @@ export function useOperationalCockpit() {
           documentId: item.documentId,
           documentCode: item.code,
           documentTitle: item.title,
+          externalLink: (document as any)?.external_link ?? null,
           projectName: item.project_name,
           area: item.area,
           status: overdue ? 'Atrasado' : item.days_until_due === 0 ? 'Vence hoje' : 'Acompanhamento',
@@ -271,23 +274,27 @@ export function useOperationalCockpit() {
         continue
       }
 
-      activityItems.push({
-        id: `approval-${item.stepId}`,
-        type: overdue ? 'overdue' : 'approval_pending',
-        title: overdue ? 'Aprovação atrasada' : 'Aprovação pendente',
-        description: `${item.step_label} aguarda ${assignedActor}.`,
-        documentId: item.documentId,
-        documentCode: item.code,
-        documentTitle: item.title,
-        projectName: item.project_name,
-        area: item.area,
-        status: overdue ? 'Atrasado' : item.days_until_due === 0 ? 'Vence hoje' : 'Pendente',
-        priority: overdue ? 'critical' : item.days_until_due !== null && item.days_until_due <= 3 ? 'high' : 'medium',
-        dueAt: item.due_at,
-        createdAt: item.created_at,
-        suggestedAction: 'Revisar e decidir',
-        target: 'approval',
-      })
+      {
+        const document = item.documentId ? documentsById.get(item.documentId) : undefined
+        activityItems.push({
+          id: `approval-${item.stepId}`,
+          type: overdue ? 'overdue' : 'approval_pending',
+          title: overdue ? 'Aprovação atrasada' : 'Aprovação pendente',
+          description: `${item.step_label} aguarda ${assignedActor}.`,
+          documentId: item.documentId,
+          documentCode: item.code,
+          documentTitle: item.title,
+          externalLink: (document as any)?.external_link ?? null,
+          projectName: item.project_name,
+          area: item.area,
+          status: overdue ? 'Atrasado' : item.days_until_due === 0 ? 'Vence hoje' : 'Pendente',
+          priority: overdue ? 'critical' : item.days_until_due !== null && item.days_until_due <= 3 ? 'high' : 'medium',
+          dueAt: item.due_at,
+          createdAt: item.created_at,
+          suggestedAction: 'Revisar e decidir',
+          target: 'approval',
+        })
+      }
     }
 
     for (const notification of notifications) {
@@ -307,6 +314,7 @@ export function useOperationalCockpit() {
           documentId: notification.document_id,
           documentCode: label.code,
           documentTitle: label.title,
+          externalLink: (document as any)?.external_link ?? null,
           projectName: label.projectName,
           area: label.area,
           status: 'Correção necessária',
@@ -329,6 +337,7 @@ export function useOperationalCockpit() {
         documentId: notification.document_id,
         documentCode: label.code,
         documentTitle: label.title,
+        externalLink: (document as any)?.external_link ?? null,
         projectName: label.projectName,
         area: label.area,
         status: notification.read ? 'Lida' : 'Nova',
@@ -355,6 +364,7 @@ export function useOperationalCockpit() {
           documentId: document.id,
           documentCode: document.code,
           documentTitle: document.title,
+          externalLink: (document as any)?.external_link ?? null,
           projectName: document.project?.name ?? null,
           area: document.area,
           status: 'Correção necessária',
@@ -390,6 +400,7 @@ export function useOperationalCockpit() {
         documentId: document.id,
         documentCode: document.code,
         documentTitle: document.title,
+        externalLink: (document as any)?.external_link ?? null,
         projectName: document.project?.name ?? null,
         area: document.area,
         status: overdue ? 'Atrasado' : remainingDays === 0 ? 'Vence hoje' : 'Próximo da revisão',
@@ -425,6 +436,7 @@ export function useOperationalCockpit() {
           documentId: wi.documentId,
           documentCode: wi.documentCode,
           documentTitle: wi.documentTitle,
+          externalLink: (wi as any).externalLink ?? null,
           projectName: wi.projectName,
           area: wi.area,
           status: "Aguardando início",
@@ -473,6 +485,7 @@ export function useOperationalCockpit() {
         documentId: wi.documentId,
         documentCode: wi.documentCode,
         documentTitle: wi.documentTitle,
+        externalLink: (wi as any).externalLink ?? null,
         projectName: wi.projectName,
         area: wi.area,
         status: wi.statusLabel ?? (isOverdue ? "Atrasado" : "Pendente"),

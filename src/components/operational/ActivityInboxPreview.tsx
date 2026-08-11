@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/operational/EmptyState'
+import { DocumentRouterLink } from '@/components/documents/DocumentRouterLink'
 import type { OperationalActivityItem, OperationalActivityType } from '@/hooks/useOperationalCockpit'
 import { cn } from '@/lib/utils'
 
@@ -110,9 +111,18 @@ function ActivityRow({ item }: { item: OperationalActivityItem }) {
           <Badge variant={item.priority === 'critical' ? 'destructive' : 'outline'}>{meta.label}</Badge>
         </div>
         {(item.documentCode || item.documentTitle) && (
-          <p className="mt-1 truncate text-sm">
-            {[item.documentCode, item.documentTitle].filter(Boolean).join(' — ')}
-          </p>
+          <div className="mt-1">
+            <DocumentRouterLink
+              documentId={item.documentId}
+              externalLink={item.externalLink}
+              className="truncate text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
+              onClick={(e) => {
+                e.stopPropagation()
+              }}
+            >
+              {[item.documentCode, item.documentTitle].filter(Boolean).join(' — ')}
+            </DocumentRouterLink>
+          </div>
         )}
         <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.description}</p>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -131,12 +141,14 @@ function ActivityRow({ item }: { item: OperationalActivityItem }) {
     </>
   )
 
+  const cardWrapperClass = 'flex gap-3 px-5 py-4 transition-colors hover:bg-muted/40'
+
   if (item.target === 'document' && item.documentId) {
     return (
       <Link
         to="/authenticated/documents/$documentId"
         params={{ documentId: item.documentId }}
-        className="flex gap-3 px-5 py-4 transition-colors hover:bg-muted/40"
+        className={cardWrapperClass}
       >
         {content}
       </Link>
@@ -144,10 +156,22 @@ function ActivityRow({ item }: { item: OperationalActivityItem }) {
   }
 
   if (item.target === 'approval') {
+    if (item.externalLink && item.documentId) {
+      return (
+        <a
+          href={item.externalLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cardWrapperClass}
+        >
+          {content}
+        </a>
+      )
+    }
     return (
       <Link
         to="/authenticated/fluxo-de-aprovacao"
-        className="flex gap-3 px-5 py-4 transition-colors hover:bg-muted/40"
+        className={cardWrapperClass}
       >
         {content}
       </Link>

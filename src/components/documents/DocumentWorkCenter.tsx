@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DocumentRouterLink } from "@/components/documents/DocumentRouterLink";
 import { useDocumentWorkCenter } from "@/hooks/useDocumentWorkCenter";
 import type {
   DocumentWorkItem,
@@ -101,6 +102,29 @@ function WorkItemCard({ item }: { item: DocumentWorkItem }) {
   const Icon = itemIcon(item.type);
   const focusTramite =
     item.origin === "tramite" ? "document-tramite-execution" : undefined;
+  const actionButton = item.externalLink ? (
+    <Button asChild size="sm">
+      <a
+        href={item.externalLink}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {item.actionLabel}
+        <ArrowRight className="h-4 w-4" />
+      </a>
+    </Button>
+  ) : (
+    <Button asChild size="sm">
+      <Link
+        to="/authenticated/documents/$documentId"
+        params={{ documentId: item.documentId }}
+        hash={focusTramite}
+      >
+        {item.actionLabel}
+        <ArrowRight className="h-4 w-4" />
+      </Link>
+    </Button>
+  );
   return (
     <div className="rounded-xl border bg-background p-4 transition-colors hover:border-primary/40">
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
@@ -116,11 +140,23 @@ function WorkItemCard({ item }: { item: DocumentWorkItem }) {
               </Badge>
               <Badge variant="outline">{TYPE_LABELS[item.type]}</Badge>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {[item.documentCode, item.documentTitle]
-                .filter(Boolean)
-                .join(" — ")}
-            </p>
+            {(item.documentCode || item.documentTitle) && (
+              <div className="mt-1">
+                <DocumentRouterLink
+                  documentId={item.documentId}
+                  externalLink={item.externalLink}
+                  hash={focusTramite}
+                  className="text-sm font-medium text-muted-foreground underline-offset-2 hover:underline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  {[item.documentCode, item.documentTitle]
+                    .filter(Boolean)
+                    .join(" — ")}
+                </DocumentRouterLink>
+              </div>
+            )}
             <p className="mt-2 text-sm">{item.description}</p>
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               {item.projectName && (
@@ -203,16 +239,7 @@ function WorkItemCard({ item }: { item: DocumentWorkItem }) {
               <Link to="/authenticated/notificacoes">Ver notificações</Link>
             </Button>
           )}
-          <Button asChild size="sm">
-            <Link
-              to="/authenticated/documents/$documentId"
-              params={{ documentId: item.documentId }}
-              hash={focusTramite}
-            >
-              {item.actionLabel}
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </Button>
+          {actionButton}
         </div>
       </div>
     </div>

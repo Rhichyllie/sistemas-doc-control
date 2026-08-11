@@ -37,6 +37,7 @@ export interface QueueItem {
   area: string
   doc_status: string
   author_name: string | null
+  external_link: string | null
   org_id: string
 }
 
@@ -55,6 +56,7 @@ interface QueueDocumentRow {
   area: string
   status: string
   org_id: string
+  external_link?: string | null
   author?: NamedRelation | NamedRelation[] | null
   project?: NamedRelation | NamedRelation[] | null
 }
@@ -144,6 +146,7 @@ const ENTERPRISE_SELECT = `
     area,
     status,
     org_id,
+    external_link,
     author:profiles!documents_author_id_fkey (full_name),
     project:projects!documents_project_id_fkey (name)
   )
@@ -174,6 +177,7 @@ const ENTERPRISE_WITHOUT_PROJECT_SELECT = `
     area,
     status,
     org_id,
+    external_link,
     author:profiles!documents_author_id_fkey (full_name)
   )
 `
@@ -198,6 +202,7 @@ const LEGACY_SLA_SELECT = `
     area,
     status,
     org_id,
+    external_link,
     author:profiles!documents_author_id_fkey (full_name),
     project:projects!documents_project_id_fkey (name)
   )
@@ -220,6 +225,7 @@ const LEGACY_BASE_SELECT = `
     area,
     status,
     org_id,
+    external_link,
     author:profiles!documents_author_id_fkey (full_name)
   )
 `
@@ -460,6 +466,7 @@ export function useApprovalQueue() {
             area: document?.area ?? '',
             doc_status: document?.status ?? '',
             author_name: author?.full_name ?? null,
+            external_link: document?.external_link ?? null,
             org_id: document?.org_id ?? currentProfile.org_id,
           }
         })
@@ -586,6 +593,7 @@ export function useApprovalQueue() {
                     : 'completed')
               : (document?.status ?? 'pending'),
             author_name: author?.full_name ?? null,
+            external_link: (document as any)?.external_link ?? null,
             org_id: document?.org_id ?? currentProfile.org_id,
           }
         })

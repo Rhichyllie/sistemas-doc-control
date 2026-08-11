@@ -49,6 +49,7 @@ export interface DocumentWorkCenterInstance {
   deadlineMode: DeadlineMode;
   isOverdue: boolean;
   isMine: boolean;
+  externalLink: string | null;
   updatedAt: string;
 }
 
@@ -270,6 +271,7 @@ export function useDocumentWorkCenter() {
         docType: document.doc_type,
         area: document.area,
         documentStatus: document.status,
+        externalLink: (document as any).external_link ?? null,
       };
     }
 
@@ -729,6 +731,7 @@ export function useDocumentWorkCenter() {
             ? (daysUntilWorkItem(effectiveInstanceDueAt) ?? 0) < 0
             : summary.isOverdue,
           isMine: mine,
+          externalLink: (document as any)?.external_link ?? null,
           updatedAt: instance.updated_at,
         };
       });

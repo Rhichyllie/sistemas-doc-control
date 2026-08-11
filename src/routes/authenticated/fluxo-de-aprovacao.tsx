@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { DocumentRouterLink } from '@/components/documents/DocumentRouterLink'
 import { useAuthContext } from '@/contexts/AuthContext'
 import { useApprovalFlow } from '@/hooks/useApprovalFlow'
 import { type QueueItem, useApprovalQueue } from '@/hooks/useApprovalQueue'
@@ -363,13 +364,13 @@ function QueueTable({
         {items.map((item) => (
           <TableRow key={item.stepId}>
             <TableCell className="min-w-60">
-              <Link
+              <DocumentRouterLink
+                documentId={item.documentId}
+                externalLink={item.external_link}
                 className="font-medium hover:underline"
-                to="/authenticated/documents/$documentId"
-                params={{ documentId: item.documentId }}
               >
                 {item.code ?? 'Gerando...'} — {item.title}
-              </Link>
+              </DocumentRouterLink>
               <div className="mt-1 text-xs text-muted-foreground">{item.area} · Autor: {item.author_name ?? '—'}</div>
             </TableCell>
             <TableCell>
