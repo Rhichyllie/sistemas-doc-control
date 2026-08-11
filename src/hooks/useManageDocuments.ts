@@ -195,40 +195,40 @@ export function useManageDocuments() {
         Object.entries(match).forEach(([key, value]) => {
           q.eq(key, value);
         });
-        return q.select("id").single();
+        return q.select("id");
       };
 
+      let deletedRows: Array<{ id: string }> = [];
       let primaryError: unknown = null;
-      let deletedId: string | null = null;
 
       try {
-        const { data: firstDeleted, error: firstError } = await buildDeleteQuery(matchByIdOrg);
+        const { data: firstData, error: firstError } = await buildDeleteQuery(matchByIdOrg);
         if (firstError && !isMissingDocumentsSchema(firstError)) {
           primaryError = firstError;
-        } else if (firstDeleted) {
-          deletedId = (firstDeleted as unknown as { id: string })?.id ?? null;
+        } else if (Array.isArray(firstData) && firstData.length > 0) {
+          deletedRows = firstData as Array<{ id: string }>;
         }
       } catch (err) {
         primaryError = err;
       }
 
-      if (!deletedId && libraryId && !primaryError) {
+      if (deletedRows.length === 0 && libraryId && !primaryError) {
         try {
           const matchWithLibrary: Record<string, unknown> = {
             id: documentId,
             org_id: profile.org_id,
             library_id: libraryId,
           };
-          const { data: secondDeleted, error: secondError } = await buildDeleteQuery(matchWithLibrary);
-          if (!secondError && secondDeleted) {
-            deletedId = (secondDeleted as unknown as { id: string })?.id ?? null;
+          const { data: secondData, error: secondError } = await buildDeleteQuery(matchWithLibrary);
+          if (!secondError && Array.isArray(secondData) && secondData.length > 0) {
+            deletedRows = secondData as Array<{ id: string }>;
           }
         } catch (_err) {
           // ignora segundo erro, usa o primeiro resultado
         }
       }
 
-      if (deletedId) {
+      if (deletedRows.length > 0) {
         // também remove do cache localStorage (para manter coerência no fallback)
         try {
           const nextLocal = loadLocalDocuments(profile.org_id).filter(
