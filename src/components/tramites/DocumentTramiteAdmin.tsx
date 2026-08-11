@@ -585,6 +585,10 @@ export function DocumentTramiteAdmin() {
       ),
     [actors.groupMembers, profile?.id],
   );
+  const isManager = useMemo(
+    () => profile?.role === 'admin' || profile?.role === 'manager',
+    [profile?.role],
+  );
   const selectedDocument =
     documentsState.documents.find((document) => document.id === form.documentId) ??
     null;
@@ -1710,7 +1714,8 @@ export function DocumentTramiteAdmin() {
                 ) : filteredProcessRows.length > 0 ? (
                   filteredProcessRows.map((row) => {
                     const statusMeta = getProcessStatusMeta(row.statusBucket);
-                    const canDecide = row.isMine && Boolean(row.currentStepId);
+                    const canDecide =
+                      (row.isMine || isManager) && Boolean(row.currentStepId);
                     return (
                       <tr
                         key={row.id}
@@ -1760,7 +1765,11 @@ export function DocumentTramiteAdmin() {
                               {row.responsibleName}
                             </p>
                             <p className="mt-1 text-xs text-slate-500">
-                              {row.isMine ? "Minha ação" : "Aguardando outros"}
+                              {row.isMine
+                                ? 'Minha ação'
+                                : isManager && Boolean(row.currentStepId)
+                                  ? 'Atuação como gestor'
+                                  : 'Aguardando outros'}
                             </p>
                           </div>
                         </td>
