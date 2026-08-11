@@ -237,7 +237,7 @@ export function LocalDataProvider({ children }: { children: ReactNode }) {
       // P-3: AuthContext is the single auth source; role comes from public.profiles.
       setIsAdmin(profile?.role === "admin");
 
-      const [discRes, projRes, projetRes, teamRes, docRes, revRes, notifRes, activitiesRes] = await Promise.all([
+      const [discRes, projRes, projetRes, teamRes, docRes, revRes, notifRes, activitiesRes, codeDiscRes] = await Promise.all([
         supabase.from("disciplines").select("*").order("name"),
         supabase.from("projects").select("*").order("created_at", { ascending: false }),
         supabase.from("projetistas").select("*").order("name"),
@@ -246,9 +246,35 @@ export function LocalDataProvider({ children }: { children: ReactNode }) {
         supabase.from("document_revisions").select("*").order("created_at"),
         supabase.from("notifications").select("*").order("created_at", { ascending: false }),
         supabase.from("recent_activities").select("*").order("created_at", { ascending: false }).limit(10),
+        (async () => {
+          try {
+            if (!profile?.org_id) return { data: [] as any[] };
+            return await supabase
+              .from("document_code_disciplines")
+              .select("*")
+              .eq("org_id", profile.org_id)
+              .order("label", { ascending: true });
+          } catch {
+            return { data: [] as any[] };
+          }
+        })(),
       ]);
 
-      setDisciplinesState((discRes.data ?? []).map(mapDiscipline));
+      const mappedDiscs = (discRes.data ?? []).map(mapDiscipline);
+      const byId = new Map<string, typeof mappedDiscs[number]>();
+      for (const d of mappedDiscs) byId.set(d.id, d);
+      for (const row of (codeDiscRes?.data ?? []) as Array<{ id: string; code: string; label: string }>) {
+        if (!byId.has(row.id)) {
+          mappedDiscs.push({ id: row.id, code: row.code, name: row.label });
+          byId.set(row.id, mappedDiscs[mappedDiscs.length - 1]);
+        } else {
+          const existing = byId.get(row.id)!;
+          existing.code = row.code || existing.code;
+          existing.name = row.label || existing.name;
+        }
+      }
+      mappedDiscs.sort((a, b) => (a.code + a.name).localeCompare(b.code + b.name));
+      setDisciplinesState(mappedDiscs);
       setProjectsState((projRes.data ?? []).map(mapProject));
       setProjetistasState((projetRes.data ?? []).map(mapProjetista));
       setTeamState((teamRes.data ?? []).map((row: any) => ({

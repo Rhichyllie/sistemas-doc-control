@@ -208,6 +208,7 @@ export function useDocumentCodeOptions(options: UseDocumentCodeOptionsOptions = 
         ? await supabase.from(table).update({ ...payload, updated_at: now }).eq("id", id).eq("org_id", profile.org_id).select("*").maybeSingle()
         : await supabase.from(table).insert(payload).select("*").single();
 
+      let saved: DocumentCodeOption | null = null;
       if (result.error) {
         // Fallback to local storage
         const localItems = loadLocal<DocumentCodeOption>(profile.org_id, type);
@@ -220,12 +221,44 @@ export function useDocumentCodeOptions(options: UseDocumentCodeOptionsOptions = 
         const nextItems = id ? localItems.map(i => i.id === id ? nextItem : i) : [...localItems, nextItem];
         saveLocal(profile.org_id, type, nextItems);
         setItems(nextItems);
-        setIsSaving(false);
-        return true;
+        saved = nextItem;
+      } else if (result.data) {
+        saved = result.data as DocumentCodeOption;
+      }
+
+      if (saved && type === "disciplines") {
+        try {
+          const mirrorPayload = { code: saved.code || saved.label, name: saved.label };
+          if (id && !id.startsWith("local-")) {
+            await supabase
+              .from("disciplines")
+              .update(mirrorPayload)
+              .eq("id", id);
+          } else {
+            const { error: existingErr } = await supabase
+              .from("disciplines")
+              .select("id")
+              .eq("code", mirrorPayload.code)
+              .maybeSingle();
+            if (existingErr) {
+              const { error: insertErr } = await supabase
+                .from("disciplines")
+                .insert({ ...mirrorPayload, id: saved!.id })
+                .select("id")
+                .maybeSingle();
+              if (insertErr) {
+                // best effort — just insert without explicit id
+                await supabase.from("disciplines").insert(mirrorPayload);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("[useDocumentCodeOptions] não foi possível espelhar disciplina em `disciplines`: ", err);
+        }
       }
 
       setIsSaving(false);
-      await refresh();
+      if (!result.error) await refresh();
       return true;
     },
     [canManage, profile?.id, profile?.org_id, refresh],
@@ -256,12 +289,18 @@ export function useDocumentCodeOptions(options: UseDocumentCodeOptionsOptions = 
         const nextItems = localItems.filter(i => i.id !== id);
         saveLocal(profile.org_id, type, nextItems);
         setItems(nextItems);
-        setIsSaving(false);
-        return true;
+      }
+
+      if (type === "disciplines") {
+        try {
+          await supabase.from("disciplines").delete().eq("id", id);
+        } catch (err) {
+          console.warn("[useDocumentCodeOptions] não foi possível excluir o espelho em `disciplines`: ", err);
+        }
       }
 
       setIsSaving(false);
-      await refresh();
+      if (!result.error) await refresh();
       return true;
     },
     [canManage, profile?.id, profile?.org_id, refresh],
