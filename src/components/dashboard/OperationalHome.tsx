@@ -65,6 +65,7 @@ const TYPE_OPTIONS: { value: OperationalActivityType | "all"; label: string }[] 
     { value: "overdue", label: "Atrasados" },
     { value: "recent_update", label: "Atualizações recentes" },
     { value: "informational", label: "Informativos" },
+    { value: "completed_by_me", label: "Concluídas por mim" },
   ];
 
 interface HeroAction {
@@ -210,7 +211,7 @@ export function OperationalHome() {
         }
         if (
           priorityFilter === "actionable" &&
-          ["recent_update", "informational"].includes(item.type)
+          ["recent_update", "informational", "completed_by_me"].includes(item.type)
         ) {
           return false;
         }

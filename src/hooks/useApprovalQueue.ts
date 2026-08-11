@@ -214,6 +214,82 @@ const LEGACY_BASE_SELECT = `
   )
 `
 
+interface TramiteStepRow {
+  id: string
+  node_key: string
+  node_type: string
+  label: string
+  description: string | null
+  status: string
+  assignment_type: string | null
+  assignee_user_id: string | null
+  assignee_group_id: string | null
+  required_role: string | null
+  due_days: number | null
+  due_at: string | null
+  decision: string | null
+  started_at: string | null
+  completed_at: string | null
+  completed_by: string | null
+  created_at: string
+  metadata: { instructions?: string | null; activation_count?: number | null } | null
+  document: {
+    id: string
+    library_id: string | null
+    code: string | null
+    title: string
+    project_id: string | null
+    doc_type: string
+    area: string
+    status: string
+    org_id: string
+    author_id?: string | null
+    author?: NamedRelation | NamedRelation[] | null
+    project?: NamedRelation | NamedRelation[] | null
+  }
+  assignee_user?: NamedRelation | NamedRelation[] | null
+  assignee_group?: NamedRelation | NamedRelation[] | null
+  completed_by_profile?: NamedRelation | NamedRelation[] | null
+}
+
+const TRAMITE_STEP_SELECT = `
+  id,
+  node_key,
+  node_type,
+  label,
+  description,
+  status,
+  assignment_type,
+  assignee_user_id,
+  assignee_group_id,
+  required_role,
+  due_days,
+  due_at,
+  decision,
+  started_at,
+  completed_at,
+  completed_by,
+  created_at,
+  metadata,
+  document:documents!document_tramite_instance_steps_document_id_fkey (
+    id,
+    library_id,
+    code,
+    title,
+    project_id,
+    doc_type,
+    area,
+    status,
+    org_id,
+    author_id,
+    author:profiles!documents_author_id_fkey (full_name),
+    project:projects!documents_project_id_fkey (name)
+  ),
+  assignee_user:profiles!document_tramite_instance_steps_assignee_user_id_fkey (full_name),
+  assignee_group:approval_groups!document_tramite_instance_steps_assignee_group_id_fkey (name),
+  completed_by_profile:profiles!document_tramite_instance_steps_completed_by_fkey (full_name)
+`
+
 export function useApprovalQueue() {
   const { profile } = useAuthContext()
   const { libraryId } = useLibraryScope()
@@ -230,6 +306,7 @@ export function useApprovalQueue() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [queryMode, setQueryMode] = useState<QueueQueryMode>('enterprise')
+  const [tramiteAvailable, setTramiteAvailable] = useState(false)
 
   const fetchQueue = useCallback(async () => {
     if (!profile) {
@@ -257,7 +334,7 @@ export function useApprovalQueue() {
     setError(null)
 
     try {
-      async function runQuery(select: string) {
+      async function runLegacyQuery(select: string) {
         let query = supabase
           .from('approval_flows')
           .select(select)
@@ -269,29 +346,28 @@ export function useApprovalQueue() {
       }
 
       let mode: QueueQueryMode = 'enterprise'
-      let result = await runQuery(ENTERPRISE_SELECT)
+      let legacyResult = await runLegacyQuery(ENTERPRISE_SELECT)
 
-      if (result.error && isWorkflowFoundationUnavailable(result.error)) {
+      if (legacyResult.error && isWorkflowFoundationUnavailable(legacyResult.error)) {
         mode = 'enterprise_without_project'
-        result = await runQuery(ENTERPRISE_WITHOUT_PROJECT_SELECT)
+        legacyResult = await runLegacyQuery(ENTERPRISE_WITHOUT_PROJECT_SELECT)
       }
-      if (result.error && isWorkflowFoundationUnavailable(result.error)) {
+      if (legacyResult.error && isWorkflowFoundationUnavailable(legacyResult.error)) {
         mode = 'legacy_sla'
-        result = await runQuery(LEGACY_SLA_SELECT)
+        legacyResult = await runLegacyQuery(LEGACY_SLA_SELECT)
       }
-      if (result.error && isWorkflowFoundationUnavailable(result.error)) {
+      if (legacyResult.error && isWorkflowFoundationUnavailable(legacyResult.error)) {
         mode = 'legacy_base'
-        result = await runQuery(LEGACY_BASE_SELECT)
+        legacyResult = await runLegacyQuery(LEGACY_BASE_SELECT)
       }
-      if (result.error) throw result.error
+      const legacyRows = (legacyResult.error ? [] : (legacyResult.data ?? [])) as unknown as QueueRow[]
 
-      const rows = (result.data ?? []) as unknown as QueueRow[]
       const currentStepByDocument = new Map<string, {
         step: number
         started: boolean
         createdAt: number
       }>()
-      for (const row of rows) {
+      for (const row of legacyRows) {
         const document = first(row.documents)
         if (!document?.id || !ACTIVE_DOCUMENT_STATUSES.has(document.status)) continue
         const candidate = {
@@ -317,7 +393,7 @@ export function useApprovalQueue() {
         }
       }
 
-      const currentRows = rows.filter((row) => {
+      const currentRows = legacyRows.filter((row) => {
         const document = first(row.documents)
         return Boolean(
           document?.id
@@ -328,7 +404,7 @@ export function useApprovalQueue() {
         )
       })
 
-      const items: QueueItem[] = currentRows
+      const legacyItems: QueueItem[] = currentRows
         .filter((row) => isManager || isAssignedToProfile(row, currentProfile, userGroupIds))
         .map((row) => {
           const document = first(row.documents)
@@ -382,8 +458,136 @@ export function useApprovalQueue() {
           && ACTIVE_DOCUMENT_STATUSES.has(item.doc_status),
         )
 
+      let tramiteRows: TramiteStepRow[] = []
+      try {
+        let tramiteQuery = supabase
+          .from('document_tramite_instance_steps')
+          .select(TRAMITE_STEP_SELECT)
+          .eq('org_id', currentProfile.org_id)
+          .in('status', ['pending', 'active', 'completed'])
+          .in('node_type', ['review', 'approval', 'correction', 'evidence', 'mandatory_reading', 'custom', 'draft', 'publication'])
+          .order('created_at', { ascending: false })
+        if (libraryId) tramiteQuery = tramiteQuery.eq('document.library_id', libraryId)
+        const tramiteResult = await tramiteQuery
+        if (!tramiteResult.error) {
+          setTramiteAvailable(true)
+          tramiteRows = (tramiteResult.data ?? []) as unknown as TramiteStepRow[]
+        } else {
+          setTramiteAvailable(false)
+        }
+      } catch {
+        setTramiteAvailable(false)
+      }
+
+      const tramiteItems: QueueItem[] = tramiteRows
+        .filter((row) => {
+          if (!row.document?.id) return false
+          if (isManager) return true
+          const assignmentType = row.assignment_type ?? (
+            row.assignee_user_id ? 'specific_user'
+              : row.assignee_group_id ? 'approval_group'
+                : row.required_role ? 'role'
+                  : 'none'
+          )
+          if (assignmentType === 'specific_user' || row.assignee_user_id) {
+            if (row.assignee_user_id === currentProfile.id) return true
+          }
+          if (assignmentType === 'approval_group' || row.assignee_group_id) {
+            if (row.assignee_group_id && userGroupIds.has(row.assignee_group_id)) return true
+          }
+          if (assignmentType === 'role' || row.required_role) {
+            if (row.required_role === currentProfile.role) return true
+          }
+          if (assignmentType === 'author' || assignmentType === 'document_owner') {
+            if (row.document.author_id === currentProfile.id) return true
+          }
+          if (row.completed_by === currentProfile.id) return true
+          return false
+        })
+        .map((row, idx) => {
+          const document = row.document
+          const author = first(document?.author)
+          const project = first(document?.project)
+          const assignedUser = first(row.assignee_user)
+          const assignedGroup = first(row.assignee_group)
+          const dueAt = row.due_at ?? null
+          const daysUntilDue = getDaysUntilDue(dueAt)
+          const rawAssignment = row.assignment_type ?? (
+            row.assignee_user_id ? 'specific_user'
+              : row.assignee_group_id ? 'approval_group'
+                : row.required_role ? 'role'
+                  : 'none'
+          )
+          const assignmentType: WorkflowAssignmentType = (
+            rawAssignment === 'approval_group' ? 'group'
+              : (rawAssignment === 'specific_user' || rawAssignment === 'author' || rawAssignment === 'document_owner') ? 'user'
+                : 'role'
+          )
+          const assigneeUserId = (
+            rawAssignment === 'specific_user' ? row.assignee_user_id
+              : rawAssignment === 'author' || rawAssignment === 'document_owner' ? (document.author_id ?? null)
+                : row.assignee_user_id
+          )
+          const isOverdue = (
+            dueAt !== null
+            && row.status !== 'completed'
+            && getDueStatus(dueAt) === 'overdue'
+          )
+          const stepIndex = idx + 1
+
+          return {
+            stepId: row.id,
+            step: stepIndex,
+            step_label: row.label,
+            required_role: row.required_role ?? '',
+            assignment_type: assignmentType,
+            assignee_id: assigneeUserId,
+            assignee_name: assignedUser?.full_name ?? null,
+            assignee_user_id: assigneeUserId,
+            assignee_user_name:
+              assignedUser?.full_name
+              ?? (assigneeUserId ? usersById.get(assigneeUserId) ?? null : null),
+            assignee_group_id: row.assignee_group_id ?? null,
+            assignee_group_name:
+              assignedGroup?.name
+              ?? (row.assignee_group_id ? groupsById.get(row.assignee_group_id) ?? null : null),
+            instructions: row.description ?? row.metadata?.instructions ?? null,
+            started_at: row.started_at ?? null,
+            due_at: dueAt,
+            days_until_due: daysUntilDue,
+            overdue: isOverdue,
+            created_at: row.created_at,
+            documentId: document?.id ?? '',
+            code: document?.code ?? null,
+            title: document?.title ?? '',
+            project_id: document?.project_id ?? null,
+            project_name: project?.name ?? null,
+            doc_type: document?.doc_type ?? '',
+            area: document?.area ?? '',
+            doc_status: row.status === 'completed'
+              ? (row.decision === 'approved' ? 'approved'
+                : row.decision === 'rejected' ? 'rejected'
+                  : row.decision === 'needs_correction' ? 'rejected'
+                    : 'completed')
+              : (document?.status ?? 'pending'),
+            author_name: author?.full_name ?? null,
+            org_id: document?.org_id ?? currentProfile.org_id,
+          }
+        })
+        .filter((item) => item.documentId)
+
+      const seenLegacy = new Set(legacyItems.map((i) => `legacy-${i.documentId}-${i.stepId}`))
+      const merged: QueueItem[] = [...legacyItems]
+      for (const item of tramiteItems) {
+        const key = `tramite-${item.documentId}-${item.stepId}`
+        if (!seenLegacy.has(`legacy-${item.documentId}-${item.stepId}`)) {
+          merged.push(item)
+        }
+        seenLegacy.add(key)
+      }
+
       setQueryMode(mode)
-      setQueue(items)
+      setQueue(merged)
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Erro ao carregar fila'))
     } finally {

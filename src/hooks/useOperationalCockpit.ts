@@ -14,6 +14,7 @@ export type OperationalActivityType =
   | 'overdue'
   | 'recent_update'
   | 'informational'
+  | 'completed_by_me'
 
 export type OperationalPriority = 'critical' | 'high' | 'medium' | 'low'
 
@@ -217,6 +218,40 @@ export function useOperationalCockpit() {
     const now = new Date().toISOString()
 
     for (const item of queue) {
+      const isCompletedStatus = ['approved', 'completed', 'rejected'].includes(item.doc_status)
+      const wasCompletedByMe = (
+        isCompletedStatus
+        && (
+          item.assignee_user_id === profile?.id
+          || item.assignee_id === profile?.id
+          || item.author_name === profile?.full_name
+        )
+      )
+      if (isCompletedStatus) {
+        const decisionLabel =
+          item.doc_status === 'approved' ? 'Aprovado'
+          : item.doc_status === 'rejected' ? 'Rejeitado'
+          : 'Concluído'
+        activityItems.push({
+          id: `approval-completed-${item.stepId}`,
+          type: 'completed_by_me',
+          title: `Atividade ${decisionLabel.toLowerCase()}`,
+          description: `${item.step_label} — ${decisionLabel}.`,
+          documentId: item.documentId,
+          documentCode: item.code,
+          documentTitle: item.title,
+          projectName: item.project_name,
+          area: item.area,
+          status: decisionLabel,
+          priority: wasCompletedByMe ? 'medium' : 'low',
+          dueAt: null,
+          createdAt: item.created_at,
+          suggestedAction: 'Ver histórico',
+          target: 'document',
+        })
+        continue
+      }
+
       const overdue = item.overdue
       const assignedActor =
         item.assignment_type === 'group'
@@ -356,7 +391,7 @@ export function useOperationalCockpit() {
 
     const sortedItems = sortActivityItems(activityItems)
     const actionableItems = sortedItems.filter((item) =>
-      !['recent_update', 'informational'].includes(item.type)
+      !['recent_update', 'informational', 'completed_by_me'].includes(item.type)
       && !(item.type === 'mention' && item.status === 'Lida'),
     )
     const awaitingDocumentIds = new Set(

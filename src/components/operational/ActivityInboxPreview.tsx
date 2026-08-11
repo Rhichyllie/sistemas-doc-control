@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { AlertTriangle, AtSign, Bell, CalendarClock, CheckSquare2, Info, RotateCcw } from 'lucide-react'
+import { AlertTriangle, AtSign, Bell, CalendarClock, CheckSquare2, Info, RotateCcw, CheckCircle2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -29,6 +29,7 @@ const TYPE_META: Record<OperationalActivityType, { label: string; icon: typeof I
   overdue: { label: 'Atrasado', icon: AlertTriangle },
   recent_update: { label: 'Atualização', icon: Bell },
   informational: { label: 'Informativo', icon: Info },
+  completed_by_me: { label: 'Concluído', icon: CheckCircle2 },
 }
 
 function formatDueDate(value: string | null) {
