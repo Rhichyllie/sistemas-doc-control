@@ -31,7 +31,7 @@ export function OperationalKpiCards({ kpis }: OperationalKpiCardsProps) {
       value: kpis.approvalsPending,
       helper: 'Etapas disponíveis na fila',
       icon: FileWarning,
-      to: '/authenticated/fluxo-de-aprovacao' as const,
+      to: '/authenticated/documentos/tramites' as const,
       attention: kpis.approvalsPending > 0,
     },
     {

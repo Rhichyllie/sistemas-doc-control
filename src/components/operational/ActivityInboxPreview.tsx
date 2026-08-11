@@ -170,7 +170,7 @@ function ActivityRow({ item }: { item: OperationalActivityItem }) {
     }
     return (
       <Link
-        to="/authenticated/fluxo-de-aprovacao"
+        to="/authenticated/documentos/tramites"
         className={cardWrapperClass}
       >
         {content}

@@ -16,8 +16,7 @@ export type OperationalTarget =
   | "/authenticated/configuracoes/calendario"
   | "/authenticated/equipe"
   | "/authenticated/notificacoes"
-  | "/authenticated/indicadores"
-  | "/authenticated/fluxo-de-aprovacao";
+  | "/authenticated/indicadores";
 
 export interface OperationalHealthCard {
   id:
@@ -276,7 +275,7 @@ function risks(metrics: OperationalHomeMetrics): OperationalRisk[] {
       description: "Etapas de aprovação estão vencidas.",
       count: metrics.stalledApprovals,
       severity: "critical" as const,
-      target: "/authenticated/fluxo-de-aprovacao" as const,
+      target: "/authenticated/documentos/tramites" as const,
     },
     {
       id: "coding-attention",
@@ -531,8 +530,8 @@ export function buildOperationalRecommendation(
     return {
       title: "Destrave as aprovações formais vencidas",
       description: `${metrics.stalledApprovals} etapa(s) de aprovação precisam de atenção.`,
-      actionLabel: "Abrir fila de aprovação",
-      target: "/authenticated/fluxo-de-aprovacao",
+      actionLabel: "Abrir Trâmites dos Documentos",
+      target: "/authenticated/documentos/tramites",
       severity: "critical",
     };
   }

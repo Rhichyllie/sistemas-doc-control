@@ -13,8 +13,6 @@ export function toLibraryScopedPath(basePath: string, libraryId: string) {
       `/authenticated/biblioteca/${libraryId}/documentos`,
     "/authenticated/projetos":
       `/authenticated/biblioteca/${libraryId}/projetos`,
-    "/authenticated/fluxo-de-aprovacao":
-      `/authenticated/biblioteca/${libraryId}/fluxo-de-aprovacao`,
     "/authenticated/documentos/tramites":
       `/authenticated/biblioteca/${libraryId}/documentos/tramites`,
     "/authenticated/documentos/central":

@@ -48,13 +48,6 @@ export const navigationSections: readonly NavigationSection[] = [
       { to: "/authenticated/documents", label: "Documentos", icon: FileText, scope: "library" },
       { to: "/authenticated/documentos/tramites", label: "Modelos de tramitação", icon: GitBranch, managerOnly: true, scope: "library" },
       {
-        to: "/authenticated/fluxo-de-aprovacao",
-        label: "Fila de Aprovação",
-        icon: CheckSquare,
-        badge: "approval",
-        scope: "library",
-      },
-      {
         to: "/authenticated/documentos/central",
         label: "Central Documental",
         icon: PanelsTopLeft,

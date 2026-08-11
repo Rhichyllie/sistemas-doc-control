@@ -30,7 +30,6 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { useTheme, themeColors } from "@/contexts/theme-context";
 import { useLocalData } from "@/hooks/use-local-data";
 import { useNotifications } from "@/hooks/useNotifications";
-import { useApprovalQueue } from "@/hooks/useApprovalQueue";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { FloatingMessagesWidget } from "@/components/messages/FloatingMessagesWidget";
 import { Badge } from "@/components/ui/badge";
@@ -55,7 +54,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { exportData, importData } = useLocalData();
   const notificationState = useNotifications();
   const { unreadCount } = notificationState;
-  const { queue } = useApprovalQueue();
   const currentLibraryId = getLibraryIdFromPath(pathname);
   const [rememberedLibraryId, setRememberedLibraryId] = useState<string | null>(
     null,
@@ -460,11 +458,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                           ));
                     const Icon = item.icon;
                     const pendingCount =
-                      item.badge === "approval"
-                        ? queue.length
-                        : item.badge === "activities"
-                          ? unreadCount
-                          : 0;
+                      item.badge === "activities" ? unreadCount : 0;
 
                     if (isDisabled) {
                       return (
