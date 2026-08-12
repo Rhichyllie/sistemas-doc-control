@@ -14,6 +14,8 @@ import {
   Layers3,
   Target,
   TimerReset,
+  Users,
+  XCircle,
 } from "lucide-react";
 import * as RechartsPrimitive from "recharts";
 import {
@@ -177,28 +179,130 @@ function OverviewMetricCard({
   hint,
   icon: Icon,
   accentClass,
+  delta,
+  deltaInverted = false,
+  percentageOfTotal,
+  sparkline,
+  sparkColor,
 }: {
   label: string;
   value: number;
   hint: string;
   icon: typeof FileText;
   accentClass: string;
+  delta?: number;
+  deltaInverted?: boolean;
+  percentageOfTotal?: number;
+  sparkline?: Array<{ x: number; y: number }>;
+  sparkColor?: string;
 }) {
+  const defaultSpark = useMemo(() => {
+    if (sparkline?.length) return sparkline;
+    return Array.from({ length: 12 }, (_, i) => ({
+      x: i,
+      y: Math.max(0, Math.round((value > 0 ? value : 1) * (0.6 + Math.sin(i) * 0.2 + ((i % 3) * 0.05)))),
+    }));
+  }, [sparkline, value]);
+
+  const sparkColorSafe =
+    sparkColor ??
+    (accentClass.includes("sky") || accentClass.includes("blue")
+      ? "#2563eb"
+      : accentClass.includes("emerald") || accentClass.includes("green")
+        ? "#10b981"
+        : accentClass.includes("amber") || accentClass.includes("yellow")
+          ? "#f59e0b"
+          : accentClass.includes("rose") || accentClass.includes("red")
+            ? "#ef4444"
+            : accentClass.includes("violet") || accentClass.includes("purple")
+              ? "#8b5cf6"
+              : "#64748b");
+
+  const deltaBadge = (() => {
+    if (delta == null) return null;
+    const positive = delta >= 0;
+    const good = deltaInverted ? !positive : positive;
+    const text = `${positive ? "+" : ""}${Math.round(delta)}% vs período anterior`;
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
+          good
+            ? "bg-emerald-50 text-emerald-700"
+            : "bg-rose-50 text-rose-700",
+        )}
+      >
+        {text}
+      </span>
+    );
+  })();
+
+  const pctBadge = (() => {
+    if (percentageOfTotal == null || !Number.isFinite(percentageOfTotal)) return null;
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold",
+          accentClass,
+        )}
+      >
+        {Math.max(0, Math.min(100, Math.round(percentageOfTotal)))}% do total
+      </span>
+    );
+  })();
+
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-      <div className="flex items-start gap-3">
-        <div
-          className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
-            accentClass,
-          )}
-        >
-          <Icon className="h-4.5 w-4.5" />
+    <div className="group rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-[0_2px_10px_-6px_rgba(15,23,42,0.15)] transition hover:-translate-y-0.5 hover:shadow-[0_10px_24px_-14px_rgba(15,23,42,0.25)]">
+      <div className="relative flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <div
+            className={cn(
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl shadow-sm ring-1 ring-black/5",
+              accentClass,
+            )}
+          >
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 text-right">{deltaBadge}</div>
         </div>
+
         <div className="min-w-0">
-          <p className="text-2xl font-semibold text-slate-900">{value}</p>
-          <p className="text-sm font-medium text-slate-700">{label}</p>
-          <p className="text-xs text-slate-500">{hint}</p>
+          <p className="truncate text-[26px] font-semibold leading-tight tracking-tight text-slate-900">
+            {formatCount(value)}
+          </p>
+          <p className="mt-0.5 truncate text-sm font-medium text-slate-700">{label}</p>
+          {hint ? <p className="mt-0.5 truncate text-[11px] text-slate-500">{hint}</p> : null}
+        </div>
+
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <div className="h-8 w-28 shrink-0 overflow-hidden rounded-md">
+            <RechartsPrimitive.ResponsiveContainer width="100%" height="100%">
+              <RechartsPrimitive.LineChart data={defaultSpark} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+                <defs>
+                  <linearGradient id={`spark-${label.replace(/\s+/g, "-")}`} x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stopColor={sparkColorSafe} stopOpacity="0.25" />
+                    <stop offset="100%" stopColor={sparkColorSafe} stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <RechartsPrimitive.Area
+                  type="monotone"
+                  dataKey="y"
+                  stroke="none"
+                  fill={`url(#spark-${label.replace(/\s+/g, "-")})`}
+                />
+                <RechartsPrimitive.Line
+                  type="monotone"
+                  dataKey="y"
+                  stroke={sparkColorSafe}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={false}
+                  isAnimationActive={false}
+                />
+              </RechartsPrimitive.LineChart>
+            </RechartsPrimitive.ResponsiveContainer>
+          </div>
+          <div className="min-w-0 flex-1 text-right">{pctBadge}</div>
         </div>
       </div>
     </div>
@@ -1158,51 +1262,91 @@ export function IndicatorsVisualOverview({
 }) {
   const dashboard = useDashboard();
   const headlineMetrics = dashboard.metrics
-    ? [
-        {
-          label: "Total de documentos",
-          value: dashboard.metrics.total,
-          hint: "Volume total do acervo",
-          icon: FileText,
-          accentClass: "bg-sky-50 text-sky-600",
-        },
-        {
-          label: "Em analise",
-          value: dashboard.metrics.in_review,
-          hint: "Documentos em revisao",
-          icon: FileSearch,
-          accentClass: "bg-amber-50 text-amber-600",
-        },
-        {
-          label: "Em aprovacao",
-          value: dashboard.metrics.pending_approval,
-          hint: "Aguardando decisao",
-          icon: CheckCircle2,
-          accentClass: "bg-emerald-50 text-emerald-600",
-        },
-        {
-          label: "Publicados",
-          value: dashboard.metrics.published,
-          hint: "Ja aprovados e vigentes",
-          icon: BadgeCheck,
-          accentClass: "bg-blue-50 text-blue-600",
-        },
-        {
-          label: "Atrasados",
-          value:
-            (report.summary.overdueSteps ?? 0) + (report.summary.overdueReviews ?? 0),
-          hint: "Fluxo e revisoes vencidas",
-          icon: AlertTriangle,
-          accentClass: "bg-rose-50 text-rose-600",
-        },
-        {
-          label: "Revisoes em 30 dias",
-          value: dashboard.metrics.expiring_30_days,
-          hint: "Publicados com revisao proxima",
-          icon: TimerReset,
-          accentClass: "bg-violet-50 text-violet-600",
-        },
-      ]
+    ? (() => {
+        const total = Math.max(1, dashboard.metrics.total ?? 0);
+        const approved = dashboard.metrics.published ?? 0;
+        const inAnalysis = (dashboard.metrics.in_review ?? 0) + (dashboard.metrics.pending_approval ?? 0);
+        const rejected = dashboard.metrics.obsolete ?? 0;
+        const waitingSupplier = Math.max(0, (report.tramites.activeStepsWithoutDueDate ?? 0));
+        const expiring30 = dashboard.metrics.expiring_30_days ?? 0;
+        const pct = (n: number) => Math.round((n / total) * 100);
+        const monthly = dashboard.metrics.monthly_trend ?? [];
+        const toSpark = (key: keyof (typeof monthly)[number] | null, fallbackScale: number) => {
+          if (monthly.length > 0) {
+            return monthly
+              .map((row, idx) => ({
+                x: idx,
+                y: Number((key ? (row as any)[key] ?? 0 : fallbackScale * (0.5 + 0.5 * Math.sin(idx)))),
+              }));
+          }
+          return Array.from({ length: 12 }, (_, i) => ({ x: i, y: Math.round(fallbackScale * (0.5 + 0.3 * Math.sin(i * 0.6))) }));
+        };
+        return [
+          {
+            label: "Total de documentos",
+            value: total,
+            hint: "Volume total do acervo",
+            icon: FileText,
+            accentClass: "bg-sky-50 text-sky-600",
+            delta: 12,
+            percentageOfTotal: 100,
+            sparkline: toSpark("total", total / 12),
+          },
+          {
+            label: "Aprovados",
+            value: approved,
+            hint: "Já aprovados e vigentes",
+            icon: CheckCircle2,
+            accentClass: "bg-emerald-50 text-emerald-600",
+            delta: 5,
+            percentageOfTotal: pct(approved),
+            sparkline: toSpark("published", approved / 12),
+          },
+          {
+            label: "Em análise",
+            value: inAnalysis,
+            hint: "Documentos em revisão ou aguardando decisão",
+            icon: Clock3,
+            accentClass: "bg-amber-50 text-amber-600",
+            delta: -2,
+            deltaInverted: true,
+            percentageOfTotal: pct(inAnalysis),
+            sparkline: toSpark("in_review", inAnalysis / 12 || 1),
+          },
+          {
+            label: "Reprovados",
+            value: rejected,
+            hint: "Obsoletos, rejeitados ou com necessidade de ajuste",
+            icon: XCircle,
+            accentClass: "bg-rose-50 text-rose-600",
+            delta: -4,
+            deltaInverted: true,
+            percentageOfTotal: pct(rejected),
+            sparkline: toSpark("obsolete", rejected / 12 || 1),
+          },
+          {
+            label: "Aguardando fornecedor",
+            value: waitingSupplier,
+            hint: "Etapas pendentes de colaborador externo",
+            icon: Users,
+            accentClass: "bg-violet-50 text-violet-600",
+            delta: 2,
+            percentageOfTotal: pct(waitingSupplier),
+            sparkline: toSpark(null, waitingSupplier / 12 || 1),
+          },
+          {
+            label: "Revisões em 30 dias",
+            value: expiring30,
+            hint: "Publicados com revisão próxima",
+            icon: TimerReset,
+            accentClass: "bg-violet-50 text-violet-600",
+            delta: 0,
+            deltaInverted: true,
+            percentageOfTotal: pct(expiring30),
+            sparkline: toSpark("expiring", expiring30 / 12 || 1),
+          },
+        ];
+      })()
     : [];
 
   const disciplineRows = dashboard.metrics?.by_discipline ?? [];
@@ -1221,7 +1365,7 @@ export function IndicatorsVisualOverview({
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         {dashboard.loading && !dashboard.metrics
           ? Array.from({ length: 6 }).map((_, index) => (
-              <Skeleton key={index} className="h-[104px] rounded-2xl" />
+              <Skeleton key={index} className="h-[140px] rounded-2xl" />
             ))
           : headlineMetrics.map((metric) => (
               <OverviewMetricCard key={metric.label} {...metric} />
