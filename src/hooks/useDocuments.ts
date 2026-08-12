@@ -209,13 +209,7 @@ export function useDocuments(filters: DocumentFilters = {}) {
     setSchemaFallback(false)
 
     try {
-      async function runQuery(
-        includeProject: boolean,
-        opts?: {
-          skipLibraryFilter?: boolean
-          skipOrgFilter?: boolean
-        },
-      ) {
+      async function runQuery(includeProject: boolean) {
         let query = supabase
           .from('documents')
           .select(includeProject ? `
@@ -226,59 +220,28 @@ export function useDocuments(filters: DocumentFilters = {}) {
             *,
             author:profiles!documents_author_id_fkey (full_name)
           `)
+          .eq('org_id', currentProfile.org_id)
           .order('created_at', { ascending: false })
 
-        if (!opts?.skipOrgFilter) {
-          query = query.eq('org_id', currentProfile.org_id)
-        }
-        if (libraryId && !opts?.skipLibraryFilter) {
+        if (libraryId) {
           query = query.or(`library_id.eq.${libraryId},library_id.is.null`)
         }
+
+        if (filters.status) query = query.eq('status', filters.status)
+        if (filters.doc_type) query = query.eq('doc_type', filters.doc_type)
+        if (filters.area) query = query.eq('area', filters.area)
+        if (filters.search) query = query.ilike('title', `%${filters.search}%`)
 
         return query
       }
 
-      async function fetchWithFallbacks() {
-        let includeProject = true
-        let { data, error: queryError } = await runQuery(includeProject)
-        if (queryError && isOptionalProjectError(queryError)) {
-          const fallbackResult = await runQuery(false)
-          data = fallbackResult.data
-          queryError = fallbackResult.error
-          if (!queryError) setSchemaFallback(true)
-          includeProject = false
-        }
-
-        if (queryError) throw queryError
-
-        const docs = (data ?? []) as unknown as Document[]
-        const foundIds = new Set(docs.map((d) => d.id))
-
-        if (libraryId) {
-          const rescueResult = await runQuery(includeProject, { skipLibraryFilter: true })
-          if (!rescueResult.error && rescueResult.data?.length) {
-            const rescued = (rescueResult.data as unknown as Document[]).filter(
-              (d) => !foundIds.has(d.id),
-            )
-            for (const doc of rescued) {
-              doc.library_id = libraryId
-            }
-            docs.push(...rescued)
-            if (rescued.length > 0) setSchemaFallback(true)
-          }
-        }
-
-        docs.sort(
-          (a, b) => (b.created_at ? new Date(b.created_at).getTime() : 0)
-            - (a.created_at ? new Date(a.created_at).getTime() : 0),
-        )
-
-        return { data: docs, error: null }
+      let { data, error: queryError } = await runQuery(true)
+      if (queryError && isOptionalProjectError(queryError)) {
+        const fallbackResult = await runQuery(false)
+        data = fallbackResult.data
+        queryError = fallbackResult.error
+        if (!queryError) setSchemaFallback(true)
       }
-
-      const fetched = await fetchWithFallbacks()
-      const data = fetched.data
-      const queryError = fetched.error
 
       if (queryError) {
         if (isMissingDocumentsSchema(queryError) && currentProfile.org_id) {
@@ -305,19 +268,7 @@ export function useDocuments(filters: DocumentFilters = {}) {
         throw queryError
       }
 
-      const loadedDocuments = ((data ?? []) as unknown as Document[]).filter(
-        (document) => {
-          if (filters.status && document.status !== filters.status) return false
-          if (filters.doc_type && document.doc_type !== filters.doc_type) return false
-          if (filters.area && document.area !== filters.area) return false
-          if (filters.search) {
-            const term = filters.search.toLowerCase()
-            const haystack = `${document.title ?? ''} ${document.code ?? ''}`.toLowerCase()
-            if (!haystack.includes(term)) return false
-          }
-          return true
-        },
-      )
+      const loadedDocuments = (data ?? []) as unknown as Document[]
       const documentIds = loadedDocuments.map((document) => document.id)
       if (documentIds.length) {
         const { data: versionStates, error: versionStateError } = await supabase
