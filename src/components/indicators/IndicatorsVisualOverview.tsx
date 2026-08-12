@@ -263,7 +263,7 @@ function OverviewMetricCard({
           >
             <Icon className="h-5 w-5" />
           </div>
-          <div className="min-w-0 text-right">{deltaBadge}</div>
+          <div className="min-w-0 text-right" />
         </div>
 
         <div className="min-w-0">
