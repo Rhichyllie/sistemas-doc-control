@@ -61,7 +61,7 @@ export function ExecutiveSummaryCard({
       className={`overflow-hidden rounded-2xl border ${tone.shell}`}
     >
       <div className="grid xl:grid-cols-[minmax(520px,1.25fr)_minmax(400px,1fr)]">
-        <div className="flex items-center gap-5 border-b p-5 md:p-7 xl:border-b-0 xl:border-r">
+        <div className="flex items-center gap-6 border-b p-5 md:p-7 xl:border-b-0 xl:border-r xl:pl-10 xl:pr-6">
           <div className="relative h-44 w-44 shrink-0">
             <svg
               viewBox="0 0 120 120"
@@ -102,7 +102,7 @@ export function ExecutiveSummaryCard({
             </div>
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               Governance Score
             </p>
             <h2
