@@ -60,7 +60,7 @@ export function ExecutiveSummaryCard({
       aria-labelledby="executive-summary-title"
       className={`overflow-hidden rounded-2xl border ${tone.shell}`}
     >
-      <div className="grid xl:grid-cols-[380px_minmax(0,1fr)]">
+      <div className="grid xl:grid-cols-[420px_minmax(0,1fr)]">
         <div className="flex items-center gap-6 border-b p-5 md:p-7 xl:border-b-0 xl:border-r xl:pl-10 xl:pr-6">
           <div className="relative h-44 w-44 shrink-0">
             <svg
