@@ -364,9 +364,11 @@ function DocumentsListPage() {
       (projectOptions.projects.length === 1 ? projectOptions.projects[0] : null),
     [libraryId, projectOptions.projects],
   );
-  const operationalCalendar = useOperationalCalendar({
-    enabled: openNewDoc || Boolean(editingDocument),
-  });
+  const operationalCalendarConfig = useMemo(
+    () => ({ enabled: openNewDoc || Boolean(editingDocument) }),
+    [openNewDoc, editingDocument],
+  );
+  const operationalCalendar = useOperationalCalendar(operationalCalendarConfig);
   const selectedProject = projectOptions.projects.find(
     (project) => project.id === form.project_id,
   );
@@ -376,20 +378,36 @@ function DocumentsListPage() {
   const selectedEditProject = projectOptions.projects.find(
     (project) => project.id === editForm.project_id,
   );
-  const coding = useDocumentCreationControls({
-    docType: form.doc_type,
-    area: form.area,
-    discipline: selectedDiscipline?.code || null,
-    projectId: form.project_id || null,
-    projectCode: selectedProject?.code || null,
-    selectedPatternId:
-      codeMode === "selected_pattern" ? selectedCodePatternId : null,
-  });
-  const tramiteSuggestion = useDocumentTramiteSuggestion({
-    docType: form.doc_type,
-    area: form.area,
-    projectId: form.project_id || null,
-  });
+  const creationControlsConfig = useMemo(
+    () => ({
+      docType: form.doc_type,
+      area: form.area,
+      discipline: selectedDiscipline?.code || null,
+      projectId: form.project_id || null,
+      projectCode: selectedProject?.code || null,
+      selectedPatternId:
+        codeMode === "selected_pattern" ? selectedCodePatternId : null,
+    }),
+    [
+      form.doc_type,
+      form.area,
+      selectedDiscipline?.code,
+      form.project_id,
+      selectedProject?.code,
+      codeMode,
+      selectedCodePatternId,
+    ],
+  );
+  const coding = useDocumentCreationControls(creationControlsConfig);
+  const suggestionConfig = useMemo(
+    () => ({
+      docType: form.doc_type,
+      area: form.area,
+      projectId: form.project_id || null,
+    }),
+    [form.doc_type, form.area, form.project_id],
+  );
+  const tramiteSuggestion = useDocumentTramiteSuggestion(suggestionConfig);
 
   const statusOptions = useMemo(() => DOC_STATUS, []);
   const editTypeOptions = useMemo(() => {
