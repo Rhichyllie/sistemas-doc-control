@@ -5,8 +5,11 @@ import {
   AlertTriangle,
   FileCheck2,
   LayoutDashboard,
+  MonitorUp,
+  Printer,
   RefreshCw,
   ShieldCheck,
+  X,
 } from "lucide-react";
 import { EmptyIndicatorsState } from "@/components/indicators/EmptyIndicatorsState";
 import {
@@ -272,8 +275,6 @@ export function OperationalIndicatorsDashboard() {
           report={report}
           mode={viewMode}
           onModeChange={changeViewMode}
-          printOrientation={printOrientation}
-          onPrintOrientationChange={changePrintOrientation}
         />
       )}
 
@@ -285,6 +286,48 @@ export function OperationalIndicatorsDashboard() {
             canViewOrganization={indicators.canViewOrganization}
             dimensions={indicators.dimensions}
           />
+        </div>
+      )}
+
+      {viewMode === "presentation" && (
+        <div
+          data-presentation-exit-fab
+          data-print-hidden
+          className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2"
+        >
+          <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/90 px-3 py-2 shadow-[0_18px_50px_rgba(2,6,23,0.7)] backdrop-blur-md">
+            <Badge className="bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20 border-0">
+              Modo Apresentação
+            </Badge>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-white/10 bg-white/5 text-slate-100 hover:bg-white/10 hover:text-white"
+              onClick={() => window.print()}
+            >
+              <Printer className="mr-1.5 h-4 w-4" />
+              PDF
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="default"
+              onClick={() => {
+                try {
+                  if (document.exitFullscreen && document.fullscreenElement) {
+                    void document.exitFullscreen().catch(() => undefined);
+                  }
+                } catch {
+                  // ignore
+                }
+                changeViewMode("management");
+              }}
+            >
+              <X className="mr-1.5 h-4 w-4" />
+              Sair
+            </Button>
+          </div>
         </div>
       )}
 

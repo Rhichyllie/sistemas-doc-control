@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  BarChart3,
   Check,
   Clipboard,
   Download,
@@ -9,14 +8,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   getExecutiveInsights,
   getGovernanceScore,
@@ -51,14 +42,12 @@ export function IndicatorExportBar({
   report,
   mode,
   onModeChange,
-  printOrientation,
-  onPrintOrientationChange,
 }: {
   report: OperationalIndicatorsReport;
   mode: IndicatorViewMode;
   onModeChange: (mode: IndicatorViewMode) => void;
-  printOrientation: IndicatorPrintOrientation;
-  onPrintOrientationChange: (orientation: IndicatorPrintOrientation) => void;
+  printOrientation?: IndicatorPrintOrientation;
+  onPrintOrientationChange?: (orientation: IndicatorPrintOrientation) => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -124,14 +113,10 @@ export function IndicatorExportBar({
     toast.success("Dados gerenciais exportados em JSON.");
   }
 
-  function enterMeetingMode() {
-    onModeChange("presentation");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
   return (
     <section
       data-print-hidden
+      data-management-toolbar
       aria-label="Modo de visualização e exportação"
       className="flex flex-col gap-3 rounded-xl border bg-card/90 p-3 shadow-sm xl:flex-row xl:items-center xl:justify-between"
     >
@@ -154,9 +139,20 @@ export function IndicatorExportBar({
                 key={item.id}
                 type="button"
                 size="sm"
-                variant="ghost"
+                variant="default"
                 aria-pressed={mode === item.id}
-                onClick={() => onModeChange(item.id)}
+                onClick={() => {
+                  onModeChange(item.id);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                  try {
+                    const el = document.documentElement;
+                    if (el.requestFullscreen && !document.fullscreenElement) {
+                      void el.requestFullscreen().catch(() => undefined);
+                    }
+                  } catch {
+                    // fullscreen é opcional
+                  }
+                }}
               >
                 <Icon className="mr-1.5 h-4 w-4" />
                 {item.label}
@@ -167,35 +163,6 @@ export function IndicatorExportBar({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Separator orientation="vertical" className="hidden h-7 xl:block" />
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Impressão
-          </span>
-          <Select
-            value={printOrientation}
-            onValueChange={(value: IndicatorPrintOrientation) =>
-              onPrintOrientationChange(value)
-            }
-          >
-            <SelectTrigger className="h-9 w-[140px]" aria-label="Orientação da impressão">
-              <SelectValue placeholder="Orientação" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="landscape">Paisagem</SelectItem>
-              <SelectItem value="portrait">Retrato</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={enterMeetingMode}
-        >
-          <BarChart3 className="mr-1.5 h-4 w-4" />
-          Modo reunião
-        </Button>
         <Button
           type="button"
           size="sm"

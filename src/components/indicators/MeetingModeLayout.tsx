@@ -25,14 +25,16 @@ export function MeetingModeLayout({
   printOrientation: IndicatorPrintOrientation;
   children: ReactNode;
 }) {
+  const isPresentation = mode === "presentation";
   return (
     <div
       data-indicator-cockpit
+      data-presentation-root
       data-view-mode={mode}
       data-print-orientation={printOrientation}
       className={
-        mode === "presentation"
-          ? "mx-auto max-w-[1800px] space-y-6"
+        isPresentation
+          ? "data-presentation:mx-auto data-presentation:max-w-[1920px] data-presentation:px-4 data-presentation:py-8 space-y-6 data-presentation:min-h-screen"
           : "space-y-5 md:space-y-6"
       }
     >
