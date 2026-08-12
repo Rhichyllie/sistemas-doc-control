@@ -138,18 +138,17 @@ body {
 
 [data-indicator-cockpit][data-view-mode="presentation"] {
   min-height: 100vh;
-  padding: 40px 28px 56px 28px;
+  padding: 32px 24px 56px 24px;
   margin: 0 !important;
-  max-width: 100% !important;
+  max-width: 1600px !important;
   width: 100% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
 }
 
 body:has([data-indicator-cockpit][data-view-mode="presentation"]) {
-  background:
-    radial-gradient(circle at 20% 0%, rgba(59, 130, 246, 0.12), transparent 55%),
-    radial-gradient(circle at 85% 10%, rgba(16, 185, 129, 0.10), transparent 50%),
-    linear-gradient(135deg, #020617 0%, #0b1220 50%, #071a33 100%) !important;
-  color: #e2e8f0 !important;
+  background: var(--color-background) !important;
+  color: var(--color-foreground) !important;
   overflow-x: hidden;
 }
 
@@ -171,31 +170,7 @@ body:has([data-indicator-cockpit][data-view-mode="presentation"]) [data-app-cont
   max-width: 100% !important;
   margin: 0 !important;
   padding: 0 !important;
-  background: transparent !important;
-}
-
-[data-indicator-cockpit][data-view-mode="presentation"] .card,
-[data-indicator-cockpit][data-view-mode="presentation"] [class*="bg-card"],
-[data-indicator-cockpit][data-view-mode="presentation"] [class*="bg-background"],
-[data-indicator-cockpit][data-view-mode="presentation"] section > [class*="bg-"]:not([class*="bg-gradient"]) {
-  background: rgba(15, 23, 42, 0.72) !important;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-color: rgba(148, 163, 184, 0.16) !important;
-  box-shadow: 0 18px 50px rgba(2, 6, 23, 0.55) !important;
-  color: #e2e8f0 !important;
-}
-
-[data-indicator-cockpit][data-view-mode="presentation"] h1,
-[data-indicator-cockpit][data-view-mode="presentation"] h2,
-[data-indicator-cockpit][data-view-mode="presentation"] h3,
-[data-indicator-cockpit][data-view-mode="presentation"] h4 {
-  color: #f8fafc !important;
-}
-
-[data-indicator-cockpit][data-view-mode="presentation"] .text-muted-foreground,
-[data-indicator-cockpit][data-view-mode="presentation"] [class*="text-muted"] {
-  color: #94a3b8 !important;
+  background: var(--color-background) !important;
 }
 
 [data-indicator-cockpit][data-view-mode="presentation"] [data-presentation-exit-fab] {
@@ -203,7 +178,6 @@ body:has([data-indicator-cockpit][data-view-mode="presentation"]) [data-app-cont
   bottom: 24px;
   right: 24px;
   z-index: 9999;
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.7);
 }
 
 @media print {
