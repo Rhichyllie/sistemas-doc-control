@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import {
   buildSequentialTramiteCode,
   extractHighestSequenceFromCodes,
+  generateTramiteCode,
   type DocumentTramiteGraph,
   type DocumentTramiteTemplate,
   type DocumentTramiteTemplateScope,
@@ -40,39 +41,67 @@ export interface DocumentTramiteTemplateInput {
   graph: DocumentTramiteGraph;
 }
 
+const LOCAL_DOCUMENT_TRAMITE_STORAGE_PREFIX =
+  "tramita.document_tramites.local.";
+
+interface LocalDocumentTramiteStore {
+  templates: unknown[];
+  versions: unknown[];
+}
+
+function getLocalDocumentTramiteStorageKey(orgId: string) {
+  return `${LOCAL_DOCUMENT_TRAMITE_STORAGE_PREFIX}${orgId}`;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-// IMPORTANTE: essa checagem usa SOMENTE o error.code do Postgrest/Postgres.
-// Antes ela também casava por substring da MENSAGEM (ex: "document_tramite_"),
-// o que fazia qualquer erro de RLS ou constraint (que sempre cita o nome da
-// tabela na mensagem) ser confundido com "schema não instalado". Isso disparava
-// o modo local por engano e fazia templates parecerem salvos sem nunca chegar
-// ao banco. Removido o modo local inteiramente: agora um erro real de schema
-// apenas informa o usuário, sem fallback silencioso.
+function createLocalIdentifier(prefix: string) {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function isMissingSchema(error: unknown) {
   if (!isRecord(error)) return false;
-  const code = typeof error.code === "string" ? error.code.toLowerCase() : "";
-  return code === "pgrst205" || code === "42p01";
+  const text = [error.code, error.message, error.details, error.hint]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+  return (
+    text.includes("pgrst205") ||
+    text.includes("42p01") ||
+    text.includes("document_tramite_") ||
+    text.includes("schema cache")
+  );
 }
 
 function isMissingRpc(error: unknown) {
   if (!isRecord(error)) return false;
-  const code = typeof error.code === "string" ? error.code.toLowerCase() : "";
-  return code === "pgrst202";
+  const text = [error.code, error.message, error.details, error.hint]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+  return (
+    text.includes("pgrst202") ||
+    text.includes("could not find the function") ||
+    (text.includes("function") && text.includes("does not exist"))
+  );
 }
 
 function isDeleteRestrictedByExecution(error: unknown) {
   if (!isRecord(error)) return false;
-  const code = typeof error.code === "string" ? error.code.toLowerCase() : "";
-  const message =
-    typeof error.message === "string" ? error.message.toLowerCase() : "";
-  // 23503 = foreign_key_violation no Postgres.
+  const text = [error.code, error.message, error.details, error.hint]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
   return (
-    code === "23503" &&
-    (message.includes("document_tramite_instances") ||
-      message.includes("document_tramite_instance_steps"))
+    text.includes("foreign key") &&
+    (text.includes("document_tramite_instances") ||
+      text.includes("document_tramite_instance_steps") ||
+      text.includes("on delete restrict"))
   );
 }
 
@@ -168,6 +197,94 @@ function normalizeTemplate(
   };
 }
 
+function loadLocalTramiteStore(orgId: string) {
+  if (typeof window === "undefined") {
+    return {
+      templates: [] as DocumentTramiteTemplate[],
+      versions: [] as DocumentTramiteTemplateVersion[],
+    };
+  }
+  try {
+    const raw = window.localStorage.getItem(
+      getLocalDocumentTramiteStorageKey(orgId),
+    );
+    if (!raw) {
+      return {
+        templates: [] as DocumentTramiteTemplate[],
+        versions: [] as DocumentTramiteTemplateVersion[],
+      };
+    }
+    const parsed = JSON.parse(raw) as Partial<LocalDocumentTramiteStore>;
+    const versions = Array.isArray(parsed.versions)
+      ? parsed.versions
+          .filter(isRecord)
+          .map(normalizeVersion)
+          .filter((value): value is DocumentTramiteTemplateVersion =>
+            Boolean(value),
+          )
+      : [];
+    const templates = Array.isArray(parsed.templates)
+      ? parsed.templates
+          .filter(isRecord)
+          .map((value) => normalizeTemplate(value, versions))
+          .filter((value): value is DocumentTramiteTemplate => Boolean(value))
+      : [];
+    return { templates, versions };
+  } catch {
+    return {
+      templates: [] as DocumentTramiteTemplate[],
+      versions: [] as DocumentTramiteTemplateVersion[],
+    };
+  }
+}
+
+function saveLocalTramiteStore(
+  orgId: string,
+  templates: DocumentTramiteTemplate[],
+  versions: DocumentTramiteTemplateVersion[],
+) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    getLocalDocumentTramiteStorageKey(orgId),
+    JSON.stringify({ templates, versions }),
+  );
+}
+
+function clearLocalTramiteStore(orgId: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(getLocalDocumentTramiteStorageKey(orgId));
+}
+
+function hasLocalIdentifiers(value: string): boolean {
+  return (
+    value.startsWith("tramite-")
+    || value.startsWith("tramite-version-")
+    || value.startsWith("tramite-node-")
+    || value.startsWith("tramite-edge-")
+  );
+}
+
+function newCleanUuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const randomBytes = (size: number): string => {
+    let out = "";
+    const chars = "abcdef0123456789";
+    for (let i = 0; i < size; i += 1) {
+      out += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return out;
+  };
+  return [
+    randomBytes(8),
+    randomBytes(4),
+    `4${randomBytes(3)}`,
+    `${["8", "9", "a", "b"][Math.floor(Math.random() * 4)]}${randomBytes(3)}`,
+    randomBytes(12),
+  ].join("-");
+}
+
 export function useDocumentTramiteTemplates() {
   const { profile } = useAuthContext();
   const { libraryId } = useLibraryScope();
@@ -181,6 +298,7 @@ export function useDocumentTramiteTemplates() {
   const [schemaStatus, setSchemaStatus] =
     useState<DocumentTramiteSchemaStatus>("loading");
   const canManage = profile?.role === "admin" || profile?.role === "manager";
+  const [isLocalMode, setIsLocalMode] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!profile?.org_id) {
@@ -200,19 +318,41 @@ export function useDocumentTramiteTemplates() {
       .match(libraryId ? { library_id: libraryId } : {})
       .order("updated_at", { ascending: false });
     if (templatesResult.error) {
-      setTemplates([]);
-      setVersions([]);
-      setSchemaStatus(
-        isMissingSchema(templatesResult.error) ? "not_installed" : "restricted",
-      );
-      setError(
-        isMissingSchema(templatesResult.error)
-          ? "O schema P-12 (document_tramite_templates) não está instalado neste banco. Aplique a migration antes de continuar."
-          : `Não foi possível carregar os trâmites (${getErrorMessage(
-              templatesResult.error,
-              "Verifique RLS, papel e organização.",
-            )}).`,
-      );
+      if (isMissingSchema(templatesResult.error)) {
+        const localStore = loadLocalTramiteStore(profile.org_id);
+        setTemplates(localStore.templates);
+        setVersions(localStore.versions);
+        setIsLocalMode(true);
+        setSchemaStatus(localStore.templates.length ? "ready" : "empty");
+        setError(
+          localStore.templates.length
+            ? "Ciclo P-12 não instalado. Os trâmites estão sendo mantidos localmente neste navegador."
+            : "Ciclo P-12 não instalado. Você pode modelar trâmites localmente neste navegador.",
+        );
+      } else {
+        const realMessage = getErrorMessage(
+          templatesResult.error,
+          "Verifique RLS, papel e organização.",
+        );
+        const localFallback = loadLocalTramiteStore(profile.org_id);
+        // Usa store local APENAS se houver dados e o erro for de permissão.
+        if (localFallback.templates.length) {
+          setTemplates(localFallback.templates);
+          setVersions(localFallback.versions);
+          setIsLocalMode(true);
+          setSchemaStatus(
+            localFallback.templates.length ? "ready" : "empty",
+          );
+        } else {
+          setTemplates([]);
+          setVersions([]);
+          setIsLocalMode(false);
+          setSchemaStatus("restricted");
+        }
+        setError(
+          `Não foi possível carregar os trâmites (${realMessage}).`,
+        );
+      }
       setIsLoading(false);
       return;
     }
@@ -223,19 +363,29 @@ export function useDocumentTramiteTemplates() {
       .eq("org_id", profile.org_id)
       .order("version_number", { ascending: false });
     if (versionsResult.error) {
-      setTemplates([]);
-      setVersions([]);
-      setSchemaStatus(
-        isMissingSchema(versionsResult.error) ? "partial" : "restricted",
-      );
-      setError(
-        isMissingSchema(versionsResult.error)
-          ? "O schema P-12 está parcialmente instalado (faltam as versões de template). Aplique a migration completa."
-          : `Não foi possível carregar versões. ${getErrorMessage(
-              versionsResult.error,
-              "Verifique RLS e o schema P-12.",
-            )}`,
-      );
+      if (isMissingSchema(versionsResult.error)) {
+        const localStore = loadLocalTramiteStore(profile.org_id);
+        setTemplates(localStore.templates);
+        setVersions(localStore.versions);
+        setIsLocalMode(true);
+        setSchemaStatus(localStore.templates.length ? "ready" : "empty");
+        setError(
+          localStore.templates.length
+            ? "Schema P-12 parcial. Os trâmites estão sendo mantidos localmente neste navegador."
+            : "Schema P-12 parcial. Você pode modelar trâmites localmente neste navegador.",
+        );
+      } else {
+        setTemplates([]);
+        setVersions([]);
+        setIsLocalMode(false);
+        setSchemaStatus("restricted");
+        setError(
+          `Não foi possível carregar versões. ${getErrorMessage(
+            versionsResult.error,
+            "Verifique RLS e o schema P-12.",
+          )}`,
+        );
+      }
       setIsLoading(false);
       return;
     }
@@ -252,9 +402,37 @@ export function useDocumentTramiteTemplates() {
       .filter((value): value is DocumentTramiteTemplate => Boolean(value));
     setTemplates(normalizedTemplates);
     setVersions(normalizedVersions);
+
+    // Se já existem templates salvos localmente com IDs não-UUID (tramite-*),
+    // faz a migração automática: insere tudo no banco e apaga do localStorage.
+    const localStore = loadLocalTramiteStore(profile.org_id);
+    const needsMigration =
+      localStore.templates.length > 0
+      && localStore.templates.some((t) => hasLocalIdentifiers(t.id));
+    if (needsMigration && canManage) {
+      setError("Migrando trâmites locais para o banco…");
+      const migratedOk = await migrateLocalStoreToRemote(
+        profile.org_id,
+        profile.id,
+        libraryId ?? null,
+        localStore,
+      );
+      if (migratedOk) {
+        clearLocalTramiteStore(profile.org_id);
+        setError(null);
+        // Recarrega do banco com os registros recém-inseridos.
+        await refresh();
+        return;
+      }
+      setError(
+        "Não foi possível migrar os trâmites locais. Eles continuam disponíveis neste navegador.",
+      );
+    }
+
+    setIsLocalMode(false);
     setSchemaStatus(normalizedTemplates.length ? "ready" : "empty");
     setIsLoading(false);
-  }, [libraryId, profile?.org_id]);
+  }, [libraryId, profile?.id, profile?.org_id, canManage]);
 
   useEffect(() => {
     void refresh();
@@ -265,32 +443,235 @@ export function useDocumentTramiteTemplates() {
       orgId: string,
       fallbackSuffix?: string | null,
     ): Promise<string> => {
-      const knownCodes = templates
-        .map((template) => template.code)
-        .filter((code): code is string => typeof code === "string" && code.length > 0);
+      const knownLocal = [
+        ...templates.map((template) => template.code),
+        ...(
+          loadLocalTramiteStore(orgId).templates as DocumentTramiteTemplate[]
+        ).map((template) => template.code),
+      ].filter((code): code is string => typeof code === "string" && code.length > 0);
+      const highestLocal = extractHighestSequenceFromCodes(knownLocal);
       const query = supabase
         .from("document_tramite_templates")
         .select("code", { count: "exact" })
         .eq("org_id", orgId)
         .limit(1000)
         .order("created_at", { ascending: false });
-      const remoteCodes = await query;
-      if (remoteCodes.error) {
-        throw new Error(
-          getErrorMessage(
-            remoteCodes.error,
-            "Não foi possível gerar o código do trâmite.",
-          ),
-        );
+      try {
+        const remoteCodes = await query;
+        if (!remoteCodes.error && Array.isArray(remoteCodes.data)) {
+          const all = new Set(knownLocal);
+          for (const row of remoteCodes.data) {
+            if (row && typeof row.code === "string") all.add(row.code);
+          }
+          const highestAll = Math.max(
+            highestLocal,
+            extractHighestSequenceFromCodes(Array.from(all)),
+          );
+          return buildSequentialTramiteCode(highestAll + 1, fallbackSuffix);
+        }
+      } catch {
+        // ignore remote failure, use local
       }
-      const all = new Set(knownCodes);
-      for (const row of remoteCodes.data ?? []) {
-        if (row && typeof row.code === "string") all.add(row.code);
-      }
-      const highest = extractHighestSequenceFromCodes(Array.from(all));
-      return buildSequentialTramiteCode(highest + 1, fallbackSuffix);
+      return buildSequentialTramiteCode(highestLocal + 1, fallbackSuffix);
     },
     [templates],
+  );
+
+  const migrateLocalStoreToRemote = useCallback(
+    async (
+      orgId: string,
+      actorId: string,
+      defaultLibraryId: string | null,
+      localStore: {
+        templates: DocumentTramiteTemplate[];
+        versions: DocumentTramiteTemplateVersion[];
+      },
+    ): Promise<boolean> => {
+      try {
+        for (const localTemplate of localStore.templates) {
+          const hasExplicitSequential = /^TRM[-_]\d{4,}/i.test(
+            localTemplate.code ?? "",
+          );
+          const code =
+            localTemplate.code && hasExplicitSequential
+              ? localTemplate.code
+              : await getNextTramiteCode(orgId, localTemplate.code);
+          const insertTemplate = {
+            org_id: orgId,
+            library_id: localTemplate.library_id ?? defaultLibraryId,
+            code,
+            name: localTemplate.name.trim(),
+            description: localTemplate.description?.trim() || null,
+            status: "draft" as const,
+            template_scope: localTemplate.template_scope ?? "organization",
+            doc_type: localTemplate.doc_type ?? null,
+            area: localTemplate.area ?? null,
+            project_id: localTemplate.project_id ?? null,
+            is_default: localTemplate.is_default ?? false,
+            is_active: localTemplate.is_active,
+            created_by: actorId,
+            updated_by: actorId,
+            metadata: {
+              ...(localTemplate.metadata ?? {}),
+              migrated_from_local_id: localTemplate.id,
+            },
+          };
+          const templateRes = await supabase
+            .from("document_tramite_templates")
+            .insert(insertTemplate)
+            .select("id")
+            .single();
+          if (templateRes.error || !templateRes.data) {
+            const isDuplicate =
+              /unique|duplic/i.test(
+                [
+                  templateRes.error?.code,
+                  templateRes.error?.message,
+                  templateRes.error?.details,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              );
+            if (!isDuplicate) return false;
+            continue;
+          }
+          const newTemplateId = String(templateRes.data.id);
+          const localVersions = localStore.versions
+            .filter((v) => v.template_id === localTemplate.id)
+            .sort((a, b) => a.version_number - b.version_number);
+
+          const localVersionIdToNew: Record<string, string> = {};
+          for (const localVersion of localVersions) {
+            const versionRes = await supabase
+              .from("document_tramite_template_versions")
+              .insert({
+                org_id: orgId,
+                template_id: newTemplateId,
+                version_number: localVersion.version_number || 1,
+                status: normalizeStatus(localVersion.status),
+                graph: serializeTramiteGraph(localVersion.graph),
+                validation: localVersion.validation ?? {},
+                nodes_count: localVersion.nodes_count || 0,
+                edges_count: localVersion.edges_count || 0,
+                created_by: actorId,
+                published_by:
+                  localVersion.status === "published" ? actorId : null,
+                published_at: localVersion.published_at ?? null,
+                metadata: {
+                  ...(localVersion.metadata ?? {}),
+                  migrated_from_local_id: localVersion.id,
+                },
+              })
+              .select("id")
+              .single();
+            if (versionRes.error || !versionRes.data) return false;
+            localVersionIdToNew[localVersion.id] = String(
+              versionRes.data.id,
+            );
+          }
+
+          const localCurrentId = localTemplate.current_version
+            ? localVersionIdToNew[localTemplate.current_version.id]
+            : undefined;
+          const fallbackVersionId =
+            localCurrentId
+            ?? (localVersions.length
+              ? localVersionIdToNew[
+                localVersions[localVersions.length - 1].id
+              ]
+              : undefined);
+          const anyPublished = localVersions.some(
+            (v) => v.status === "published",
+          );
+          const updatePayload: Record<string, unknown> = {
+            updated_by: actorId,
+            status: anyPublished ? "published" : "draft",
+            published_by: anyPublished ? actorId : null,
+            published_at: anyPublished
+              ? localTemplate.published_at ?? new Date().toISOString()
+              : null,
+          };
+          if (fallbackVersionId) {
+            updatePayload.current_version_id = fallbackVersionId;
+          }
+          await supabase
+            .from("document_tramite_templates")
+            .update(updatePayload)
+            .eq("id", newTemplateId);
+
+          if (fallbackVersionId) {
+            await supabase.from("document_tramite_events").insert({
+              org_id: orgId,
+              template_id: newTemplateId,
+              version_id: fallbackVersionId,
+              event_type: "created",
+              actor_id: actorId,
+              metadata: { migrated_from_local: true },
+            });
+          }
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [],
+  );
+
+  const ensureRemoteTemplateId = useCallback(
+    async (templateId: string): Promise<string | null> => {
+      if (!profile?.id || !profile.org_id) return null;
+      if (!hasLocalIdentifiers(templateId)) {
+        const checkRes = await supabase
+          .from("document_tramite_templates")
+          .select("id", { head: true, count: "exact" })
+          .eq("id", templateId)
+          .eq("org_id", profile.org_id);
+        if ((checkRes.count ?? 0) > 0) return templateId;
+      }
+      const localTemplates = templates.filter(
+        (t) => t.id === templateId || hasLocalIdentifiers(templateId),
+      );
+      const localVersions = versions.filter((v) => v.template_id === templateId);
+      if (!localTemplates.length) {
+        setError("Modelo de trâmite não encontrado para migração.");
+        return null;
+      }
+      const singleStore = {
+        templates: localTemplates,
+        versions: localVersions,
+      };
+      const ok = await migrateLocalStoreToRemote(
+        profile.org_id,
+        profile.id,
+        libraryId ?? null,
+        singleStore,
+      );
+      if (!ok) {
+        setError("Não foi possível salvar o modelo no banco do Supabase.");
+        return null;
+      }
+      const found = await supabase
+        .from("document_tramite_templates")
+        .select("id")
+        .eq("org_id", profile.org_id)
+        .eq("code", localTemplates[0].code)
+        .maybeSingle();
+      if (found.data?.id) {
+        await refresh();
+        return String(found.data.id);
+      }
+      return null;
+    },
+    [
+      libraryId,
+      migrateLocalStoreToRemote,
+      profile?.id,
+      profile?.org_id,
+      refresh,
+      templates,
+      versions,
+    ],
   );
 
   const createTemplate = useCallback(
@@ -303,23 +684,87 @@ export function useDocumentTramiteTemplates() {
         setError("Selecione uma biblioteca antes de criar trâmites.");
         return null;
       }
-      setIsSaving(true);
-      setError(null);
-
-      let code: string;
-      try {
+      if (isLocalMode) {
+        setIsSaving(true);
+        setError(null);
+        const now = new Date().toISOString();
         const explicitSequential = /^TRM[-_]\d{4,}/i.test(input.code ?? "");
         const suffixCandidate = explicitSequential ? undefined : input.code;
-        code =
+        const code =
           input.code && explicitSequential
             ? input.code
-            : await getNextTramiteCode(profile.org_id, suffixCandidate ?? null);
-      } catch (codeError) {
-        setError(getErrorMessage(codeError, "Não foi possível gerar o código do trâmite."));
+            : await getNextTramiteCode(
+                profile.org_id,
+                suffixCandidate ?? null,
+              );
+        const validation = validateTramiteGraph(input.graph);
+        const templateId = createLocalIdentifier("tramite");
+        const versionId = createLocalIdentifier("tramite-version");
+        const nextVersion: DocumentTramiteTemplateVersion = {
+          id: versionId,
+          org_id: profile.org_id,
+          template_id: templateId,
+          version_number: 1,
+          status: "draft",
+          graph: structuredClone(input.graph),
+          validation: { ...validation },
+          nodes_count: input.graph.nodes.length,
+          edges_count: input.graph.edges.length,
+          created_by: profile.id,
+          published_by: null,
+          published_at: null,
+          metadata: { local_mode: true },
+          created_at: now,
+        };
+        const nextTemplate: DocumentTramiteTemplate = {
+          id: templateId,
+          org_id: profile.org_id,
+          library_id: libraryId,
+          code,
+          name: input.name.trim(),
+          description: input.description?.trim() || null,
+          status: "draft",
+          template_scope: input.template_scope ?? "organization",
+          doc_type: input.doc_type || null,
+          area: input.area || null,
+          project_id: input.project_id || null,
+          is_default: input.is_default ?? false,
+          is_active: true,
+          current_version_id: versionId,
+          created_by: profile.id,
+          updated_by: profile.id,
+          published_by: null,
+          published_at: null,
+          metadata: { ...(input.metadata ?? {}), local_mode: true },
+          created_at: now,
+          updated_at: now,
+          current_version: nextVersion,
+          published_version: null,
+          working_version: nextVersion,
+        };
+        const nextTemplates: DocumentTramiteTemplate[] = [
+          nextTemplate,
+          ...templates,
+        ];
+        const nextVersions: DocumentTramiteTemplateVersion[] = [
+          nextVersion,
+          ...versions,
+        ];
+        saveLocalTramiteStore(profile.org_id, nextTemplates, nextVersions);
+        setTemplates(nextTemplates);
+        setVersions(nextVersions);
+        setSchemaStatus("ready");
         setIsSaving(false);
-        return null;
+        return templateId;
       }
-
+      setIsSaving(true);
+      setError(null);
+      const explicitSequential = /^TRM[-_]\d{4,}/i.test(input.code ?? "");
+      const suffixCandidate = explicitSequential ? undefined : input.code;
+      const code =
+        input.code && explicitSequential
+          ? input.code
+          : await getNextTramiteCode(profile.org_id, suffixCandidate ?? null);
       const validation = validateTramiteGraph(input.graph);
       const templateResult = await supabase
         .from("document_tramite_templates")
@@ -342,17 +787,12 @@ export function useDocumentTramiteTemplates() {
         })
         .select("*")
         .single();
-
-      // Falha explícita: se o insert não retornar linha, o template NÃO foi
-      // criado. Nunca tratamos isso como sucesso nem geramos um id local.
       if (templateResult.error || !templateResult.data) {
         setError(
-          isMissingSchema(templateResult.error)
-            ? "O schema P-12 não está instalado neste banco. O modelo não foi salvo."
-            : getErrorMessage(
-                templateResult.error,
-                "Não foi possível criar o modelo de trâmite.",
-              ),
+          getErrorMessage(
+            templateResult.error,
+            "Não foi possível criar o modelo de trâmite.",
+          ),
         );
         setIsSaving(false);
         return null;
@@ -399,7 +839,7 @@ export function useDocumentTramiteTemplates() {
       await refresh();
       return templateId;
     },
-    [canManage, getNextTramiteCode, libraryId, profile?.id, profile?.org_id, refresh],
+    [canManage, isLocalMode, libraryId, profile?.id, profile?.org_id, refresh, templates, versions],
   );
 
   const updateTemplate = useCallback(
@@ -413,11 +853,34 @@ export function useDocumentTramiteTemplates() {
       >,
     ) => {
       if (!profile?.id || !canManage) return false;
+      if (isLocalMode && profile.org_id) {
+        setIsSaving(true);
+        setError(null);
+        const nextTemplates: DocumentTramiteTemplate[] = templates.map((template) =>
+          template.id === templateId
+            ? {
+                ...template,
+                ...updates,
+                updated_by: profile.id,
+                updated_at: new Date().toISOString(),
+              }
+            : template,
+        );
+        saveLocalTramiteStore(profile.org_id, nextTemplates, versions);
+        setTemplates(nextTemplates);
+        setIsSaving(false);
+        return true;
+      }
       setIsSaving(true);
+      const remoteId = await ensureRemoteTemplateId(templateId);
+      if (!remoteId) {
+        setIsSaving(false);
+        return false;
+      }
       const result = await supabase
         .from("document_tramite_templates")
         .update({ ...updates, updated_by: profile.id })
-        .eq("id", templateId);
+        .eq("id", remoteId);
       setIsSaving(false);
       if (result.error) {
         setError(getErrorMessage(result.error, "Não foi possível atualizar."));
@@ -426,11 +889,63 @@ export function useDocumentTramiteTemplates() {
       await refresh();
       return true;
     },
-    [canManage, profile?.id, refresh],
+    [canManage, ensureRemoteTemplateId, profile?.id, refresh],
   );
 
   const ensureDraftVersion = useCallback(
     async (templateId: string) => {
+      if (isLocalMode && profile?.id && profile.org_id) {
+        const existing = versions
+          .filter(
+            (version) =>
+              version.template_id === templateId && version.status === "draft",
+          )
+          .sort((left, right) => right.version_number - left.version_number)[0];
+        if (existing) return existing;
+        const source = versions
+          .filter((version) => version.template_id === templateId)
+          .sort((left, right) => right.version_number - left.version_number)[0];
+        if (!source) return null;
+        const nextVersion: DocumentTramiteTemplateVersion = {
+          ...source,
+          id: createLocalIdentifier("tramite-version"),
+          version_number: source.version_number + 1,
+          status: "draft",
+          graph: structuredClone(source.graph),
+          validation: {},
+          nodes_count: source.graph.nodes.length,
+          edges_count: source.graph.edges.length,
+          created_by: profile.id,
+          published_by: null,
+          published_at: null,
+          metadata: {
+            ...(source.metadata ?? {}),
+            created_from_version_id: source.id,
+            local_mode: true,
+          },
+          created_at: new Date().toISOString(),
+        };
+        const nextVersions: DocumentTramiteTemplateVersion[] = [
+          nextVersion,
+          ...versions,
+        ];
+        const nextTemplates: DocumentTramiteTemplate[] = templates.map((template) =>
+          template.id === templateId
+            ? {
+                ...template,
+                current_version_id: nextVersion.id,
+                current_version: nextVersion,
+                working_version: nextVersion,
+                updated_by: profile.id,
+                updated_at: nextVersion.created_at,
+              }
+            : template,
+        );
+        saveLocalTramiteStore(profile.org_id, nextTemplates, nextVersions);
+        setVersions(nextVersions);
+        setTemplates(nextTemplates);
+        return nextVersion;
+      }
       const existing = versions
         .filter(
           (version) =>
@@ -442,11 +957,13 @@ export function useDocumentTramiteTemplates() {
         .filter((version) => version.template_id === templateId)
         .sort((left, right) => right.version_number - left.version_number)[0];
       if (!source || !profile?.id || !profile.org_id) return null;
+      const remoteId = await ensureRemoteTemplateId(templateId);
+      if (!remoteId) return null;
       const result = await supabase
         .from("document_tramite_template_versions")
         .insert({
           org_id: profile.org_id,
-          template_id: templateId,
+          template_id: remoteId,
           version_number: source.version_number + 1,
           status: "draft",
           graph: serializeTramiteGraph(source.graph),
@@ -471,15 +988,63 @@ export function useDocumentTramiteTemplates() {
       await refresh();
       return normalized;
     },
-    [profile?.id, profile?.org_id, refresh, versions],
+    [ensureRemoteTemplateId, profile?.id, profile?.org_id, refresh, versions],
   );
 
   const saveGraph = useCallback(
     async (templateId: string, graph: DocumentTramiteGraph) => {
       if (!profile?.id || !profile.org_id || !canManage) return false;
+      if (isLocalMode) {
+        setIsSaving(true);
+        setError(null);
+        const baseVersion = await ensureDraftVersion(templateId);
+        if (!baseVersion) {
+          setIsSaving(false);
+          return false;
+        }
+        const validation = validateTramiteGraph(graph);
+        const updatedVersion: DocumentTramiteTemplateVersion = {
+          ...baseVersion,
+          graph: structuredClone(graph),
+          validation: { ...validation },
+          nodes_count: graph.nodes.length,
+          edges_count: graph.edges.length,
+        };
+        const baseVersions = versions.some(
+          (version) => version.id === updatedVersion.id,
+        )
+          ? versions
+          : [baseVersion, ...versions];
+        const nextVersions: DocumentTramiteTemplateVersion[] = baseVersions.map(
+          (version) => (version.id === updatedVersion.id ? updatedVersion : version),
+        );
+        const nextTemplates: DocumentTramiteTemplate[] = templates.map((template) =>
+          template.id === templateId
+            ? {
+                ...template,
+                current_version_id: updatedVersion.id,
+                current_version: updatedVersion,
+                working_version:
+                  updatedVersion.status === "draft" ? updatedVersion : null,
+                updated_by: profile.id,
+                updated_at: new Date().toISOString(),
+              }
+            : template,
+        );
+        saveLocalTramiteStore(profile.org_id, nextTemplates, nextVersions);
+        setVersions(nextVersions);
+        setTemplates(nextTemplates);
+        setIsSaving(false);
+        return true;
+      }
       setIsSaving(true);
       setError(null);
-      const version = await ensureDraftVersion(templateId);
+      const remoteId = await ensureRemoteTemplateId(templateId);
+      if (!remoteId) {
+        setIsSaving(false);
+        return false;
+      }
+      const version = await ensureDraftVersion(remoteId);
       if (!version) {
         setIsSaving(false);
         return false;
@@ -558,49 +1123,21 @@ export function useDocumentTramiteTemplates() {
           .delete()
           .eq("version_id", version.id),
       ]);
-      if (deleteNodes.error || deleteEdges.error) {
-        setError(
-          getErrorMessage(
-            deleteNodes.error ?? deleteEdges.error,
-            "Não foi possível limpar os nós/arestas anteriores do grafo.",
-          ),
-        );
-        setIsSaving(false);
-        return false;
+      if (!deleteNodes.error && nodeRows.length) {
+        await supabase.from("document_tramite_nodes").insert(nodeRows);
       }
-      if (nodeRows.length) {
-        const insertNodes = await supabase
-          .from("document_tramite_nodes")
-          .insert(nodeRows);
-        if (insertNodes.error) {
-          setError(
-            getErrorMessage(insertNodes.error, "Não foi possível salvar os nós do grafo."),
-          );
-          setIsSaving(false);
-          return false;
-        }
-      }
-      if (edgeRows.length) {
-        const insertEdges = await supabase
-          .from("document_tramite_edges")
-          .insert(edgeRows);
-        if (insertEdges.error) {
-          setError(
-            getErrorMessage(insertEdges.error, "Não foi possível salvar as conexões do grafo."),
-          );
-          setIsSaving(false);
-          return false;
-        }
+      if (!deleteEdges.error && edgeRows.length) {
+        await supabase.from("document_tramite_edges").insert(edgeRows);
       }
 
       await Promise.all([
         supabase
           .from("document_tramite_templates")
           .update({ updated_by: profile.id })
-          .eq("id", templateId),
+          .eq("id", remoteId),
         supabase.from("document_tramite_events").insert({
           org_id: profile.org_id,
-          template_id: templateId,
+          template_id: remoteId,
           version_id: version.id,
           event_type: "updated",
           actor_id: profile.id,
@@ -614,16 +1151,65 @@ export function useDocumentTramiteTemplates() {
       await refresh();
       return true;
     },
-    [canManage, ensureDraftVersion, profile?.id, profile?.org_id, refresh],
+    [canManage, ensureDraftVersion, ensureRemoteTemplateId, profile?.id, profile?.org_id, refresh],
   );
 
   const publishTemplate = useCallback(
     async (templateId: string) => {
       if (!profile?.id || !profile.org_id || !canManage) return false;
+      if (isLocalMode) {
+        setIsSaving(true);
+        setError(null);
+        const now = new Date().toISOString();
+        const latestVersion = versions
+          .filter((version) => version.template_id === templateId)
+          .sort((left, right) => right.version_number - left.version_number)[0];
+        if (!latestVersion) {
+          setError("Nenhuma versão disponível para publicar.");
+          setIsSaving(false);
+          return false;
+        }
+        const publishedVersion: DocumentTramiteTemplateVersion = {
+          ...latestVersion,
+          status: "published",
+          published_by: profile.id,
+          published_at: now,
+          metadata: { ...(latestVersion.metadata ?? {}), local_mode: true },
+        };
+        const nextVersions: DocumentTramiteTemplateVersion[] = versions.map(
+          (version) => (version.id === publishedVersion.id ? publishedVersion : version),
+        );
+        const nextTemplates: DocumentTramiteTemplate[] = templates.map((template) =>
+          template.id === templateId
+            ? {
+                ...template,
+                status: "published",
+                current_version_id: publishedVersion.id,
+                current_version: publishedVersion,
+                published_version: publishedVersion,
+                working_version: null,
+                published_by: profile.id,
+                published_at: now,
+                updated_by: profile.id,
+                updated_at: now,
+              }
+            : template,
+        );
+        saveLocalTramiteStore(profile.org_id, nextTemplates, nextVersions);
+        setVersions(nextVersions);
+        setTemplates(nextTemplates);
+        setIsSaving(false);
+        return true;
+      }
       setIsSaving(true);
       setError(null);
+      const remoteId = await ensureRemoteTemplateId(templateId);
+      if (!remoteId) {
+        setIsSaving(false);
+        return false;
+      }
       const rpc = await supabase.rpc("publish_document_tramite_template", {
-        p_template_id: templateId,
+        p_template_id: remoteId,
       });
       if (!rpc.error) {
         setIsSaving(false);
@@ -641,7 +1227,7 @@ export function useDocumentTramiteTemplates() {
       setIsSaving(false);
       return false;
     },
-    [canManage, profile?.id, profile?.org_id, refresh],
+    [canManage, ensureRemoteTemplateId, profile?.id, profile?.org_id, refresh],
   );
 
   const archiveTemplate = useCallback(
@@ -656,12 +1242,31 @@ export function useDocumentTramiteTemplates() {
         setError("Somente administradores e gestores podem excluir trâmites.");
         return false;
       }
+
+      if (isLocalMode) {
+        setIsSaving(true);
+        setError(null);
+        const nextTemplates = templates.filter((template) => template.id !== templateId);
+        const nextVersions = versions.filter((version) => version.template_id !== templateId);
+        saveLocalTramiteStore(profile.org_id, nextTemplates, nextVersions);
+        setTemplates(nextTemplates);
+        setVersions(nextVersions);
+        setSchemaStatus(nextTemplates.length ? "ready" : "empty");
+        setIsSaving(false);
+        return true;
+      }
+
       setIsSaving(true);
       setError(null);
+      const remoteId = await ensureRemoteTemplateId(templateId);
+      if (!remoteId) {
+        setIsSaving(false);
+        return false;
+      }
       const result = await supabase
         .from("document_tramite_templates")
         .delete()
-        .eq("id", templateId)
+        .eq("id", remoteId)
         .eq("org_id", profile.org_id);
 
       if (!result.error) {
@@ -681,7 +1286,16 @@ export function useDocumentTramiteTemplates() {
       setIsSaving(false);
       return false;
     },
-    [canManage, profile?.id, profile?.org_id, refresh],
+    [
+      canManage,
+      ensureRemoteTemplateId,
+      isLocalMode,
+      profile?.id,
+      profile?.org_id,
+      refresh,
+      templates,
+      versions,
+    ],
   );
 
   const duplicateTemplate = useCallback(
@@ -726,6 +1340,7 @@ export function useDocumentTramiteTemplates() {
     isSaving,
     error,
     schemaStatus,
+    isLocalMode,
     canManage,
     refresh,
     getNextTramiteCode,
