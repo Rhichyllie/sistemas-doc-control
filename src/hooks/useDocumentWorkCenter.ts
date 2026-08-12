@@ -129,16 +129,21 @@ function isStepAssignedToProfile(
 
 export function useDocumentWorkCenter() {
   const { profile } = useAuthContext();
+
+  const tramiteInstancesOptions = useMemo(
+    () => ({ loadAllSteps: true, recentLimit: 500 }),
+    [],
+  );
+  const auditFilters = useMemo(() => ({}), []);
+  const projectOptionsArg = useMemo(() => ({}), []);
+
   const documentsState = useDocuments();
   const approvalState = useApprovalQueue();
-  const tramiteState = useDocumentTramiteInstances({
-    loadAllSteps: true,
-    recentLimit: 500,
-  });
+  const tramiteState = useDocumentTramiteInstances(tramiteInstancesOptions);
   const templatesState = useDocumentTramiteTemplates();
   const actorsState = useWorkflowActors();
-  const auditState = useAuditTrail();
-  const projectsState = useProjectOptions();
+  const auditState = useAuditTrail(auditFilters);
+  const projectsState = useProjectOptions(projectOptionsArg);
   const calendarState = useOperationalCalendar();
   const availabilityState = useTeamAvailability();
   const notificationState = useNotifications();
@@ -862,30 +867,41 @@ export function useDocumentWorkCenter() {
       Boolean(warning) && values.indexOf(warning) === index,
   );
 
+  const { refetch: refetchDocuments } = documentsState;
+  const { refetch: refetchApprovals } = approvalState;
+  const { refresh: refreshTramites } = tramiteState;
+  const { refresh: refreshTemplates } = templatesState;
+  const { refetch: refetchActors } = actorsState;
+  const { refetch: refetchAudit } = auditState;
+  const { refresh: refreshProjects } = projectsState;
+  const { refresh: refreshCalendar } = calendarState;
+  const { refresh: refreshAvailability } = availabilityState;
+  const { refetch: refetchNotifications } = notificationState;
+
   const refresh = useCallback(async () => {
     await Promise.all([
-      documentsState.refetch(),
-      approvalState.refetch(),
-      tramiteState.refresh(),
-      templatesState.refresh(),
-      actorsState.refetch(),
-      auditState.refetch(),
-      projectsState.refresh(),
-      calendarState.refresh(),
-      availabilityState.refresh(),
-      notificationState.refetch(),
+      refetchDocuments(),
+      refetchApprovals(),
+      refreshTramites(),
+      refreshTemplates(),
+      refetchActors(),
+      refetchAudit(),
+      refreshProjects(),
+      refreshCalendar(),
+      refreshAvailability(),
+      refetchNotifications(),
     ]);
   }, [
-    actorsState,
-    approvalState,
-    auditState,
-    documentsState,
-    projectsState,
-    calendarState,
-    availabilityState,
-    notificationState,
-    templatesState,
-    tramiteState,
+    refetchDocuments,
+    refetchApprovals,
+    refreshTramites,
+    refreshTemplates,
+    refetchActors,
+    refetchAudit,
+    refreshProjects,
+    refreshCalendar,
+    refreshAvailability,
+    refetchNotifications,
   ]);
 
   return {
