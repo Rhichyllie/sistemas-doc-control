@@ -397,8 +397,26 @@ function getSourceDocumentSummary(
   if (!isObjectRecord(source)) return null;
 
   const sourceId = readMetadataString(source, "id");
-  if (!sourceId) return null;
-  const liveDocument = documents.find((document) => document.id === sourceId);
+  const sourceCode = readMetadataString(source, "code");
+  const sourceTitle = readMetadataString(source, "title");
+
+  let liveDocument: Document | null = null;
+  const sourceIdClean = stripTramiteUuid(sourceId);
+  if (sourceIdClean) {
+    liveDocument = documents.find((document) => document.id === sourceIdClean) ?? null;
+  }
+  if (!liveDocument && sourceCode) {
+    const normalizedCode = String(sourceCode).trim().toUpperCase();
+    liveDocument = documents.find(
+      (document) => String(document.code ?? "").trim().toUpperCase() === normalizedCode,
+    ) ?? null;
+  }
+  if (!liveDocument && sourceTitle) {
+    const normalizedTitle = String(sourceTitle).trim().toLowerCase();
+    liveDocument = documents.find(
+      (document) => String(document.title ?? "").trim().toLowerCase() === normalizedTitle,
+    ) ?? null;
+  }
   if (liveDocument) {
     return mapDocumentToPreviewSummary(liveDocument, disciplines, projects);
   }
@@ -1370,8 +1388,24 @@ export function DocumentTramiteAdmin() {
 
     try {
       if (currentRow.rowType === 'template' && currentRow.templateId && !currentRow.currentStepId) {
-        const safeDocumentId = stripTramiteUuid(currentRow.documentId) ?? currentRow.documentId;
+        let safeDocumentId = stripTramiteUuid(currentRow.documentId) ?? currentRow.documentId;
         const UUID_ANY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const rowCode = String(currentRow.documentCode ?? "").trim().toUpperCase();
+        const rowTitle = String(currentRow.documentTitle ?? "").trim().toLowerCase();
+        let fallbackDocument: Document | undefined;
+        if (rowCode) {
+          fallbackDocument = documentsState.documents.find(
+            (document) => String(document.code ?? "").trim().toUpperCase() === rowCode,
+          );
+        }
+        if (!fallbackDocument && rowTitle) {
+          fallbackDocument = documentsState.documents.find(
+            (document) => String(document.title ?? "").trim().toLowerCase() === rowTitle,
+          );
+        }
+        if (fallbackDocument) {
+          safeDocumentId = fallbackDocument.id;
+        }
         if (!safeDocumentId || !UUID_ANY.test(String(safeDocumentId))) {
           setProcessActionError('O documento original não está mais disponível nesta organização. O fluxo não pode ser iniciado a partir deste modelo.');
           toast.error('Documento original indisponível. Atualize a página.');
