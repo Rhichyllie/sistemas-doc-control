@@ -1271,12 +1271,16 @@ export function IndicatorsVisualOverview({
         const expiring30 = dashboard.metrics.expiring_30_days ?? 0;
         const pct = (n: number) => Math.round((n / total) * 100);
         const monthly = dashboard.metrics.monthly_trend ?? [];
-        const toSpark = (key: keyof (typeof monthly)[number] | null, fallbackScale: number) => {
+        const toSpark = (key: string | null, fallbackScale: number) => {
           if (monthly.length > 0) {
             return monthly
               .map((row, idx) => ({
                 x: idx,
-                y: Number((key ? (row as any)[key] ?? 0 : fallbackScale * (0.5 + 0.5 * Math.sin(idx)))),
+                y: Number(
+                  key
+                    ? (row as unknown as Record<string, number | string>)[key] ?? 0
+                    : fallbackScale * (0.5 + 0.5 * Math.sin(idx)),
+                ),
               }));
           }
           return Array.from({ length: 12 }, (_, i) => ({ x: i, y: Math.round(fallbackScale * (0.5 + 0.3 * Math.sin(i * 0.6))) }));
