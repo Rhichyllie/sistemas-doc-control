@@ -15,9 +15,9 @@ import {
 
 const TONE = {
   neutral: {
-    text: "text-primary",
-    stroke: "text-primary",
-    shell: "border-primary/20 bg-primary/[0.035]",
+    text: "text-sky-700",
+    stroke: "text-sky-600",
+    shell: "border-sky-200/70 bg-gradient-to-br from-sky-50/80 via-sky-100/40 to-white",
   },
   positive: {
     text: "text-emerald-700",
@@ -141,7 +141,7 @@ export function ExecutiveSummaryCard({
               return (
                 <div
                   key={insight.id}
-                  className="flex gap-3 rounded-xl border bg-background/75 p-3.5"
+                  className="flex gap-3 rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm"
                 >
                   <div className={`mt-0.5 ${TONE[insight.tone].text}`}>
                     <Icon className="h-4 w-4" />
