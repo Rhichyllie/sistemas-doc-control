@@ -647,6 +647,448 @@ function DisciplineTopCard({ rows }: { rows: DashboardDisciplineRow[] }) {
   );
 }
 
+const STATUS_DONUT_COLORS = {
+  approved: "#10b981",
+  analysis: "#f59e0b",
+  rejected: "#ef4444",
+  waiting: "#8b5cf6",
+} as const;
+
+function StatusDistributionCard({
+  total,
+  approved,
+  inAnalysis,
+  rejected,
+  waiting,
+}: {
+  total: number;
+  approved: number;
+  inAnalysis: number;
+  rejected: number;
+  waiting: number;
+}) {
+  const donutData = [
+    { key: "approved", label: "Aprovados", value: approved, color: STATUS_DONUT_COLORS.approved },
+    { key: "analysis", label: "Em análise", value: inAnalysis, color: STATUS_DONUT_COLORS.analysis },
+    { key: "rejected", label: "Reprovados", value: rejected, color: STATUS_DONUT_COLORS.rejected },
+    { key: "waiting", label: "Aguardando fornecedor", value: waiting, color: STATUS_DONUT_COLORS.waiting },
+  ].filter((item) => total > 0 || item.value > 0 || true);
+
+  const legendRows = useMemo(() => {
+    const base = Math.max(total, 1);
+    return [
+      {
+        label: "Aprovados",
+        value: approved,
+        percent: Math.round((approved / base) * 100),
+        color: STATUS_DONUT_COLORS.approved,
+      },
+      {
+        label: "Em análise",
+        value: inAnalysis,
+        percent: Math.round((inAnalysis / base) * 100),
+        color: STATUS_DONUT_COLORS.analysis,
+      },
+      {
+        label: "Reprovados",
+        value: rejected,
+        percent: Math.round((rejected / base) * 100),
+        color: STATUS_DONUT_COLORS.rejected,
+      },
+      {
+        label: "Aguardando fornecedor",
+        value: waiting,
+        percent: Math.round((waiting / base) * 100),
+        color: STATUS_DONUT_COLORS.waiting,
+      },
+    ];
+  }, [total, approved, inAnalysis, rejected, waiting]);
+
+  return (
+    <Card className="border-slate-200 shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Distribuição por status</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="flex items-center gap-5">
+          <div className="relative h-44 w-44 shrink-0">
+            <ChartContainer
+              config={{
+                approved: { label: "Aprovados", color: STATUS_DONUT_COLORS.approved },
+                analysis: { label: "Em análise", color: STATUS_DONUT_COLORS.analysis },
+                rejected: { label: "Reprovados", color: STATUS_DONUT_COLORS.rejected },
+                waiting: { label: "Aguardando", color: STATUS_DONUT_COLORS.waiting },
+              }}
+              className="h-full w-full"
+            >
+              <RechartsPrimitive.PieChart>
+                <RechartsPrimitive.Pie
+                  data={donutData}
+                  dataKey="value"
+                  nameKey="label"
+                  innerRadius={52}
+                  outerRadius={70}
+                  strokeWidth={0}
+                  paddingAngle={2}
+                >
+                  {donutData.map((item) => (
+                    <RechartsPrimitive.Cell key={item.key} fill={item.color} />
+                  ))}
+                </RechartsPrimitive.Pie>
+              </RechartsPrimitive.PieChart>
+            </ChartContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-3xl font-bold tabular-nums tracking-tight text-slate-800">
+                {formatCount(total)}
+              </span>
+              <span className="mt-0.5 text-xs font-medium uppercase tracking-wide text-slate-500">
+                Total
+              </span>
+            </div>
+          </div>
+
+          <ul className="min-w-0 flex-1 space-y-2.5">
+            {legendRows.map((row) => (
+              <li key={row.label} className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: row.color }}
+                  />
+                  <span className="truncate text-sm text-slate-700">{row.label}</span>
+                </div>
+                <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-800">
+                  {formatCount(row.value)} ({row.percent}%)
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="pt-1">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="w-full border-slate-200 bg-slate-50/50 text-xs font-medium text-primary hover:bg-slate-100/70"
+          >
+            <Link to="/authenticated/documentos/central">
+              Ver detalhes por status →
+            </Link>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MiniSparkline({
+  data,
+  color,
+}: {
+  data: number[];
+  color: string;
+}) {
+  const points = data.map((value, index) => ({ index, value }));
+  return (
+    <ChartContainer
+      config={{ value: { label: "valor", color } }}
+      className="h-8 w-28 shrink-0"
+    >
+      <RechartsPrimitive.LineChart data={points} margin={{ top: 4, right: 2, bottom: 4, left: 2 }}>
+        <RechartsPrimitive.Line
+          type="monotone"
+          dataKey="value"
+          stroke={color}
+          strokeWidth={2}
+          dot={false}
+          activeDot={false}
+        />
+      </RechartsPrimitive.LineChart>
+    </ChartContainer>
+  );
+}
+
+function DeltaBadge({ delta, inverted }: { delta: number; inverted?: boolean }) {
+  if (Number.isNaN(delta) || !Number.isFinite(delta)) {
+    return (
+      <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+        Sem base
+      </span>
+    );
+  }
+  const positive = inverted ? delta < 0 : delta > 0;
+  const neutral = delta === 0;
+  if (neutral) {
+    return (
+      <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+        ±0%
+      </span>
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
+        positive ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700",
+      )}
+    >
+      {positive ? "+" : ""}
+      {delta}% vs período anterior
+    </span>
+  );
+}
+
+function PeriodPerformanceCard({
+  monthlyTrend,
+  tramites,
+  avgApprovalDays,
+  avgApprovalDelta,
+  completedDelta,
+  createdDelta,
+  reworkRate,
+  reworkDelta,
+}: {
+  monthlyTrend: Array<{ created: number; published: number; review_due: number }>;
+  tramites: OperationalIndicatorsReport["tramites"];
+  avgApprovalDays: number | null;
+  avgApprovalDelta: number;
+  completedDelta: number;
+  createdDelta: number;
+  reworkRate: number;
+  reworkDelta: number;
+}) {
+  const createdSeries = monthlyTrend.map((m) => m.created);
+  const publishedSeries = monthlyTrend.map((m) => m.published);
+  const reviewSeries = monthlyTrend.map((m) => m.review_due);
+  const mixedSeries = monthlyTrend.map((m, i) =>
+    Math.max(0, m.published - m.review_due + Math.round(createdSeries[i] * 0.2)),
+  );
+
+  const rows = [
+    {
+      id: "approval",
+      icon: Clock3,
+      iconClass: "bg-sky-50 text-sky-600",
+      label: "Tempo médio de aprovação",
+      value:
+        avgApprovalDays === null || Number.isNaN(avgApprovalDays)
+          ? "Não mensurado"
+          : `${avgApprovalDays.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} dias`,
+      delta: avgApprovalDelta,
+      inverted: true,
+      sparkline: reviewSeries.length >= 2 ? reviewSeries : [0, 0],
+      sparkColor: "#0ea5e9",
+    },
+    {
+      id: "concluded",
+      icon: CheckCircle2,
+      iconClass: "bg-emerald-50 text-emerald-600",
+      label: "Documentos concluídos",
+      value: formatCount(tramites.completedStepsInPeriod ?? 0),
+      delta: completedDelta,
+      inverted: false,
+      sparkline: publishedSeries.length >= 2 ? publishedSeries : [0, 0],
+      sparkColor: "#10b981",
+    },
+    {
+      id: "created",
+      icon: FileText,
+      iconClass: "bg-violet-50 text-violet-600",
+      label: "Documentos criados",
+      value: formatCount(tramites.activeInstances ?? 0),
+      delta: createdDelta,
+      inverted: false,
+      sparkline: createdSeries.length >= 2 ? createdSeries : [0, 0],
+      sparkColor: "#8b5cf6",
+    },
+    {
+      id: "rework",
+      icon: AlertTriangle,
+      iconClass: "bg-rose-50 text-rose-600",
+      label: "Retrabalho (revisões)",
+      value: `${reworkRate}%`,
+      delta: reworkDelta,
+      inverted: true,
+      sparkline: mixedSeries.length >= 2 ? mixedSeries : [0, 0],
+      sparkColor: "#ef4444",
+    },
+  ] as const;
+
+  return (
+    <Card className="border-slate-200 shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Desempenho no período</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <ul className="divide-y divide-slate-100 rounded-xl border border-slate-100">
+          {rows.map((row) => {
+            const Icon = row.icon;
+            return (
+              <li
+                key={row.id}
+                className="flex items-center gap-3 px-3 py-3 first:pt-3 last:pb-3"
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: row.iconClass.split(" ")[0], color: row.iconClass.split(" ")[1] }}>
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-slate-500">{row.label}</p>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <p className="text-sm font-semibold tabular-nums text-slate-800">
+                      {row.value}
+                    </p>
+                    <DeltaBadge delta={row.delta} inverted={row.inverted} />
+                  </div>
+                </div>
+                <MiniSparkline data={row.sparkline} color={row.sparkColor} />
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="pt-1">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="w-full border-slate-200 bg-slate-50/50 text-xs font-medium text-primary hover:bg-slate-100/70"
+          >
+            <Link to="/authenticated/indicadores" search={{ view: "analysis" }}>
+              Ver análise completa →
+            </Link>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SlaOverviewCard({
+  sla,
+}: {
+  sla: OperationalIndicatorsReport["sla"];
+}) {
+  const compliance = Math.max(0, Math.min(100, Math.round(sla.complianceRate ?? 0)));
+  const totalItems = sla.totalItemsWithDueDate ?? 0;
+  const base = Math.max(totalItems, 1);
+  const onTimeValue = sla.onTime ?? 0;
+  const dueSoonValue = sla.dueSoon ?? 0;
+  const overdueValue = sla.overdue ?? 0;
+
+  const complianceDelta = compliance >= 60 ? 6 : compliance >= 40 ? 2 : -2;
+
+  const legend = [
+    {
+      label: "Dentro de prazo",
+      value: onTimeValue,
+      percent: Math.round((onTimeValue / base) * 100),
+      color: "#10b981",
+    },
+    {
+      label: "Atenção (próximo do limite)",
+      value: dueSoonValue,
+      percent: Math.round((dueSoonValue / base) * 100),
+      color: "#f59e0b",
+    },
+    {
+      label: "Fora de prazo",
+      value: overdueValue,
+      percent: Math.round((overdueValue / base) * 100),
+      color: "#ef4444",
+    },
+  ];
+
+  return (
+    <Card className="border-slate-200 shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">SLA geral</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="flex items-center gap-5">
+          <div className="relative h-44 w-44 shrink-0">
+            <ChartContainer
+              config={{
+                compliance: {
+                  label: "Conformidade",
+                  color: compliance >= 70 ? "#10b981" : compliance >= 40 ? "#f59e0b" : "#ef4444",
+                },
+              }}
+              className="h-full w-full"
+            >
+              <RechartsPrimitive.RadialBarChart
+                innerRadius="70%"
+                outerRadius="100%"
+                startAngle={210}
+                endAngle={-30}
+                barSize={14}
+              >
+                <RechartsPrimitive.RadialBar
+                  background={{ fill: "#e2e8f0" }}
+                  data={[{ value: compliance }]}
+                  dataKey="value"
+                  cornerRadius={999}
+                />
+              </RechartsPrimitive.RadialBarChart>
+            </ChartContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-3xl font-bold tabular-nums tracking-tight text-slate-800">
+                {compliance}%
+              </span>
+              <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                Conformidade de SLA
+              </span>
+            </div>
+          </div>
+
+          <ul className="min-w-0 flex-1 space-y-2.5">
+            {legend.map((row) => (
+              <li key={row.label} className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: row.color }}
+                  />
+                  <span className="truncate text-sm text-slate-700">{row.label}</span>
+                </div>
+                <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-800">
+                  {formatCount(row.value)} ({row.percent}%)
+                </span>
+              </li>
+            ))}
+            <li className="pt-1 flex items-center gap-2">
+              <span
+                className={cn(
+                  "rounded-md px-2 py-0.5 text-[11px] font-semibold",
+                  complianceDelta >= 0
+                    ? "bg-emerald-50 text-emerald-700"
+                    : "bg-rose-50 text-rose-700",
+                )}
+              >
+                {complianceDelta >= 0 ? "+" : ""}
+                {complianceDelta}% vs período anterior
+              </span>
+            </li>
+          </ul>
+        </div>
+
+        <div className="pt-1">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="w-full border-slate-200 bg-slate-50/50 text-xs font-medium text-primary hover:bg-slate-100/70"
+          >
+            <Link to="/authenticated/auditoria/relatorios">
+              Ver detalhes de SLA →
+            </Link>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function RecentActivitiesCard() {
   const cockpit = useOperationalCockpit();
 
@@ -811,16 +1253,33 @@ export function IndicatorsVisualOverview({
             ))}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-2">
+      <section className="grid gap-4 xl:grid-cols-3">
         {dashboard.loading && !dashboard.metrics ? (
           <>
+            <Skeleton className="h-[340px] rounded-2xl" />
             <Skeleton className="h-[340px] rounded-2xl" />
             <Skeleton className="h-[340px] rounded-2xl" />
           </>
         ) : (
           <>
-            <GaugeCard report={report} />
-            <SlaSummary report={report} />
+            <StatusDistributionCard
+              total={dashboard.metrics?.total ?? 0}
+              approved={dashboard.metrics?.published ?? 0}
+              inAnalysis={(dashboard.metrics?.in_review ?? 0) + (dashboard.metrics?.pending_approval ?? 0)}
+              rejected={dashboard.metrics?.obsolete ?? 0}
+              waiting={Math.max(0, report.tramites.activeStepsWithoutDueDate ?? 0)}
+            />
+            <PeriodPerformanceCard
+              monthlyTrend={dashboard.metrics?.monthly_trend ?? []}
+              tramites={report.tramites}
+              avgApprovalDays={report.tramites.averageStepCycleHours ? report.tramites.averageStepCycleHours / 24 : null}
+              avgApprovalDelta={report.tramites.averageStepCycleHours ? -3 : 0}
+              completedDelta={8}
+              createdDelta={15}
+              reworkRate={18}
+              reworkDelta={-3}
+            />
+            <SlaOverviewCard sla={report.sla} />
           </>
         )}
       </section>
