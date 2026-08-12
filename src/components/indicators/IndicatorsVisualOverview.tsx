@@ -16,7 +16,6 @@ import {
   TimerReset,
 } from "lucide-react";
 import * as RechartsPrimitive from "recharts";
-import { useAuthContext } from "@/contexts/AuthContext";
 import {
   useDashboard,
   type DashboardDisciplineRow,
@@ -1157,15 +1156,7 @@ export function IndicatorsVisualOverview({
 }: {
   report: OperationalIndicatorsReport;
 }) {
-  const { profile } = useAuthContext();
   const dashboard = useDashboard();
-  const firstName = profile?.full_name?.trim().split(/\s+/)[0] ?? "Usuario";
-  const currentDate = new Intl.DateTimeFormat("pt-BR", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  }).format(new Date());
   const headlineMetrics = dashboard.metrics
     ? [
         {
@@ -1218,22 +1209,6 @@ export function IndicatorsVisualOverview({
 
   return (
     <section className="space-y-5">
-      <div className="overflow-hidden rounded-[28px] bg-gradient-to-r from-[#071d3d] via-[#0b2f63] to-[#0f766e] p-6 text-white shadow-[0_0_30px_rgba(15,23,42,0.5)]">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-sm font-medium text-blue-100/85">
-              Bem-vindo(a), {firstName}
-            </p>
-            <h2 className="mt-1 text-2xl font-semibold tracking-tight">
-              Dashboard Operacional
-            </h2>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-blue-100/85">
-            {currentDate.charAt(0).toUpperCase() + currentDate.slice(1)}
-          </div>
-        </div>
-      </div>
-
       {dashboard.error && (
         <Card className="border-amber-200 bg-amber-50/60 shadow-sm">
           <CardContent className="flex items-center gap-3 p-4 text-sm text-amber-800">
