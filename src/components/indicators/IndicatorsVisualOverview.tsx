@@ -271,7 +271,7 @@ function OverviewMetricCard({
             {formatCount(value)}
           </p>
           <p className="mt-0.5 truncate text-sm font-medium text-slate-700">{label}</p>
-          {hint ? <p className="mt-0.5 truncate text-[11px] text-slate-500">{hint}</p> : null}
+          <div className="mt-1.5 min-h-[20px]">{pctBadge}</div>
         </div>
 
         <div className="mt-1 flex items-center justify-between gap-2">
@@ -302,7 +302,7 @@ function OverviewMetricCard({
               </RechartsPrimitive.LineChart>
             </RechartsPrimitive.ResponsiveContainer>
           </div>
-          <div className="min-w-0 flex-1 text-right">{pctBadge}</div>
+          <div className="min-w-0 flex-1 text-right" />
         </div>
       </div>
     </div>
