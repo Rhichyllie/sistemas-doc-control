@@ -58,9 +58,9 @@ export function ExecutiveSummaryCard({
     <section
       data-print-break-inside
       aria-labelledby="executive-summary-title"
-      className={`mx-auto max-w-6xl overflow-hidden rounded-2xl border ${tone.shell}`}
+      className={`overflow-hidden rounded-2xl border ${tone.shell}`}
     >
-      <div className="grid xl:grid-cols-[380px_minmax(0,640px)] justify-center">
+      <div className="grid xl:grid-cols-[minmax(520px,1.25fr)_minmax(400px,1fr)]">
         <div className="flex items-center gap-5 border-b p-5 md:p-7 xl:border-b-0 xl:border-r">
           <div className="relative h-40 w-40 shrink-0">
             <svg
