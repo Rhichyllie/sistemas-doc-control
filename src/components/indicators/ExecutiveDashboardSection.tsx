@@ -23,7 +23,7 @@ export function ExecutiveIndicatorsCockpit({
     <>
       <section
         aria-label="SLA, risco e comparação de período"
-        className="grid gap-4 xl:grid-cols-3"
+        className="grid gap-4 xl:grid-cols-3 xl:min-h-[460px]"
       >
         <SlaDistributionChart report={report} />
         <RiskMatrixPanel report={report} />

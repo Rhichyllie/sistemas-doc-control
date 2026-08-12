@@ -41,7 +41,7 @@ export function SlaDistributionChart({
   let offset = 0;
 
   return (
-    <Card data-print-break-inside className="h-full">
+    <Card data-print-break-inside className="flex h-full flex-col">
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -60,80 +60,85 @@ export function SlaDistributionChart({
           </Badge>
         </div>
       </CardHeader>
-      <CardContent
-        className={
-          compact
-            ? "grid gap-5 sm:grid-cols-[180px_1fr] sm:items-center"
-            : "grid gap-6 md:grid-cols-[220px_1fr] md:items-center"
-        }
-      >
-        <div className="relative mx-auto h-44 w-44">
-          <svg
-            viewBox="0 0 120 120"
-            role="img"
-            aria-label={`Compliance de SLA ${formatPercent(report.sla.complianceRate)}`}
-            className="h-full w-full -rotate-90"
-          >
-            <circle
-              cx="60"
-              cy="60"
-              r={radius}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="12"
-              className="text-muted"
-            />
-            {distribution.map((item) => {
-              const length = total ? (item.value / total) * circumference : 0;
-              const currentOffset = offset;
-              offset += length;
-              return (
-                <circle
+      <CardContent className="flex flex-1 flex-col justify-between">
+        <div
+          className={
+            compact
+              ? "grid gap-5 sm:grid-cols-[180px_1fr] sm:items-center"
+              : "grid gap-6 md:grid-cols-[220px_1fr] md:items-center md:flex-1"
+          }
+        >
+          <div className="relative mx-auto h-44 w-44">
+            <svg
+              viewBox="0 0 120 120"
+              role="img"
+              aria-label={`Compliance de SLA ${formatPercent(report.sla.complianceRate)}`}
+              className="h-full w-full -rotate-90"
+            >
+              <circle
+                cx="60"
+                cy="60"
+                r={radius}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="12"
+                className="text-muted"
+              />
+              {distribution.map((item) => {
+                const length = total ? (item.value / total) * circumference : 0;
+                const currentOffset = offset;
+                offset += length;
+                return (
+                  <circle
+                    key={item.id}
+                    cx="60"
+                    cy="60"
+                    r={radius}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="12"
+                    strokeLinecap="butt"
+                    className={COLORS[item.id]}
+                    style={{
+                      strokeDasharray: `${length} ${circumference - length}`,
+                      strokeDashoffset: -currentOffset,
+                    }}
+                  />
+                );
+              })}
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-3xl font-semibold">
+                {formatPercent(report.sla.complianceRate)}
+              </span>
+              <span className="text-xs text-muted-foreground">compliance</span>
+            </div>
+          </div>
+          <div>
+            <div className="space-y-3">
+              {distribution.map((item) => (
+                <div
                   key={item.id}
-                  cx="60"
-                  cy="60"
-                  r={radius}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="12"
-                  strokeLinecap="butt"
-                  className={COLORS[item.id]}
-                  style={{
-                    strokeDasharray: `${length} ${circumference - length}`,
-                    strokeDashoffset: -currentOffset,
-                  }}
-                />
-              );
-            })}
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-3xl font-semibold">
-              {formatPercent(report.sla.complianceRate)}
-            </span>
-            <span className="text-xs text-muted-foreground">compliance</span>
+                  className="flex items-center justify-between gap-3"
+                >
+                  <span className="flex items-center gap-2 text-sm">
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full ${DOTS[item.id]}`}
+                    />
+                    {item.label}
+                  </span>
+                  <span className="font-semibold">
+                    {item.value.toLocaleString("pt-BR")}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-        <div>
-          <div className="space-y-3">
-            {distribution.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between gap-3"
-              >
-                <span className="flex items-center gap-2 text-sm">
-                  <span
-                    className={`h-2.5 w-2.5 rounded-full ${DOTS[item.id]}`}
-                  />
-                  {item.label}
-                </span>
-                <span className="font-semibold">
-                  {item.value.toLocaleString("pt-BR")}
-                </span>
-              </div>
-            ))}
-          </div>
+
+        <div className="mt-6">
           <div
-            className="mt-5 flex h-3 overflow-hidden rounded-full bg-muted"
+            className="flex h-3 overflow-hidden rounded-full bg-muted"
             role="img"
             aria-label={`Distribuição de SLA: ${distribution
               .map((item) => `${item.label} ${item.value}`)

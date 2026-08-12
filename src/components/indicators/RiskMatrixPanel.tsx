@@ -52,7 +52,7 @@ export function RiskMatrixPanel({
   const signals = getRiskMatrixSignals(report);
 
   return (
-    <Card data-print-break-inside className="h-full">
+    <Card data-print-break-inside className="flex h-full flex-col">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Grid2X2 className="h-4 w-4 text-primary" />
@@ -62,9 +62,9 @@ export function RiskMatrixPanel({
           Priorização determinística por impacto e urgência do sinal atual.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-1 flex-col">
         {signals.length === 0 ? (
-          <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed p-6 text-center">
+          <div className="flex flex-1 min-h-64 flex-col items-center justify-center rounded-xl border border-dashed p-6 text-center">
             <ShieldAlert className="h-8 w-8 text-emerald-600" />
             <p className="mt-3 font-semibold">Sem riscos para posicionar</p>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -72,12 +72,12 @@ export function RiskMatrixPanel({
             </p>
           </div>
         ) : (
-          <div>
+          <div className="flex flex-1 flex-col">
             <div className="mb-2 flex justify-between text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               <span>Impacto alto</span>
               <span>Urgência alta</span>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid flex-1 gap-2 sm:grid-cols-2">
               {CELLS.map((cell) => {
                 const items = signals.filter(
                   (signal) =>
@@ -87,12 +87,12 @@ export function RiskMatrixPanel({
                 return (
                   <div
                     key={`${cell.impact}-${cell.urgency}`}
-                    className={`min-h-28 rounded-xl border p-3 ${cell.className}`}
+                    className={`flex flex-col min-h-[180px] rounded-xl border p-4 ${cell.className}`}
                   >
                     <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                       {cell.label}
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
+                    <div className="mt-3 flex flex-1 flex-wrap content-start gap-1.5">
                       {items.length ? (
                         items.map((item) => (
                           <span

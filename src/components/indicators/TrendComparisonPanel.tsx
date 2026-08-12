@@ -25,7 +25,7 @@ export function TrendComparisonPanel({
   const metrics = getTrendComparison(report);
 
   return (
-    <Card data-print-break-inside className="h-full">
+    <Card data-print-break-inside className="flex h-full flex-col">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <GitCompareArrows className="h-4 w-4 text-primary" />
@@ -36,7 +36,7 @@ export function TrendComparisonPanel({
           estimada.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="flex flex-1 flex-col justify-between space-y-4">
         {metrics.map((metric) => {
           const maximum = Math.max(
             metric.current ?? 0,
@@ -50,7 +50,7 @@ export function TrendComparisonPanel({
                 ? ArrowUpRight
                 : ArrowDownRight;
           return (
-            <div key={metric.id} className="rounded-xl border p-3.5">
+            <div key={metric.id} className="flex-1 rounded-xl border p-3.5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold">{metric.label}</p>

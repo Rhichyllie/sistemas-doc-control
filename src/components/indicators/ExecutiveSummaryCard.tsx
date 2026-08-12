@@ -60,9 +60,9 @@ export function ExecutiveSummaryCard({
       aria-labelledby="executive-summary-title"
       className={`overflow-hidden rounded-2xl border ${tone.shell}`}
     >
-      <div className="grid xl:grid-cols-[310px_minmax(0,1fr)]">
-        <div className="flex items-center gap-5 border-b p-5 md:p-7 xl:border-b-0 xl:border-r">
-          <div className="relative h-32 w-32 shrink-0">
+      <div className="grid xl:grid-cols-[380px_minmax(0,1fr)]">
+        <div className="flex items-center gap-6 border-b p-6 md:p-8 xl:border-b-0 xl:border-r">
+          <div className="relative h-40 w-40 shrink-0">
             <svg
               viewBox="0 0 120 120"
               className="h-full w-full -rotate-90"
@@ -77,7 +77,7 @@ export function ExecutiveSummaryCard({
                 r="50"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="9"
+                strokeWidth="10"
                 className="text-background/80"
               />
               <circle
@@ -86,7 +86,7 @@ export function ExecutiveSummaryCard({
                 r="50"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="9"
+                strokeWidth="10"
                 strokeLinecap="round"
                 className={tone.stroke}
                 style={{
@@ -95,13 +95,13 @@ export function ExecutiveSummaryCard({
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className={`text-3xl font-bold ${tone.text}`}>
+              <span className={`text-4xl font-bold ${tone.text}`}>
                 {score.score ?? "—"}
               </span>
-              <span className="text-[11px] text-muted-foreground">de 100</span>
+              <span className="text-xs text-muted-foreground">de 100</span>
             </div>
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Governance Score
             </p>
@@ -111,16 +111,16 @@ export function ExecutiveSummaryCard({
             >
               {score.classification}
             </h2>
-            <Badge variant="outline" className="mt-2">
+            <Badge variant="outline" className="mt-3">
               Score operacional
             </Badge>
-            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
               Síntese do painel, não certificação formal.
             </p>
           </div>
         </div>
 
-        <div className="p-5 md:p-7">
+        <div className="p-6 md:p-8">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
@@ -157,7 +157,7 @@ export function ExecutiveSummaryCard({
             })}
           </div>
           {score.penalizers.length > 0 && (
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+            <div className="mt-5 flex flex-wrap items-center gap-2 text-xs">
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
               <span className="font-medium">Maiores penalizadores:</span>
               {score.penalizers.map((item) => (
