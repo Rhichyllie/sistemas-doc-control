@@ -22,15 +22,16 @@ interface IndicatorsProbe {
 
 export function useOperationalHome() {
   const { profile, org } = useAuthContext();
+
+  const codingOptions = useMemo(
+    () => ({ includeInactive: false, requireManagement: false, loadProjects: false }),
+    [],
+  );
+  const templatesAndRulesOptions = useMemo(() => ({ includeInactive: false }), []);
+
   const workCenter = useDocumentWorkCenter();
-  const coding = useDocumentCodePatterns({
-    includeInactive: false,
-    requireManagement: false,
-    loadProjects: false,
-  });
-  const policies = useDocumentTemplatesAndRules({
-    includeInactive: false,
-  });
+  const coding = useDocumentCodePatterns(codingOptions);
+  const policies = useDocumentTemplatesAndRules(templatesAndRulesOptions);
   const [indicatorsProbe, setIndicatorsProbe] = useState<IndicatorsProbe>({
     installed: false,
     attention: false,
@@ -243,14 +244,18 @@ export function useOperationalHome() {
       Boolean(warning) && values.indexOf(warning) === index,
   );
 
+  const workCenterRefresh = workCenter.refresh;
+  const codingRefresh = coding.refresh;
+  const policiesRefresh = policies.refresh;
+
   const refresh = useCallback(async () => {
     await Promise.all([
-      workCenter.refresh(),
-      coding.refresh(),
-      policies.refresh(),
+      workCenterRefresh(),
+      codingRefresh(),
+      policiesRefresh(),
       refreshIndicatorsProbe(),
     ]);
-  }, [coding, policies, refreshIndicatorsProbe, workCenter]);
+  }, [codingRefresh, policiesRefresh, refreshIndicatorsProbe, workCenterRefresh]);
 
   return {
     profile,

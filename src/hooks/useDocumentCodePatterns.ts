@@ -194,13 +194,19 @@ export function useDocumentCodePatterns(
   } = options;
   const { profile } = useAuthContext();
   const canManage = profile?.role === "admin" || profile?.role === "manager";
+
+  const projectOptionsArg = useMemo(
+    () => ({
+      enabled: enabled && loadProjects && (canManage || !requireManagement),
+    }),
+    [enabled, loadProjects, canManage, requireManagement],
+  );
+
   const {
     projects: projectOptions,
     compatibilityMessage: projectCompatibilityMessage,
     refresh: refreshProjects,
-  } = useProjectOptions({
-    enabled: enabled && loadProjects && (canManage || !requireManagement),
-  });
+  } = useProjectOptions(projectOptionsArg);
   const [patterns, setPatterns] = useState<DocumentCodePattern[]>([]);
   const [isLoading, setIsLoading] = useState(enabled);
   const [isSaving, setIsSaving] = useState(false);

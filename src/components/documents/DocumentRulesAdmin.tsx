@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   FileCog,
   FlaskConical,
@@ -178,7 +178,8 @@ function RuleCard({ rule, isSaving, onEdit, onToggle }: RuleCardProps) {
 }
 
 export function DocumentRulesAdmin() {
-  const governance = useDocumentTemplatesAndRules({ includeInactive: true });
+  const governanceOptions = useMemo(() => ({ includeInactive: true }), []);
+  const governance = useDocumentTemplatesAndRules(governanceOptions);
   const [policyWizardOpen, setPolicyWizardOpen] = useState(false);
   const [templateFormOpen, setTemplateFormOpen] = useState(false);
   const [ruleFormOpen, setRuleFormOpen] = useState(false);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -70,7 +70,8 @@ function patternAuthoringMode(pattern: DocumentCodePattern) {
 }
 
 export function DocumentCodeAdmin() {
-  const coding = useDocumentCodePatterns({ includeInactive: true });
+  const codingOptions = useMemo(() => ({ includeInactive: true }), []);
+  const coding = useDocumentCodePatterns(codingOptions);
   const options = useDocumentCodeOptions();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<DocumentCodePattern | null>(null);

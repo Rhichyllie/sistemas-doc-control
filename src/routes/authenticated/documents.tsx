@@ -261,7 +261,8 @@ function DocumentsListPage() {
   const { org, profile } = useAuthContext();
   const { libraryId } = useLibraryScope();
   const { disciplines } = useLocalData();
-  const codeOptions = useDocumentCodeOptions({ requireManagement: false });
+  const codeOptionsConfig = useMemo(() => ({ requireManagement: false }), []);
+  const codeOptions = useDocumentCodeOptions(codeOptionsConfig);
   const documentTypeOptions = useMemo(() => {
     if (codeOptions.docTypes.length > 0) {
       return codeOptions.docTypes.map((t: DocumentCodeOption) => ({

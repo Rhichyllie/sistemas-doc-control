@@ -196,6 +196,9 @@ function sortActivityItems(items: OperationalActivityItem[]) {
 
 export function useOperationalCockpit() {
   const { profile } = useAuthContext()
+
+  const auditFilters = useMemo(() => ({}), [])
+
   const {
     documents,
     loading: documentsLoading,
@@ -211,7 +214,7 @@ export function useOperationalCockpit() {
     compatibilityMessage: queueCompatibilityMessage,
   } = useApprovalQueue()
   const { notifications, unreadCount, loading: notificationsLoading } = useNotifications()
-  const { entries, loading: auditLoading, error: auditError } = useAuditTrail()
+  const { entries, loading: auditLoading, error: auditError } = useAuditTrail(auditFilters)
   const { groupMembers } = useWorkflowActors()
 
   const now = new Date().toISOString()

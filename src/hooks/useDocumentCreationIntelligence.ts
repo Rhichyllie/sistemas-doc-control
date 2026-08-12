@@ -153,7 +153,8 @@ export function useDocumentCreationIntelligence(
   options: { selectedCodePatternId?: string | null } = {},
 ) {
   const { profile } = useAuthContext();
-  const codeOptions = useDocumentCodeOptions({ requireManagement: false });
+  const codeOptionsConfig = useMemo(() => ({ requireManagement: false }), []);
+  const codeOptions = useDocumentCodeOptions(codeOptionsConfig);
   const documentTypes = useMemo(() => {
     console.log("useDocumentCreationIntelligence calculating documentTypes from codeOptions.docTypes:", codeOptions.docTypes);
     const normalized = normalizeDocumentTypes(codeOptions.docTypes);

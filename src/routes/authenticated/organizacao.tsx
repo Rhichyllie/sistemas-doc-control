@@ -98,7 +98,8 @@ function OrganizationLibrariesPage() {
   const navigate = useNavigate();
   const { profile, user } = useAuthContext();
   const catalog = useLibraries();
-  const publications = usePublications({ limit: 4 });
+  const publicationsOptions = useMemo(() => ({ limit: 4 }), []);
+  const publications = usePublications(publicationsOptions);
   const [open, setOpen] = useState(false);
   const [enterpriseMode, setEnterpriseMode] = useState<"existing" | "new">(
     "existing",

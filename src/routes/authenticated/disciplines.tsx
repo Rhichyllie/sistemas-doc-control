@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,7 +40,8 @@ interface DisciplineRow {
 function DisciplinesPage() {
   const { profile } = useAuthContext();
   const { theme } = useTheme();
-  const options = useDocumentCodeOptions({ requireManagement: false });
+  const codeOptionsConfig = useMemo(() => ({ requireManagement: false }), []);
+  const options = useDocumentCodeOptions(codeOptionsConfig);
 
   const [openNew, setOpenNew] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
