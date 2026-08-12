@@ -3,6 +3,9 @@ import { useAuthContext } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { getErrorMessage } from '@/lib/errorUtils'
 import {
+  stripTramiteUuid,
+} from '@/lib/documentTramiteExecution'
+import {
   isWorkflowFoundationUnavailable,
   isWorkflowRpcUnavailable,
   type WorkflowAssignmentType,
@@ -565,6 +568,15 @@ export function useApprovalFlow() {
       if (input.action === 'reject' && !input.comment?.trim()) {
         throw new Error('Informe o motivo da rejeição.')
       }
+      const documentId = stripTramiteUuid(input.documentId) ?? input.documentId;
+      const stepId = stripTramiteUuid(input.stepId) ?? input.stepId;
+      const UUID_ANY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!documentId || !UUID_ANY.test(String(documentId))) {
+        throw new Error('O documento selecionado não foi encontrado nesta organização.');
+      }
+      if (!stepId || !UUID_ANY.test(String(stepId))) {
+        throw new Error('A etapa selecionada é inválida ou não pertence a esta organização.');
+      }
       const nextStepStatus = input.action === 'approve' ? 'approved' : 'rejected'
 
       let pendingStepResult = await supabase
@@ -579,7 +591,7 @@ export function useApprovalFlow() {
           revision_number,
           metadata
         `)
-        .eq('id', input.stepId)
+        .eq('id', stepId)
         .eq('org_id', profile.org_id)
         .eq('status', 'pending')
         .single()
@@ -588,7 +600,7 @@ export function useApprovalFlow() {
         pendingStepResult = await supabase
           .from('approval_flows')
           .select('step, document_id, required_role, status, created_at, metadata')
-          .eq('id', input.stepId)
+          .eq('id', stepId)
           .eq('org_id', profile.org_id)
           .eq('status', 'pending')
           .single()
@@ -615,7 +627,7 @@ export function useApprovalFlow() {
       const { data: doc, error: docError } = await supabase
         .from('documents')
         .select('author_id, status')
-        .eq('id', input.documentId)
+        .eq('id', documentId)
         .eq('org_id', profile.org_id)
         .single()
 
@@ -634,7 +646,7 @@ export function useApprovalFlow() {
       }
 
       const step = await updateCurrentStep(
-        input.stepId,
+        stepId,
         nextStepStatus,
         input.comment ?? null,
         now,
@@ -644,7 +656,7 @@ export function useApprovalFlow() {
         const { data: returnedDocument, error: returnError } = await supabase
           .from('documents')
           .update({ status: 'draft', updated_at: now })
-          .eq('id', input.documentId)
+          .eq('id', documentId)
           .eq('org_id', profile.org_id)
           .select('id')
           .maybeSingle()
@@ -657,15 +669,15 @@ export function useApprovalFlow() {
             .from('document_versions')
             .update({ status: 'rejected' })
             .eq('id', documentVersionId)
-            .eq('document_id', input.documentId)
+            .eq('document_id', documentId)
             .eq('org_id', profile.org_id)
           if (versionRejectError) throw versionRejectError
         }
 
-        await closeOpenPendingSteps(input.documentId, now)
+        await closeOpenPendingSteps(documentId, now)
 
         const { error: auditError } = await supabase.from('audit_trail').insert({
-          document_id: input.documentId,
+          document_id: documentId,
           org_id: profile.org_id,
           user_id: profile.id,
           action: 'correction_requested',
@@ -674,7 +686,7 @@ export function useApprovalFlow() {
           metadata: {
             comment: input.comment,
             rejected_step: step.step,
-            rejected_step_id: input.stepId,
+            rejected_step_id: stepId,
             correction_required: true,
             previous_status: doc.status,
             returned_to_author: true,
@@ -691,14 +703,14 @@ export function useApprovalFlow() {
 
         if (formalRevision) {
           await supabase.from('audit_trail').insert({
-            document_id: input.documentId,
+            document_id: documentId,
             org_id: profile.org_id,
             user_id: profile.id,
             action: 'formal_revision_rejected',
             old_status: doc.status,
             new_status: 'draft',
             metadata: {
-              document_id: input.documentId,
+              document_id: documentId,
               document_version_id: documentVersionId,
               previous_revision: revisionNumber ? revisionNumber - 1 : null,
               new_revision: revisionNumber,
@@ -709,7 +721,7 @@ export function useApprovalFlow() {
         }
 
         await notifyDocumentAuthor(
-          input.documentId,
+          documentId,
           'correction_requested',
           `Correção solicitada na etapa ${step.step}: ${input.comment ?? ''}`,
         )
@@ -718,7 +730,7 @@ export function useApprovalFlow() {
       }
 
       const nextStep = await fetchNextStep(
-        input.documentId,
+        documentId,
         pendingStep.step,
         pendingStep.created_at,
       )
@@ -738,7 +750,7 @@ export function useApprovalFlow() {
         await supabase
           .from('documents')
           .update({ status: nextDocumentStatus, updated_at: now })
-          .eq('id', input.documentId)
+          .eq('id', documentId)
           .eq('org_id', profile.org_id)
 
         if (formalRevision && documentVersionId) {
@@ -751,7 +763,7 @@ export function useApprovalFlow() {
         }
 
         await supabase.from('audit_trail').insert({
-          document_id: input.documentId,
+          document_id: documentId,
           org_id: profile.org_id,
           user_id: profile.id,
           action: 'step_approved',
@@ -761,7 +773,7 @@ export function useApprovalFlow() {
         })
 
         await notifyStepAssignment(
-          input.documentId,
+          documentId,
           normalizePersistedStep(nextStep),
           'approval_required',
           `Documento aguarda ${nextStep.step_label}`,
@@ -769,7 +781,7 @@ export function useApprovalFlow() {
         )
       } else if (formalRevision && documentVersionId && revisionNumber !== null) {
         await publishFormalRevision(
-          input.documentId,
+          documentId,
           documentVersionId,
           revisionNumber,
           now,
@@ -778,11 +790,11 @@ export function useApprovalFlow() {
         await supabase
           .from('documents')
           .update({ status: 'published', published_at: now, updated_at: now })
-          .eq('id', input.documentId)
+          .eq('id', documentId)
           .eq('org_id', profile.org_id)
 
         await supabase.from('audit_trail').insert({
-          document_id: input.documentId,
+          document_id: documentId,
           org_id: profile.org_id,
           user_id: profile.id,
           action: 'approved_and_published',
@@ -791,7 +803,7 @@ export function useApprovalFlow() {
           metadata: { step: step.step },
         })
 
-        await notifyDocumentAuthor(input.documentId, 'document_approved', 'Seu documento foi aprovado e publicado')
+        await notifyDocumentAuthor(documentId, 'document_approved', 'Seu documento foi aprovado e publicado')
       }
 
       return true

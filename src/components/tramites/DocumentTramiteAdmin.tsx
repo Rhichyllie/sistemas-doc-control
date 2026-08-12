@@ -397,29 +397,12 @@ function getSourceDocumentSummary(
   if (!isObjectRecord(source)) return null;
 
   const sourceId = readMetadataString(source, "id");
-  if (sourceId) {
-    const liveDocument = documents.find((document) => document.id === sourceId);
-    if (liveDocument) {
-      return mapDocumentToPreviewSummary(liveDocument, disciplines, projects);
-    }
+  if (!sourceId) return null;
+  const liveDocument = documents.find((document) => document.id === sourceId);
+  if (liveDocument) {
+    return mapDocumentToPreviewSummary(liveDocument, disciplines, projects);
   }
-
-  return {
-    id: sourceId ?? `source-${template.id}`,
-    title: readMetadataString(source, "title") ?? template.name,
-    code: readMetadataString(source, "code"),
-    project_id: readMetadataString(source, "project_id"),
-    project_name: readMetadataString(source, "project_name"),
-    discipline_id: readMetadataString(source, "discipline_id"),
-    discipline_name: readMetadataString(source, "discipline_name"),
-    register_revision: readMetadataString(source, "register_revision"),
-    register_status: readMetadataString(source, "register_status"),
-    received_at: readMetadataString(source, "received_at"),
-    analysis_deadline: readMetadataString(source, "analysis_deadline"),
-    analysis_days: null,
-    doc_type: template.doc_type ?? null,
-    area: template.area ?? null,
-  };
+  return null;
 }
 
 function createStageIdentifier() {
@@ -1350,16 +1333,28 @@ export function DocumentTramiteAdmin() {
 
     try {
       if (currentRow.rowType === 'template' && currentRow.templateId && !currentRow.currentStepId) {
+        const safeDocumentId = stripTramiteUuid(currentRow.documentId) ?? currentRow.documentId;
+        const UUID_ANY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!safeDocumentId || !UUID_ANY.test(String(safeDocumentId))) {
+          setProcessActionError('O documento original não está mais disponível nesta organização. O fluxo não pode ser iniciado a partir deste modelo.');
+          toast.error('Documento original indisponível. Atualize a página.');
+          return;
+        }
+        if (!documentsById.has(safeDocumentId)) {
+          setProcessActionError('O documento não foi encontrado na organização. Não é possível iniciar o fluxo automaticamente.');
+          toast.error('Documento não encontrado na organização. Atualize a página ou selecione outro documento.');
+          return;
+        }
         toast.loading('Iniciando o fluxo automaticamente…', { id: 'start-instance-for-action' });
         await execution.startInstance({
-          documentId: currentRow.documentId,
+          documentId: safeDocumentId,
           templateId: currentRow.templateId,
           templateVersionId: templatesById.get(currentRow.templateId)?.current_version?.id ?? null,
         });
         await Promise.all([executions.refresh(), catalog.refresh()]);
         const liveInstances = executions.instances ?? [];
         const matchedInstance = liveInstances.find(
-          (inst) => inst.template_id === currentRow.templateId && inst.document_id === currentRow.documentId,
+          (inst) => inst.template_id === currentRow.templateId && inst.document_id === safeDocumentId,
         );
         toast.dismiss('start-instance-for-action');
         if (!matchedInstance) {

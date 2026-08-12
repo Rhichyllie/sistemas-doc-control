@@ -55,6 +55,25 @@ export function useDocumentTramiteExecution(
       const documentId = stripTramiteUuid(input.documentId) ?? input.documentId;
       const templateId = stripTramiteUuid(input.templateId) ?? input.templateId ?? null;
       const templateVersionId = stripTramiteUuid(input.templateVersionId) ?? input.templateVersionId ?? null;
+      const UUID_ANY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!documentId || !UUID_ANY.test(String(documentId))) {
+        const message = "O documento selecionado é inválido ou não está disponível nesta organização.";
+        setError(message);
+        setIsStarting(false);
+        throw new Error(message);
+      }
+      if (templateId && !UUID_ANY.test(String(templateId))) {
+        const message = "O modelo de fluxo selecionado é inválido nesta organização.";
+        setError(message);
+        setIsStarting(false);
+        throw new Error(message);
+      }
+      if (templateVersionId && !UUID_ANY.test(String(templateVersionId))) {
+        const message = "A versão do modelo de fluxo selecionada é inválida.";
+        setError(message);
+        setIsStarting(false);
+        throw new Error(message);
+      }
       const { data, error: rpcError } = await supabase.rpc(
         "start_document_tramite_instance",
         {
