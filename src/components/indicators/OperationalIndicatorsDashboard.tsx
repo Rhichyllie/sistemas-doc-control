@@ -188,9 +188,6 @@ export function OperationalIndicatorsDashboard() {
   const showManagementOverview = Boolean(
     report && viewMode === "management",
   );
-  const showAdvancedEmptyState = Boolean(
-    report && !hasData && !showManagementOverview,
-  );
   return (
     <MeetingModeLayout
       mode={viewMode}
@@ -347,11 +344,6 @@ export function OperationalIndicatorsDashboard() {
 
       {!report ? (
         <EmptyIndicatorsState source={indicators.source} />
-      ) : showAdvancedEmptyState ? (
-        <EmptyIndicatorsState
-          source={indicators.source === "fallback" ? "fallback" : "empty"}
-          hasFallbackReport={indicators.source === "fallback"}
-        />
       ) : (
         <>
           <IndicatorsVisualOverview report={report} />
