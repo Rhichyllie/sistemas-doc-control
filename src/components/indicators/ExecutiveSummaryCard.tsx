@@ -102,7 +102,7 @@ export function ExecutiveSummaryCard({
             </div>
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               Governance Score
             </p>
             <h2
@@ -114,9 +114,6 @@ export function ExecutiveSummaryCard({
             <Badge variant="outline" className="mt-3">
               Score operacional
             </Badge>
-            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-              Síntese do painel, não certificação formal.
-            </p>
           </div>
         </div>
 
