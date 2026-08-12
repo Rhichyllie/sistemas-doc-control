@@ -1,19 +1,26 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Activity,
   AlertTriangle,
   BadgeCheck,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock3,
   FileClock,
   FileSearch,
   FileText,
   Layers3,
+  Target,
   TimerReset,
 } from "lucide-react";
 import * as RechartsPrimitive from "recharts";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useDashboard } from "@/hooks/useDashboard";
+import {
+  useDashboard,
+  type DashboardDisciplineRow,
+} from "@/hooks/useDashboard";
 import { useOperationalCockpit } from "@/hooks/useOperationalCockpit";
 import {
   formatCount,
@@ -29,6 +36,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -450,6 +458,195 @@ function MonthlyTrendCard({
   );
 }
 
+function DisciplineProgressBar({
+  value,
+  total,
+  tone,
+}: {
+  value: number;
+  total: number;
+  tone: IndicatorTone;
+}) {
+  const percent = Math.max(0, Math.min(100, total > 0 ? (value / total) * 100 : 0));
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+        <div
+          className={cn(
+            "absolute inset-y-0 left-0 rounded-full transition-all",
+            tone === "positive"
+              ? "bg-emerald-500"
+              : tone === "attention"
+                ? "bg-amber-500"
+                : tone === "critical"
+                  ? "bg-rose-500"
+                  : "bg-slate-400",
+          )}
+          style={{ width: `${Math.max(percent, value > 0 ? 6 : 0)}%` }}
+        />
+      </div>
+      <span
+        className={cn(
+          "w-12 shrink-0 text-right text-xs font-semibold tabular-nums",
+          toneClass(tone),
+        )}
+      >
+        {formatCount(value)} ({Math.round(percent)}%)
+      </span>
+    </div>
+  );
+}
+
+function SlaBar({ sla }: { sla: number }) {
+  const safe = Math.max(0, Math.min(100, sla));
+  const tone: IndicatorTone = safe >= 85 ? "positive" : safe >= 65 ? "attention" : "critical";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+        <div
+          className={cn(
+            "absolute inset-y-0 left-0 rounded-full transition-all",
+            tone === "positive"
+              ? "bg-emerald-500"
+              : tone === "attention"
+                ? "bg-amber-500"
+                : "bg-rose-500",
+          )}
+          style={{ width: `${safe}%` }}
+        />
+      </div>
+      <span
+        className={cn(
+          "w-12 shrink-0 text-right text-xs font-semibold tabular-nums",
+          toneClass(tone),
+        )}
+      >
+        {safe}%
+      </span>
+    </div>
+  );
+}
+
+function DisciplineTopCard({ rows }: { rows: DashboardDisciplineRow[] }) {
+  const top5 = rows.slice(0, 5);
+  const remaining = rows.slice(5);
+  const hasMore = remaining.length > 0;
+
+  const [expanded, setExpanded] = useState<boolean>(false);
+
+  const emptyState = rows.length === 0;
+  const displayRows = expanded ? rows : top5;
+
+  return (
+    <Card className="col-span-1 border-slate-200 shadow-sm xl:col-span-3">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Target className="h-4 w-4 text-primary" />
+              Indicadores por disciplina {hasMore ? `(Top 5 de ${rows.length})` : ""}
+            </CardTitle>
+            <CardDescription>
+              Volume e desempenho por disciplina técnica no recorte atual.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {emptyState ? (
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+            <Layers3 className="h-6 w-6 opacity-50" />
+            <p>Ainda não há dados suficientes para distribuição por disciplina.</p>
+            <p className="text-xs text-slate-400">
+              Associe documentos a disciplinas no cadastro para visualizar este painel.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-hidden rounded-xl border border-slate-100">
+              <div className="grid grid-cols-12 gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <div className="col-span-3">Disciplina</div>
+                <div className="col-span-1 text-right">Total</div>
+                <div className="col-span-2">Aprovados</div>
+                <div className="col-span-2">Em análise</div>
+                <div className="col-span-2">Reprovados</div>
+                <div className="col-span-2">SLA</div>
+              </div>
+              <ul className="divide-y divide-slate-50">
+                {displayRows.map((row) => (
+                  <li
+                    key={row.discipline_id ?? `discipline-${row.discipline}`}
+                    className="grid grid-cols-12 items-center gap-2 px-4 py-3 text-sm transition-colors hover:bg-slate-50/60"
+                  >
+                    <div className="col-span-3 flex items-center gap-2 min-w-0">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <Layers3 className="h-3.5 w-3.5" />
+                      </div>
+                      <span className="truncate font-medium text-slate-800">
+                        {row.discipline}
+                      </span>
+                    </div>
+                    <div className="col-span-1 text-right font-semibold tabular-nums text-slate-800">
+                      {formatCount(row.total)}
+                    </div>
+                    <div className="col-span-2">
+                      <DisciplineProgressBar
+                        value={row.approved}
+                        total={row.total}
+                        tone="positive"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <DisciplineProgressBar
+                        value={row.in_analysis}
+                        total={row.total}
+                        tone="attention"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <DisciplineProgressBar
+                        value={row.rejected}
+                        total={row.total}
+                        tone="critical"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <SlaBar sla={row.sla} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {hasMore && (
+              <div className="flex justify-center pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => setExpanded((previous: boolean) => !previous)}
+                >
+                  {expanded ? (
+                    <>
+                      <ChevronUp className="mr-1.5 h-3.5 w-3.5" />
+                      Recolher disciplinas
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="mr-1.5 h-3.5 w-3.5" />
+                      Ver todas as disciplinas ({formatCount(remaining.length)} mais)
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function RecentActivitiesCard() {
   const cockpit = useOperationalCockpit();
 
@@ -575,21 +772,7 @@ export function IndicatorsVisualOverview({
       ]
     : [];
 
-  const areaItems = dashboard.metrics?.by_area
-    .slice(0, 5)
-    .map((item) => ({
-      label: item.area || "Sem area",
-      count: item.count,
-    })) ?? [];
-
-  const typeItems = dashboard.metrics?.by_type
-    .slice(0, 5)
-    .map((item) => ({
-      label: item.doc_type || "Sem tipo",
-      count: item.count,
-    })) ?? [];
-
-  const distribution = getSlaDistribution(report);
+  const disciplineRows = dashboard.metrics?.by_discipline ?? [];
 
   return (
     <section className="space-y-5">
@@ -644,66 +827,9 @@ export function IndicatorsVisualOverview({
 
       <section className="grid gap-4 xl:grid-cols-3">
         {dashboard.loading && !dashboard.metrics ? (
-          <>
-            <Skeleton className="h-[250px] rounded-2xl" />
-            <Skeleton className="h-[250px] rounded-2xl" />
-            <Skeleton className="h-[250px] rounded-2xl" />
-          </>
+          <Skeleton className="h-[340px] rounded-2xl xl:col-span-3" />
         ) : (
-          <>
-            <DistributionList
-              title="Documentos por Area"
-              description="Concentracao documental por contexto de trabalho."
-              items={areaItems}
-              itemKey="area"
-            />
-            <DistributionList
-              title="Documentos por Tipo"
-              description="Volume por tipo documental cadastrado no sistema."
-              items={typeItems}
-              itemKey="type"
-            />
-            <Card className="border-slate-200 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Desempenho de SLA</CardTitle>
-                <CardDescription>
-                  Distribuicao do recorte atual com base nos itens com prazo.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {distribution.map((item) => (
-                  <div key={item.id} className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="text-slate-700">{item.label}</span>
-                      <span className={cn("font-semibold", toneClass(item.tone))}>
-                        {item.value}
-                      </span>
-                    </div>
-                    <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        className={cn(
-                          "h-full rounded-full",
-                          toneTrackClass(item.tone),
-                        )}
-                        style={{
-                          width: `${Math.max(
-                            report.sla.totalItemsWithDueDate
-                              ? Math.round(
-                                  (item.value / report.sla.totalItemsWithDueDate) *
-                                    100,
-                                )
-                              : 0,
-                            item.value > 0 ? 8 : 0,
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
-                <AttentionPanel report={report} />
-              </CardContent>
-            </Card>
-          </>
+          <DisciplineTopCard rows={disciplineRows} />
         )}
       </section>
 

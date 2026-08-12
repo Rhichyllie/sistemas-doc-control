@@ -18,6 +18,7 @@ export interface DashboardMetrics {
   recent_created: number
   by_type: { doc_type: string; count: number }[]
   by_area: { area: string; count: number }[]
+  by_discipline: DashboardDisciplineRow[]
   monthly_trend: {
     month: string
     label: string
@@ -27,8 +28,22 @@ export interface DashboardMetrics {
   }[]
 }
 
+export interface DashboardDisciplineRow {
+  discipline_id: string | null
+  discipline: string
+  total: number
+  approved: number
+  in_analysis: number
+  rejected: number
+  sla: number
+  approved_pct: number
+  in_analysis_pct: number
+  rejected_pct: number
+}
+
 interface TypeRow { doc_type: string }
 interface AreaRow { area: string }
+interface DisciplineRow { discipline_id: string | null; status: string | null }
 interface CreatedRow { created_at: string }
 interface PublishedRow { published_at: string | null }
 interface ReviewRow { next_review_at: string | null }
@@ -97,6 +112,59 @@ function buildMonthlyTrend(
   }
 
   return months
+}
+
+function buildByDiscipline(
+  rows: DisciplineRow[],
+  disciplineMap: Map<string | null, string>,
+): DashboardDisciplineRow[] {
+  const agg = new Map<string | null, DashboardDisciplineRow>()
+
+  for (const row of rows) {
+    const key = row.discipline_id ?? null
+    if (!agg.has(key)) {
+      agg.set(key, {
+        discipline_id: key,
+        discipline: disciplineMap.get(key) ?? "Sem disciplina",
+        total: 0,
+        approved: 0,
+        in_analysis: 0,
+        rejected: 0,
+        sla: 0,
+        approved_pct: 0,
+        in_analysis_pct: 0,
+        rejected_pct: 0,
+      })
+    }
+    const current = agg.get(key)!
+    current.total += 1
+    const status = (row.status ?? "").toLowerCase()
+    if (status === "published" || status === "approved" || status === "aprovado") current.approved += 1
+    else if (
+      status === "in_review" ||
+      status === "in_analysis" ||
+      status === "review" ||
+      status === "analise" ||
+      status === "análise"
+    )
+      current.in_analysis += 1
+    else if (status === "obsolete" || status === "rejected" || status === "reprovado")
+      current.rejected += 1
+  }
+
+  const result: DashboardDisciplineRow[] = []
+  for (const row of agg.values()) {
+    const base = row.total || 1
+    row.approved_pct = Math.round((row.approved / base) * 100)
+    row.in_analysis_pct = Math.round((row.in_analysis / base) * 100)
+    row.rejected_pct = Math.round((row.rejected / base) * 100)
+    const done = row.approved + row.in_analysis || 1
+    row.sla = Math.round((row.approved / done) * 100)
+    result.push(row)
+  }
+
+  result.sort((a, b) => b.total - a.total)
+  return result
 }
 
 export function useDashboard() {
@@ -182,6 +250,8 @@ export function useDashboard() {
           recentNewRes,
           byTypeRes,
           byAreaRes,
+          byDisciplineRes,
+          disciplinesRes,
           createdTrendRes,
           publishedTrendRes,
           reviewTrendRes,
@@ -207,6 +277,8 @@ export function useDashboard() {
             .eq('org_id', orgId).gte('created_at', ago30.toISOString()),
           supabase.from('documents').select('doc_type').eq('org_id', orgId),
           supabase.from('documents').select('area').eq('org_id', orgId),
+          supabase.from('documents').select('discipline_id,status').eq('org_id', orgId),
+          supabase.from('disciplines').select('id,name').eq('org_id', orgId),
           supabase.from('documents').select('created_at').eq('org_id', orgId).gte('created_at', lastSixMonths.toISOString()),
           supabase.from('documents').select('published_at').eq('org_id', orgId).not('published_at', 'is', null).gte('published_at', lastSixMonths.toISOString()),
           supabase.from('documents').select('next_review_at').eq('org_id', orgId).eq('status', 'published').not('next_review_at', 'is', null).gte('next_review_at', lastSixMonths.toISOString().split('T')[0]),
@@ -216,6 +288,14 @@ export function useDashboard() {
           .map(({ value, count }) => ({ doc_type: value, count }))
         const byArea = aggregate((byAreaRes.data ?? []) as AreaRow[], 'area')
           .map(({ value, count }) => ({ area: value, count }))
+        const disciplineNameMap = new Map<string | null, string>()
+        for (const discipline of (disciplinesRes.data ?? []) as Array<{ id: string; name: string }>) {
+          disciplineNameMap.set(discipline.id, discipline.name)
+        }
+        const byDiscipline = buildByDiscipline(
+          (byDisciplineRes.data ?? []) as DisciplineRow[],
+          disciplineNameMap,
+        )
         const monthlyTrend = buildMonthlyTrend(
           (createdTrendRes.data ?? []) as CreatedRow[],
           (publishedTrendRes.data ?? []) as PublishedRow[],
@@ -239,6 +319,7 @@ export function useDashboard() {
             recent_created: recentNewRes.count ?? 0,
             by_type: byType,
             by_area: byArea,
+            by_discipline: byDiscipline,
             monthly_trend: monthlyTrend,
           })
         }
