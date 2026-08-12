@@ -146,59 +146,53 @@ export function AuditReportsPage() {
     <div className="space-y-6">
       <header
         data-print-hidden
-        className="rounded-2xl border bg-gradient-to-br from-primary/[0.07] via-background to-background p-5 md:p-7"
+        className="rounded-3xl border-0 bg-gradient-to-r from-sky-600 via-violet-600 to-emerald-500 p-8 text-white shadow-[0_20px_50px_-24px_rgba(56,189,248,0.55)] md:p-10"
       >
-        <div className="flex flex-col justify-between gap-5 xl:flex-row xl:items-end">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">Auditoria formal</Badge>
-              <Badge
-                variant={
-                  reports.schemaState === "available" ? "default" : "secondary"
-                }
-              >
-                {reports.schemaState === "available"
-                  ? "Ciclo 26 disponível"
-                  : "Modo de compatibilidade"}
-              </Badge>
-              {report && viewMode === "presentation" && (
-                <Badge variant="secondary">Modo reunião</Badge>
-              )}
-            </div>
-            <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl">
+        <div className="flex flex-col justify-between gap-6 xl:flex-row xl:items-end">
+          <div className="min-w-0">
+            <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
               Relatórios
             </h1>
-            <p className="mt-2 max-w-3xl text-muted-foreground">
-              Dashboard executivo, pacotes formais de auditoria, evidências e
-              integridade técnica.
+            <p className="mt-3 max-w-3xl text-sm leading-relaxed text-white/85 md:text-base">
+              Dashboard executivo, pacotes formais de auditoria, evidências e integridade técnica.
             </p>
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-              {report && (
-                <>
-                  <span>
-                    Período: {report.period.from} a {report.period.to}
-                  </span>
-                  <span>
-                    Atualizado em {formatGeneratedAt(report.generatedAt)}
-                  </span>
-                </>
-              )}
-            </div>
+            {report && (
+              <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5 text-xs font-medium text-white/80">
+                <span>
+                  Período: {report.period.from} a {report.period.to}
+                </span>
+                <span>
+                  Atualizado em {formatGeneratedAt(report.generatedAt)}
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline">
+            <Button
+              asChild
+              variant="outline"
+              className="border-white/25 bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20 hover:text-white"
+            >
               <Link to="/authenticated/indicadores">
                 <Activity className="mr-2 h-4 w-4" />
                 Indicadores
               </Link>
             </Button>
-            <Button asChild variant="outline">
+            <Button
+              asChild
+              variant="outline"
+              className="border-white/25 bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20 hover:text-white"
+            >
               <Link to="/authenticated/documentos/central">
                 <LayoutDashboard className="mr-2 h-4 w-4" />
                 Central
               </Link>
             </Button>
-            <Button asChild variant="outline">
+            <Button
+              asChild
+              variant="outline"
+              className="border-white/25 bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20 hover:text-white"
+            >
               <Link to="/authenticated/configuracoes">
                 <ShieldCheck className="mr-2 h-4 w-4" />
                 Configurações
@@ -209,6 +203,7 @@ export function AuditReportsPage() {
                 aria-label="Atualizar indicadores operacionais"
                 onClick={() => void indicators.refresh()}
                 disabled={indicators.isLoading}
+                className="bg-white text-slate-900 shadow-md transition hover:bg-white/95 hover:text-slate-900"
               >
                 <RefreshCw
                   className={`mr-2 h-4 w-4 ${
