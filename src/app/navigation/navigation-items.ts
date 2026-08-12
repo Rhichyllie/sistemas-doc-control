@@ -108,13 +108,6 @@ export const navigationSections: readonly NavigationSection[] = [
     label: "ANÁLISE",
     items: [
       { to: "/authenticated/indicadores", label: "Indicadores", icon: ChartNoAxesCombined, scope: "library" },
-      {
-        to: "/authenticated/indicadores",
-        label: "Análise",
-        icon: Rows3,
-        scope: "library",
-        search: { view: "analysis" },
-      },
       { to: "/authenticated/auditoria/relatorios", label: "Relatórios", icon: LineChart, scope: "library" },
     ],
   },
