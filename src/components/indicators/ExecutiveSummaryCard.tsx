@@ -58,10 +58,10 @@ export function ExecutiveSummaryCard({
     <section
       data-print-break-inside
       aria-labelledby="executive-summary-title"
-      className={`overflow-hidden rounded-2xl border ${tone.shell}`}
+      className={`mx-auto max-w-6xl overflow-hidden rounded-2xl border ${tone.shell}`}
     >
-      <div className="grid xl:grid-cols-[380px_minmax(0,1fr)]">
-        <div className="flex items-center gap-6 border-b p-6 md:p-8 xl:border-b-0 xl:border-r">
+      <div className="grid xl:grid-cols-[380px_minmax(0,640px)] justify-center">
+        <div className="flex items-center gap-5 border-b p-5 md:p-7 xl:border-b-0 xl:border-r">
           <div className="relative h-40 w-40 shrink-0">
             <svg
               viewBox="0 0 120 120"
@@ -102,7 +102,7 @@ export function ExecutiveSummaryCard({
             </div>
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               Governance Score
             </p>
             <h2
@@ -117,13 +117,13 @@ export function ExecutiveSummaryCard({
           </div>
         </div>
 
-        <div className="p-6 md:p-8">
+        <div className="p-5 md:p-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                 Resumo executivo
               </p>
-              <h3 className="mt-1 text-xl font-semibold">
+              <h3 className="mt-1 text-lg font-semibold">
                 O que precisa entrar na pauta
               </h3>
             </div>
@@ -132,13 +132,13 @@ export function ExecutiveSummaryCard({
               cálculo determinístico
             </div>
           </div>
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
             {insights.map((insight) => {
               const Icon = INSIGHT_ICON[insight.tone];
               return (
                 <div
                   key={insight.id}
-                  className="flex gap-3 rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm"
+                  className="flex gap-2.5 rounded-xl border border-slate-200/70 bg-white p-3 shadow-sm"
                 >
                   <div className={`mt-0.5 ${TONE[insight.tone].text}`}>
                     <Icon className="h-4 w-4" />
