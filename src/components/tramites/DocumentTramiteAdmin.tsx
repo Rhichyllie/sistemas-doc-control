@@ -679,14 +679,28 @@ export function DocumentTramiteAdmin() {
     () => new Map(actors.groups.map((group) => [group.id, group.name])),
     [actors.groups],
   );
-  const documentsById = useMemo(
-    () => new Map(documentsState.documents.map((document) => [document.id, document])),
-    [documentsState.documents],
-  );
-  const templatesById = useMemo(
-    () => new Map(catalog.templates.map((template) => [template.id, template])),
-    [catalog.templates],
-  );
+  const documentsById = useMemo(() => {
+    const map = new Map<string, Document>();
+    for (const document of documentsState.documents) {
+      const safeId = stripTramiteUuid(document.id) ?? document.id;
+      if (safeId) {
+        map.set(safeId, document);
+        if (safeId !== document.id) map.set(document.id, document);
+      }
+    }
+    return map;
+  }, [documentsState.documents]);
+  const templatesById = useMemo(() => {
+    const map = new Map<string, DocumentTramiteTemplate>();
+    for (const template of catalog.templates) {
+      const safeId = stripTramiteUuid(template.id) ?? template.id;
+      if (safeId) {
+        map.set(safeId, template);
+        if (safeId !== template.id) map.set(template.id, template);
+      }
+    }
+    return map;
+  }, [catalog.templates]);
   const projectsById = useMemo(
     () => new Map(projects.projects.map((project) => [project.id, project])),
     [projects.projects],
@@ -694,11 +708,15 @@ export function DocumentTramiteAdmin() {
   const stepsByInstanceId = useMemo(() => {
     const grouped = new Map<string, typeof executions.steps>();
     for (const step of executions.steps) {
-      const current = grouped.get(step.instance_id);
-      if (current) {
-        current.push(step);
-      } else {
-        grouped.set(step.instance_id, [step]);
+      const safeInstanceId = stripTramiteUuid(step.instance_id) ?? step.instance_id;
+      const keys = [step.instance_id, safeInstanceId].filter((value) => Boolean(value)) as string[];
+      for (const key of keys) {
+        const current = grouped.get(key);
+        if (current) {
+          current.push(step);
+        } else {
+          grouped.set(key, [step]);
+        }
       }
     }
     return grouped;
@@ -731,9 +749,15 @@ export function DocumentTramiteAdmin() {
     }
 
     return executions.instances.map((instance) => {
-      const document = documentsById.get(instance.document_id) ?? null;
-      const template = templatesById.get(instance.template_id) ?? null;
-      const steps = stepsByInstanceId.get(instance.id) ?? [];
+      const safeInstanceId = stripTramiteUuid(instance.id) ?? instance.id;
+      const safeDocumentId = stripTramiteUuid(instance.document_id) ?? instance.document_id;
+      const safeTemplateId = stripTramiteUuid(instance.template_id) ?? instance.template_id;
+      const document = documentsById.get(safeDocumentId ?? '') ?? documentsById.get(instance.document_id) ?? null;
+      const template = templatesById.get(safeTemplateId ?? '') ?? templatesById.get(instance.template_id ?? '') ?? null;
+      const steps =
+        stepsByInstanceId.get(instance.id) ??
+        stepsByInstanceId.get(safeInstanceId ?? '') ??
+        [];
       const actionableSteps = steps.filter(
         (step) => step.node_type !== "start" && step.node_type !== "end",
       );
@@ -860,9 +884,17 @@ export function DocumentTramiteAdmin() {
 
   const plannedProcessRows = useMemo(() => {
     const templatesWithExecution = new Set(
-      executions.instances.map((instance) => instance.template_id),
+      executions.instances
+        .map((instance) => stripTramiteUuid(instance.template_id) ?? instance.template_id)
+        .filter((value): value is string => Boolean(value)),
+    );
+    const docsWithAnyInstance = new Set(
+      executions.instances
+        .map((instance) => stripTramiteUuid(instance.document_id) ?? instance.document_id)
+        .filter((value): value is string => Boolean(value)),
     );
     const rows: ProcessRow[] = [];
+    const UUID_ANY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
     function isNodeAssignedToProfile(
       node: DocumentTramiteNode,
@@ -891,7 +923,8 @@ export function DocumentTramiteAdmin() {
     }
 
     for (const template of catalog.templates) {
-      if (templatesWithExecution.has(template.id)) continue;
+      const safeTemplateId = stripTramiteUuid(template.id) ?? template.id;
+      if (safeTemplateId && templatesWithExecution.has(safeTemplateId)) continue;
 
       const sourceDocument = getSourceDocumentSummary(
         template,
@@ -900,6 +933,10 @@ export function DocumentTramiteAdmin() {
         projects.projects,
       );
       if (!sourceDocument) continue;
+      const safeDocumentId = stripTramiteUuid(sourceDocument.id) ?? sourceDocument.id;
+      if (!safeDocumentId || !UUID_ANY.test(String(safeDocumentId))) continue;
+      if (!documentsById.has(safeDocumentId)) continue;
+      if (docsWithAnyInstance.has(safeDocumentId)) continue;
 
       const actionableNodes = sortFlowNodes(
         (template.current_version?.graph.nodes ?? []).filter(
@@ -1345,28 +1382,141 @@ export function DocumentTramiteAdmin() {
           toast.error('Documento não encontrado na organização. Atualize a página ou selecione outro documento.');
           return;
         }
-        toast.loading('Iniciando o fluxo automaticamente…', { id: 'start-instance-for-action' });
-        await execution.startInstance({
-          documentId: safeDocumentId,
-          templateId: currentRow.templateId,
-          templateVersionId: templatesById.get(currentRow.templateId)?.current_version?.id ?? null,
-        });
-        await Promise.all([executions.refresh(), catalog.refresh()]);
-        const liveInstances = executions.instances ?? [];
-        const matchedInstance = liveInstances.find(
-          (inst) => inst.template_id === currentRow.templateId && inst.document_id === safeDocumentId,
+        const existingActiveInstance = (executions.instances ?? []).find(
+          (inst) =>
+            (stripTramiteUuid(inst.document_id) ?? inst.document_id) === safeDocumentId &&
+            (inst.status === 'active' || (inst.status as string) === 'pending'),
         );
+        if (existingActiveInstance) {
+          const matchedTemplate = templatesById.get(
+            stripTramiteUuid(existingActiveInstance.template_id) ?? existingActiveInstance.template_id ?? '',
+          ) ?? templatesById.get(currentRow.templateId) ?? null;
+          const liveSteps = (executions.steps ?? []).filter(
+            (step) => step.instance_id === existingActiveInstance.id,
+          );
+          const liveDocument = documentsById.get(
+            stripTramiteUuid(existingActiveInstance.document_id) ?? existingActiveInstance.document_id,
+          ) ?? null;
+          const liveActionableSteps = liveSteps.filter(
+            (step) => step.node_type !== 'start' && step.node_type !== 'end',
+          );
+          const liveCurrentStep =
+            liveActionableSteps.find((step) => step.status === 'active') ??
+            liveActionableSteps.find((step) => step.status === 'pending') ??
+            null;
+          if (liveCurrentStep) {
+            const liveIsMine =
+              (() => {
+                if (!profile) return false;
+                const assignment = (liveCurrentStep.assignment_type ?? 'none') as DocumentTramiteAssignmentType;
+                if (
+                  assignment === 'none' ||
+                  assignment === 'author' ||
+                  assignment === 'document_owner'
+                ) {
+                  return liveDocument?.author_id === profile.id;
+                }
+                if (assignment === 'specific_user') {
+                  return liveCurrentStep.assignee_user_id === profile.id;
+                }
+                if (assignment === 'approval_group') {
+                  return Boolean(
+                    liveCurrentStep.assignee_group_id && profileGroupIds.has(liveCurrentStep.assignee_group_id),
+                  );
+                }
+                return assignment === 'role' && liveCurrentStep.required_role === profile.role;
+              })();
+            currentRow = {
+              id: existingActiveInstance.id,
+              rowType: 'instance',
+              instanceId: existingActiveInstance.id,
+              templateId: matchedTemplate?.id ?? null,
+              documentId: existingActiveInstance.document_id,
+              documentCode: liveDocument?.code ?? existingActiveInstance.document_id,
+              documentTitle: liveDocument?.title ?? existingActiveInstance.document_id,
+              templateName: matchedTemplate?.name ?? 'Fluxo manual',
+              projectName:
+                liveDocument?.project?.name ??
+                (liveDocument?.project_id
+                  ? projectsById.get(liveDocument.project_id)?.name ?? 'Sem projeto'
+                  : 'Sem projeto'),
+              projectId: liveDocument?.project_id ?? existingActiveInstance.project_id ?? null,
+              docType: liveDocument?.doc_type ?? matchedTemplate?.doc_type ?? null,
+              area: liveDocument?.area ?? matchedTemplate?.area ?? null,
+              currentStepId: liveCurrentStep.id,
+              currentStepNodeType: liveCurrentStep.node_type ?? null,
+              currentStepAssignmentType: liveCurrentStep.assignment_type ?? null,
+              currentStepLabel: liveCurrentStep.label ?? 'Sem etapa ativa',
+              responsibleName:
+                liveCurrentStep.assignment_type === 'specific_user'
+                  ? usersById.get(liveCurrentStep.assignee_user_id ?? '') ?? 'Usuário atribuído'
+                  : liveCurrentStep.assignment_type === 'approval_group'
+                    ? groupsById.get(liveCurrentStep.assignee_group_id ?? '') ?? 'Grupo atribuído'
+                    : liveCurrentStep.assignment_type === 'role'
+                      ? `Papel: ${liveCurrentStep.required_role ?? 'workflow'}`
+                      : liveCurrentStep.assignment_type === 'author' ||
+                          liveCurrentStep.assignment_type === 'document_owner' ||
+                          !liveCurrentStep.assignment_type ||
+                          (liveCurrentStep.assignment_type as DocumentTramiteAssignmentType) === 'none'
+                        ? liveDocument?.author?.full_name ?? 'Autor do documento'
+                        : 'Aguardando definição',
+              statusBucket: existingActiveInstance.status === 'completed'
+                ? 'completed'
+                : existingActiveInstance.status === 'cancelled' || existingActiveInstance.status === 'failed'
+                  ? 'cancelled'
+                  : liveIsMine
+                    ? 'my_action'
+                    : existingActiveInstance.status === 'active'
+                      ? 'waiting_others'
+                      : 'active',
+              statusLabel: existingActiveInstance.status ?? 'Ativo',
+              isMine: liveIsMine,
+              canDelegate: false,
+              progress: liveActionableSteps.length
+                ? Math.round(
+                    (liveActionableSteps.filter(
+                      (s) => s.status === 'completed' || s.status === 'skipped',
+                    ).length /
+                      liveActionableSteps.length) *
+                      100,
+                  )
+                : 0,
+              totalSteps: liveActionableSteps.length,
+              completedSteps: liveActionableSteps.filter(
+                (s) => s.status === 'completed' || s.status === 'skipped',
+              ).length,
+              dueAt: liveCurrentStep.due_at ?? existingActiveInstance.updated_at,
+              startedAt: existingActiveInstance.started_at ?? existingActiveInstance.created_at,
+            } satisfies ProcessRow;
+          }
+        }
+        if (currentRow.rowType === 'template' && !currentRow.currentStepId) {
+          toast.loading('Iniciando o fluxo automaticamente…', { id: 'start-instance-for-action' });
+          await execution.startInstance({
+            documentId: safeDocumentId,
+            templateId: currentRow.templateId,
+            templateVersionId: templatesById.get(currentRow.templateId ?? '')?.current_version?.id ?? null,
+          });
+          await Promise.all([executions.refresh(), catalog.refresh()]);
+        }
+        const liveInstancesAfter = executions.instances ?? [];
+        const matchedInstance = liveInstancesAfter.find(
+          (inst) =>
+            (stripTramiteUuid(inst.template_id) ?? inst.template_id) ===
+              (stripTramiteUuid(currentRow.templateId) ?? currentRow.templateId) &&
+            (stripTramiteUuid(inst.document_id) ?? inst.document_id) === safeDocumentId,
+        ) ?? existingActiveInstance ?? null;
         toast.dismiss('start-instance-for-action');
         if (!matchedInstance) {
           setProcessActionError('Fluxo iniciado, mas não foi possível recuperar a etapa ativa. Atualize a página e tente novamente.');
           toast.error('Fluxo iniciado. Atualize a página para continuar.');
           return;
         }
-        const matchedTemplate = templatesById.get(currentRow.templateId) ?? null;
+        const matchedTemplate = templatesById.get(currentRow.templateId ?? '') ?? templatesById.get(matchedInstance.template_id ?? '') ?? null;
         const liveSteps = (executions.steps ?? []).filter(
           (step) => step.instance_id === matchedInstance.id,
         );
-        const liveDocument = documentsById.get(matchedInstance.document_id) ?? null;
+        const liveDocument = documentsById.get(matchedInstance.document_id) ?? documentsById.get(stripTramiteUuid(matchedInstance.document_id) ?? '') ?? null;
         const liveActionableSteps = liveSteps.filter(
           (step) => step.node_type !== 'start' && step.node_type !== 'end',
         );

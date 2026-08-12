@@ -81,9 +81,17 @@ export function useDocumentTramiteExecution(
         .limit(1)
         .maybeSingle();
       if (docCheckError) {
+        const isRlsPolicy =
+          (docCheckError as { code?: string })?.code === "PGRST106" ||
+          String(docCheckError.message ?? "").toLowerCase().includes("row-level security") ||
+          String(docCheckError.message ?? "").toLowerCase().includes("policy") ||
+          String(docCheckError.details ?? "").toLowerCase().includes("policy");
+        const prefix = isRlsPolicy
+          ? "A política de segurança (RLS) bloqueou o acesso a este documento nesta organização."
+          : "Não foi possível validar o documento para iniciar o fluxo.";
         const message = buildExecutionErrorMessage(
           docCheckError,
-          "Não foi possível validar o documento para iniciar o fluxo.",
+          prefix,
           { p_document_id: documentId },
         );
         setError(message);
@@ -104,9 +112,15 @@ export function useDocumentTramiteExecution(
           .limit(1)
           .maybeSingle();
         if (tplCheckError) {
+          const isRlsPolicy =
+            (tplCheckError as { code?: string })?.code === "PGRST106" ||
+            String(tplCheckError.message ?? "").toLowerCase().includes("row-level security");
+          const prefix = isRlsPolicy
+            ? "A política de segurança (RLS) bloqueou o acesso a este modelo de fluxo."
+            : "Não foi possível validar o modelo para iniciar o fluxo.";
           const message = buildExecutionErrorMessage(
             tplCheckError,
-            "Não foi possível validar o modelo para iniciar o fluxo.",
+            prefix,
             { p_template_id: templateId },
           );
           setError(message);
