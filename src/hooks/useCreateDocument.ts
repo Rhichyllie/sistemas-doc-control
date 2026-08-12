@@ -394,6 +394,7 @@ export function useCreateDocument() {
           p_doc_type: input.doc_type,
           p_area: input.area,
           p_library_id: libraryId,
+          p_org_id: profile.org_id,
           p_project_id: input.project_id || null,
           p_revision: revision,
           p_review_period_months: input.review_period_months ?? 24,
@@ -440,6 +441,20 @@ export function useCreateDocument() {
           throw new Error(
             "A criação transacional retornou uma resposta inválida. Nenhum resultado seguro pôde ser confirmado.",
           );
+        }
+
+        try {
+          await supabase
+            .from("documents")
+            .update({
+              org_id: profile.org_id,
+              library_id: libraryId,
+              status: "draft",
+              author_id: profile.id,
+            })
+            .eq("id", created.documentId);
+        } catch (_sanityErr) {
+          // noop: garantia defensiva, o documento já foi criado e segue válido
         }
 
         const usageLogWarning = await registerTemplateUsage(created.documentId);
