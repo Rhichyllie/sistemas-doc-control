@@ -74,12 +74,14 @@ export function OperationalIndicatorsDashboard() {
   });
   const pathname = location.pathname;
   const requestedView = new URLSearchParams(location.searchStr).get("view");
-  const requestedMode =
+  const rawRequestedMode =
     requestedView === "management" ||
     requestedView === "presentation" ||
     requestedView === "analysis"
       ? requestedView
       : null;
+  const requestedMode =
+    rawRequestedMode === "analysis" ? "management" : rawRequestedMode;
   const isLibraryIndicatorsRoute = /^\/authenticated\/biblioteca\/[^/]+\/indicadores\/?$/.test(
     pathname,
   );
@@ -101,6 +103,17 @@ export function OperationalIndicatorsDashboard() {
   useEffect(() => {
     if (requestedMode) {
       setViewMode(requestedMode);
+      if (rawRequestedMode === "analysis") {
+        void navigate({
+          to: pathname,
+          search: (previous: Record<string, unknown>) => {
+            const next = { ...previous };
+            delete next.view;
+            return next;
+          },
+          replace: true,
+        });
+      }
       return;
     }
 
@@ -111,12 +124,11 @@ export function OperationalIndicatorsDashboard() {
 
     try {
       const stored = localStorage.getItem(VIEW_MODE_KEY);
-      if (
-        stored === "management" ||
-        stored === "presentation" ||
-        stored === "analysis"
-      ) {
+      if (stored === "management" || stored === "presentation") {
         setViewMode(stored);
+      } else if (stored === "analysis") {
+        setViewMode("management");
+        localStorage.setItem(VIEW_MODE_KEY, "management");
       }
     } catch {
       // Estado local é opcional; o modo Gestão permanece como fallback.
@@ -339,22 +351,11 @@ export function OperationalIndicatorsDashboard() {
                 <Activity className="h-4 w-4" />
                 <AlertTitle>Leitura gerencial consolidada</AlertTitle>
                 <AlertDescription>
-                  {report.limitations.join(" ")} O cockpit de Análise traz
-                  detalhamento por gargalo, sinal e qualidade. Para exportação
-                  formal, utilize a tela de Relatórios.
+                  {report.limitations.join(" ")} Para exportação formal, utilize
+                  a tela de Relatórios.
                 </AlertDescription>
                 {viewMode !== "presentation" ? (
                   <div data-print-hidden className="mt-3 flex flex-wrap gap-2">
-                    <Button
-                      asChild
-                      variant="outline"
-                      size="sm"
-                      onClick={() => changeViewMode("analysis")}
-                    >
-                      <Link to={pathname}>
-                        Ir para modo Análise
-                      </Link>
-                    </Button>
                     <Button
                       asChild
                       variant="outline"

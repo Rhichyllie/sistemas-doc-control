@@ -1,13 +1,11 @@
 import { useState } from "react";
 import {
   BarChart3,
-  BriefcaseBusiness,
   Check,
   Clipboard,
   Download,
   MonitorUp,
   Printer,
-  Rows3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -32,11 +30,9 @@ export type IndicatorPrintOrientation = "landscape" | "portrait";
 const MODES: Array<{
   id: IndicatorViewMode;
   label: string;
-  icon: typeof BriefcaseBusiness;
+  icon: typeof MonitorUp;
 }> = [
-  { id: "management", label: "Gestão", icon: BriefcaseBusiness },
   { id: "presentation", label: "Apresentação", icon: MonitorUp },
-  { id: "analysis", label: "Análise", icon: Rows3 },
 ];
 
 function fallbackCopy(value: string) {
@@ -139,26 +135,35 @@ export function IndicatorExportBar({
       aria-label="Modo de visualização e exportação"
       className="flex flex-col gap-3 rounded-xl border bg-card/90 p-3 shadow-sm xl:flex-row xl:items-center xl:justify-between"
     >
-      <div className="flex min-w-0 flex-wrap items-center gap-1">
-        <span className="mr-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          Visualização
-        </span>
-        {MODES.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Button
-              key={item.id}
-              type="button"
-              size="sm"
-              variant={mode === item.id ? "default" : "ghost"}
-              aria-pressed={mode === item.id}
-              onClick={() => onModeChange(item.id)}
-            >
-              <Icon className="mr-1.5 h-4 w-4" />
-              {item.label}
-            </Button>
-          );
-        })}
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        {mode === "presentation" ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="default"
+            onClick={() => onModeChange("management")}
+          >
+            <MonitorUp className="mr-1.5 h-4 w-4" />
+            Sair da apresentação
+          </Button>
+        ) : (
+          MODES.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Button
+                key={item.id}
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-pressed={mode === item.id}
+                onClick={() => onModeChange(item.id)}
+              >
+                <Icon className="mr-1.5 h-4 w-4" />
+                {item.label}
+              </Button>
+            );
+          })
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
