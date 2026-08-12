@@ -57,22 +57,68 @@ export function useDocumentTramiteExecution(
       const templateVersionId = stripTramiteUuid(input.templateVersionId) ?? input.templateVersionId ?? null;
       const UUID_ANY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!documentId || !UUID_ANY.test(String(documentId))) {
-        const message = "O documento selecionado é inválido ou não está disponível nesta organização.";
+        const message = `O documento selecionado é inválido ou não está disponível nesta organização (documentId=${String(documentId)}).`;
         setError(message);
         setIsStarting(false);
         throw new Error(message);
       }
       if (templateId && !UUID_ANY.test(String(templateId))) {
-        const message = "O modelo de fluxo selecionado é inválido nesta organização.";
+        const message = `O modelo de fluxo selecionado é inválido nesta organização (templateId=${String(templateId)}).`;
         setError(message);
         setIsStarting(false);
         throw new Error(message);
       }
       if (templateVersionId && !UUID_ANY.test(String(templateVersionId))) {
-        const message = "A versão do modelo de fluxo selecionada é inválida.";
+        const message = `A versão do modelo de fluxo selecionada é inválida (templateVersionId=${String(templateVersionId)}).`;
         setError(message);
         setIsStarting(false);
         throw new Error(message);
+      }
+      const { data: docCheck, error: docCheckError } = await supabase
+        .from("documents")
+        .select("id, org_id, code, title")
+        .eq("id", documentId)
+        .limit(1)
+        .maybeSingle();
+      if (docCheckError) {
+        const message = buildExecutionErrorMessage(
+          docCheckError,
+          "Não foi possível validar o documento para iniciar o fluxo.",
+          { p_document_id: documentId },
+        );
+        setError(message);
+        setIsStarting(false);
+        throw new Error(message);
+      }
+      if (!docCheck) {
+        const message = `Documento não encontrado nesta organização. Verifique o UUID enviado e tente novamente. (p_document_id=${documentId} · templateId=${String(templateId ?? "null")})`;
+        setError(message);
+        setIsStarting(false);
+        throw new Error(message);
+      }
+      if (templateId) {
+        const { data: tplCheck, error: tplCheckError } = await supabase
+          .from("document_tramite_templates")
+          .select("id, org_id, status, is_active")
+          .eq("id", templateId)
+          .limit(1)
+          .maybeSingle();
+        if (tplCheckError) {
+          const message = buildExecutionErrorMessage(
+            tplCheckError,
+            "Não foi possível validar o modelo para iniciar o fluxo.",
+            { p_template_id: templateId },
+          );
+          setError(message);
+          setIsStarting(false);
+          throw new Error(message);
+        }
+        if (!tplCheck) {
+          const message = `Modelo de fluxo não encontrado nesta organização. (p_template_id=${templateId})`;
+          setError(message);
+          setIsStarting(false);
+          throw new Error(message);
+        }
       }
       const { data, error: rpcError } = await supabase.rpc(
         "start_document_tramite_instance",
@@ -88,6 +134,13 @@ export function useDocumentTramiteExecution(
         const message = buildExecutionErrorMessage(
           rpcError,
           "Não foi possível iniciar o trâmite.",
+          {
+            p_document_id: documentId,
+            p_template_id: templateId ?? "null",
+            p_template_version_id: templateVersionId ?? "null",
+            doc_org_id: docCheck.org_id ?? "null",
+            doc_code: docCheck.code ?? "null",
+          },
         );
         setError(message);
         throw new Error(message);
@@ -124,6 +177,10 @@ export function useDocumentTramiteExecution(
         const message = buildExecutionErrorMessage(
           rpcError,
           "Não foi possível concluir a etapa.",
+          {
+            p_step_id: stepId,
+            p_decision: input.decision ?? "completed",
+          },
         );
         setError(message);
         throw new Error(message);
@@ -159,6 +216,7 @@ export function useDocumentTramiteExecution(
         const message = buildExecutionErrorMessage(
           rpcError,
           "Não foi possível cancelar o trâmite.",
+          { p_instance_id: instanceId },
         );
         setError(message);
         throw new Error(message);

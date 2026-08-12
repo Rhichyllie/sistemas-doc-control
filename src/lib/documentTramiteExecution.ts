@@ -394,26 +394,48 @@ export function getNextStepPreview(
 export function buildExecutionErrorMessage(
   error: unknown,
   fallback = "Não foi possível concluir a operação do trâmite.",
+  debug?: Record<string, unknown>,
 ) {
-  if (error instanceof Error && error.message) return error.message;
-  if (!error || typeof error !== "object") return fallback;
+  const debugParts: string[] = [];
+  if (debug && Object.keys(debug).length > 0) {
+    for (const [key, value] of Object.entries(debug)) {
+      if (value === null || value === undefined) continue;
+      const formatted = typeof value === "string" ? value : JSON.stringify(value);
+      if (!formatted) continue;
+      debugParts.push(`${key}=${formatted}`);
+    }
+  }
+  const debugSuffix = debugParts.length > 0 ? ` (${debugParts.join(" · ")})` : "";
+  if (error instanceof Error && error.message) {
+    return `${error.message}${debugSuffix}`;
+  }
+  if (!error || typeof error !== "object") {
+    return `${fallback}${debugSuffix}`;
+  }
   const source = error as Record<string, unknown>;
-  const message = [source.message, source.details, source.hint]
+  const code = typeof source.code === "string" ? source.code : null;
+  const parts = [
+    source.message,
+    source.details,
+    source.hint,
+    code ? `código=${code}` : null,
+  ]
     .filter(
       (value): value is string =>
         typeof value === "string" && Boolean(value.trim()),
-    )
-    .join(" · ");
-  if (!message) return fallback;
-  if (
-    String(source.code ?? "").toUpperCase() === "PGRST202" ||
+    );
+  let message = parts.join(" · ");
+  if (!message) {
+    message = fallback;
+  } else if (
+    String(code ?? "").toUpperCase() === "PGRST202" ||
     message.toLowerCase().includes("could not find the function") ||
     (message.toLowerCase().includes("function") &&
       message.toLowerCase().includes("does not exist"))
   ) {
-    return "A execução de trâmites ainda não foi instalada neste ambiente.";
+    message = "A execução de trâmites ainda não foi instalada neste ambiente.";
   }
-  return message;
+  return `${message}${debugSuffix}`;
 }
 
 const TRAMITE_ID_PREFIXES = [

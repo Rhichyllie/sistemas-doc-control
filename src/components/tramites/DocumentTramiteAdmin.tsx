@@ -1548,6 +1548,13 @@ export function DocumentTramiteAdmin() {
         success = Boolean(result) && !('error' in (result as { error?: unknown }));
       }
     } catch (error) {
+      const root = error instanceof Error ? error.message : null;
+      const detailed =
+        execution.error ||
+        root ||
+        'Não foi possível registrar sua decisão. Verifique permissões e tente novamente.';
+      setProcessActionError(detailed);
+      toast.error(root || 'Não foi possível concluir a etapa.');
       success = false;
     }
 
@@ -1558,10 +1565,6 @@ export function DocumentTramiteAdmin() {
           : 'Correção solicitada ao autor.',
       )
       closeProcessActionDialog()
-    } else {
-      setProcessActionError(
-        'Não foi possível registrar sua decisão. Verifique as permissões e tente novamente.',
-      )
     }
   }
 
