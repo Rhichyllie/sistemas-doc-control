@@ -138,23 +138,23 @@ body {
 
 @media print {
   @page {
-    size: A4 landscape;
-    margin: 10mm;
+    size: A4 landscape !important;
+    margin: 10mm 12mm;
   }
 
   @page indicator-landscape {
-    size: A4 landscape;
-    margin: 10mm;
+    size: A4 landscape !important;
+    margin: 10mm 12mm;
   }
 
   @page indicator-portrait {
-    size: A4 portrait;
-    margin: 10mm;
+    size: A4 landscape !important;
+    margin: 10mm 12mm;
   }
 
   @page audit-report {
-    size: A4 portrait;
-    margin: 12mm;
+    size: A4 landscape !important;
+    margin: 10mm 12mm;
   }
 
   html,
@@ -163,70 +163,120 @@ body {
     color: #111827 !important;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
+    width: 297mm !important;
+    max-width: 297mm !important;
+    box-sizing: border-box;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box !important;
+    overflow: visible !important;
   }
 
   [data-app-sidebar],
   [data-app-banner],
-  [data-print-hidden] {
+  [data-print-hidden],
+  button,
+  [role="button"],
+  .no-print,
+  nav,
+  aside,
+  header:not([data-print-header]),
+  footer {
     display: none !important;
   }
 
   [data-app-main] {
     overflow: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   [data-app-content] {
     max-width: none !important;
+    width: 100% !important;
     padding: 0 !important;
+    margin: 0 !important;
   }
 
   [data-print-only] {
     display: block !important;
+    width: 100% !important;
   }
 
   [data-indicator-cockpit] {
     max-width: none !important;
+    width: 100% !important;
     gap: 12px !important;
+    page: indicator-landscape !important;
   }
 
-  [data-indicator-cockpit][data-print-orientation="landscape"] {
-    page: indicator-landscape;
-  }
-
+  [data-indicator-cockpit][data-print-orientation="landscape"],
   [data-indicator-cockpit][data-print-orientation="portrait"] {
-    page: indicator-portrait;
+    page: indicator-landscape !important;
   }
 
   [data-indicator-cockpit] a,
   [data-indicator-cockpit] button {
     text-decoration: none !important;
+    pointer-events: none;
   }
 
-  [data-print-break-inside] {
-    break-inside: avoid;
+  [data-print-break-inside],
+  .card,
+  section,
+  [role="region"],
+  table,
+  thead,
+  tfoot,
+  tr,
+  th,
+  td,
+  li,
+  figure,
+  pre,
+  blockquote {
+    break-inside: avoid-page;
     page-break-inside: avoid;
+    orphans: 3;
+    widows: 3;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    break-after: avoid-page;
+    page-break-after: avoid;
   }
 
   [data-audit-report-root] {
-    page: audit-report;
+    page: indicator-landscape !important;
+    width: 100% !important;
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     padding: 0 !important;
+    margin: 0 !important;
   }
 
   [data-audit-print-section] {
-    break-inside: avoid;
+    break-inside: avoid-page;
     page-break-inside: avoid;
   }
 
   [data-audit-report-root] table {
     font-size: 9px !important;
+    width: 100% !important;
+    table-layout: fixed;
   }
 
   [data-audit-report-root] th,
   [data-audit-report-root] td {
     padding: 4px 6px !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   [data-audit-report-root] code {
@@ -243,5 +293,32 @@ body {
   [data-indicator-cockpit] .shadow-md,
   [data-indicator-cockpit] .shadow-lg {
     box-shadow: none !important;
+  }
+
+  .grid {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .rounded-2xl,
+  .rounded-xl,
+  .rounded-lg {
+    border-radius: 8px !important;
+  }
+
+  img,
+  svg,
+  canvas,
+  .recharts-wrapper,
+  .recharts-surface {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid;
+    break-inside: avoid-page;
+  }
+
+  .recharts-responsive-container {
+    width: 100% !important;
+    max-width: 100% !important;
   }
 }
