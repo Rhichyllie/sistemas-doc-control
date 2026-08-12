@@ -62,7 +62,7 @@ export function ExecutiveSummaryCard({
     >
       <div className="grid xl:grid-cols-[minmax(520px,1.25fr)_minmax(400px,1fr)]">
         <div className="flex items-center gap-5 border-b p-5 md:p-7 xl:border-b-0 xl:border-r">
-          <div className="relative h-40 w-40 shrink-0">
+          <div className="relative h-44 w-44 shrink-0">
             <svg
               viewBox="0 0 120 120"
               className="h-full w-full -rotate-90"
@@ -77,7 +77,7 @@ export function ExecutiveSummaryCard({
                 r="50"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="10"
+                strokeWidth="11"
                 className="text-background/80"
               />
               <circle
@@ -86,7 +86,7 @@ export function ExecutiveSummaryCard({
                 r="50"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="10"
+                strokeWidth="11"
                 strokeLinecap="round"
                 className={tone.stroke}
                 style={{
@@ -95,7 +95,7 @@ export function ExecutiveSummaryCard({
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className={`text-4xl font-bold ${tone.text}`}>
+              <span className={`text-5xl font-bold ${tone.text}`}>
                 {score.score ?? "—"}
               </span>
               <span className="text-xs text-muted-foreground">de 100</span>
