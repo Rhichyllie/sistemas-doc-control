@@ -61,11 +61,11 @@ export function VisualMetricCard({ metric }: { metric: OperationalKpiCard }) {
   const style = TONE_STYLE[metric.tone];
   const content = (
     <div
-      className={`group h-full rounded-xl border bg-card p-4 transition-all hover:-translate-y-0.5 hover:shadow-sm ${style.border}`}
+      className={`group flex h-full min-h-[156px] flex-col rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_2px_10px_-6px_rgba(15,23,42,0.12)] transition hover:-translate-y-0.5 hover:shadow-[0_10px_24px_-14px_rgba(15,23,42,0.22)]`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className={`rounded-lg p-2 ${style.icon}`}>
-          <Icon className="h-4 w-4" />
+        <div className={`rounded-xl p-2 ${style.icon}`}>
+          <Icon className="h-5 w-5" />
         </div>
         <TooltipProvider>
           <Tooltip>
@@ -84,28 +84,33 @@ export function VisualMetricCard({ metric }: { metric: OperationalKpiCard }) {
           </Tooltip>
         </TooltipProvider>
       </div>
-      <p
-        className={`mt-4 text-3xl font-semibold tracking-tight ${style.value}`}
-      >
-        {metric.value}
-      </p>
-      <p className="mt-1 text-sm font-medium">{metric.label}</p>
-      <p className="mt-2 min-h-9 text-xs leading-relaxed text-muted-foreground">
-        {metric.context}
-      </p>
+      <div className="mt-4 flex flex-1 flex-col">
+        <p
+          className={`text-[26px] font-semibold leading-tight tracking-tight ${style.value}`}
+        >
+          {metric.value}
+        </p>
+        <p className="mt-0.5 text-sm font-medium text-slate-700">
+          {metric.label}
+        </p>
+        <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+          {metric.context}
+        </p>
+      </div>
       {metric.actionUrl && (
-        <span className="mt-3 inline-flex items-center text-xs font-medium text-primary">
+        <Link
+          to={metric.actionUrl}
+          className="mt-3 inline-flex w-fit items-center rounded-lg text-xs font-semibold text-primary hover:underline"
+        >
           Investigar
           <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
-        </span>
+        </Link>
       )}
     </div>
   );
 
   return metric.actionUrl ? (
-    <Link to={metric.actionUrl} className="block h-full">
-      {content}
-    </Link>
+    <div className="h-full">{content}</div>
   ) : (
     content
   );

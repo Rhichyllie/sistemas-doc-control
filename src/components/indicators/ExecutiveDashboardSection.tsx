@@ -23,17 +23,11 @@ export function ExecutiveIndicatorsCockpit({
     <>
       <section
         aria-label="SLA, risco e comparação de período"
-        className="grid gap-4 2xl:grid-cols-12"
+        className="grid gap-4 xl:grid-cols-3"
       >
-        <div className="2xl:col-span-5">
-          <SlaDistributionChart report={report} />
-        </div>
-        <div className="2xl:col-span-4">
-          <RiskMatrixPanel report={report} />
-        </div>
-        <div className="2xl:col-span-3">
-          <TrendComparisonPanel report={report} />
-        </div>
+        <SlaDistributionChart report={report} />
+        <RiskMatrixPanel report={report} />
+        <TrendComparisonPanel report={report} />
       </section>
 
       <section
@@ -43,14 +37,6 @@ export function ExecutiveIndicatorsCockpit({
       >
         <ResponsibleRiskPanel report={report} />
         <OperationalFlowPanel report={report} />
-      </section>
-
-      <section
-        aria-label="Comparação e matriz de risco"
-        className="grid gap-4 xl:grid-cols-2"
-      >
-        <TrendComparisonPanel report={report} />
-        <RiskMatrixPanel report={report} />
       </section>
 
       <section
