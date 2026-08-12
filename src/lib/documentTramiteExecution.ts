@@ -415,3 +415,36 @@ export function buildExecutionErrorMessage(
   }
   return message;
 }
+
+const TRAMITE_ID_PREFIXES = [
+  "suggested-tramite-cockpit-",
+  "suggested-tramite-",
+  "tramite-version-",
+  "tramite-step-",
+  "tramite-node-",
+  "tramite-edge-",
+  "legacy-tramite-",
+  "legacy-",
+  "tramite-",
+  "template-",
+  "approval-",
+  "draft-",
+] as const;
+
+export function stripTramiteUuid(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  let cleaned = str;
+  for (const prefix of TRAMITE_ID_PREFIXES) {
+    if (cleaned.startsWith(prefix)) {
+      cleaned = cleaned.slice(prefix.length);
+      break;
+    }
+  }
+  const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (UUID_V4.test(cleaned)) return cleaned;
+  const UUID_ANY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (UUID_ANY.test(cleaned)) return cleaned;
+  return cleaned || null;
+}

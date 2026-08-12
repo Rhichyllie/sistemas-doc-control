@@ -73,6 +73,7 @@ import type {
 } from "@/lib/documentTramiteModel";
 import {
   getStepDecisionOptions,
+  stripTramiteUuid,
   type DocumentTramiteInstanceStep,
 } from "@/lib/documentTramiteExecution";
 import { addBusinessDaysLocal } from "@/lib/operationalCalendar";
@@ -1338,6 +1339,14 @@ export function DocumentTramiteAdmin() {
     }
 
     let currentRow: ProcessRow = selectedProcessForAction;
+    currentRow = {
+      ...currentRow,
+      id: stripTramiteUuid(currentRow.id) ?? currentRow.id,
+      instanceId: stripTramiteUuid(currentRow.instanceId) ?? currentRow.instanceId,
+      templateId: stripTramiteUuid(currentRow.templateId) ?? currentRow.templateId,
+      documentId: stripTramiteUuid(currentRow.documentId) ?? currentRow.documentId,
+      currentStepId: stripTramiteUuid(currentRow.currentStepId) ?? currentRow.currentStepId,
+    } satisfies ProcessRow;
 
     try {
       if (currentRow.rowType === 'template' && currentRow.templateId && !currentRow.currentStepId) {

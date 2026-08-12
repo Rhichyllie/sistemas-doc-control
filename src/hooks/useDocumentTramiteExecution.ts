@@ -1,6 +1,9 @@
 import { useCallback, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { buildExecutionErrorMessage } from "@/lib/documentTramiteExecution";
+import {
+  buildExecutionErrorMessage,
+  stripTramiteUuid,
+} from "@/lib/documentTramiteExecution";
 
 interface StartTramiteInput {
   documentId: string;
@@ -49,12 +52,15 @@ export function useDocumentTramiteExecution(
     async (input: StartTramiteInput) => {
       setIsStarting(true);
       setError(null);
+      const documentId = stripTramiteUuid(input.documentId) ?? input.documentId;
+      const templateId = stripTramiteUuid(input.templateId) ?? input.templateId ?? null;
+      const templateVersionId = stripTramiteUuid(input.templateVersionId) ?? input.templateVersionId ?? null;
       const { data, error: rpcError } = await supabase.rpc(
         "start_document_tramite_instance",
         {
-          p_document_id: input.documentId,
-          p_template_id: input.templateId ?? null,
-          p_template_version_id: input.templateVersionId ?? null,
+          p_document_id: documentId,
+          p_template_id: templateId,
+          p_template_version_id: templateVersionId,
           p_metadata: input.metadata ?? {},
         },
       );
@@ -84,10 +90,11 @@ export function useDocumentTramiteExecution(
     async (input: CompleteTramiteStepInput) => {
       setIsCompleting(true);
       setError(null);
+      const stepId = stripTramiteUuid(input.stepId) ?? input.stepId;
       const { data, error: rpcError } = await supabase.rpc(
         "complete_document_tramite_step",
         {
-          p_step_id: input.stepId,
+          p_step_id: stepId,
           p_decision: input.decision ?? "completed",
           p_comment: input.comment?.trim() || null,
           p_metadata: input.metadata ?? {},
@@ -120,10 +127,11 @@ export function useDocumentTramiteExecution(
     async (input: CancelTramiteInput) => {
       setIsCancelling(true);
       setError(null);
+      const instanceId = stripTramiteUuid(input.instanceId) ?? input.instanceId;
       const { data, error: rpcError } = await supabase.rpc(
         "cancel_document_tramite_instance",
         {
-          p_instance_id: input.instanceId,
+          p_instance_id: instanceId,
           p_reason: input.reason.trim(),
         },
       );

@@ -1,6 +1,9 @@
 import { useCallback, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { buildExecutionErrorMessage } from "@/lib/documentTramiteExecution";
+import {
+  buildExecutionErrorMessage,
+  stripTramiteUuid,
+} from "@/lib/documentTramiteExecution";
 
 interface AddEvidenceInput {
   stepId: string;
@@ -23,10 +26,11 @@ export function useDocumentTramiteEvidence(
     async (input: AddEvidenceInput) => {
       setIsAdding(true);
       setError(null);
+      const stepId = stripTramiteUuid(input.stepId) ?? input.stepId;
       const { data, error: rpcError } = await supabase.rpc(
         "add_document_tramite_evidence",
         {
-          p_step_id: input.stepId,
+          p_step_id: stepId,
           p_evidence_type: input.evidenceType,
           p_note: input.note?.trim() || null,
           p_file_path: input.filePath?.trim() || null,

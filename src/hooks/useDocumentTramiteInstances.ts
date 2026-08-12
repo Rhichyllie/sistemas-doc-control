@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { getErrorMessage } from "@/lib/errorUtils";
 import { supabase } from "@/lib/supabase";
+import {
+  stripTramiteUuid,
+} from "@/lib/documentTramiteExecution";
 import type {
   DocumentTramiteInstance,
   DocumentTramiteInstanceEdge,
@@ -134,7 +137,10 @@ export function useDocumentTramiteInstances({
     setSchemaStatus(loadedInstances.length ? "ready" : "empty");
 
     if (loadAllSteps) {
-      const instanceIds = loadedInstances.map((item) => item.id);
+      const rawInstanceIds = loadedInstances.map((item) => item.id);
+      const instanceIds = rawInstanceIds
+        .map((id) => stripTramiteUuid(id))
+        .filter((value): value is string => Boolean(value));
       if (!instanceIds.length) {
         clearDetails();
         setIsLoading(false);
@@ -183,7 +189,12 @@ export function useDocumentTramiteInstances({
     }
 
     const target =
-      loadedInstances.find((item) => item.id === instanceId) ??
+      loadedInstances.find((item) =>
+        instanceId
+          ? (stripTramiteUuid(item.id) ?? item.id) ===
+            (stripTramiteUuid(instanceId) ?? instanceId)
+          : false,
+      ) ??
       loadedInstances.find((item) => item.status === "active") ??
       loadedInstances[0];
     if (!target) {
@@ -191,6 +202,7 @@ export function useDocumentTramiteInstances({
       setIsLoading(false);
       return;
     }
+    const safeTargetId = stripTramiteUuid(target.id) ?? target.id;
 
     const [stepsResult, edgesResult, evidenceResult, eventsResult] =
       await Promise.all([
@@ -198,25 +210,25 @@ export function useDocumentTramiteInstances({
           .from("document_tramite_instance_steps")
           .select("*")
           .eq("org_id", profile.org_id)
-          .eq("instance_id", target.id)
+          .eq("instance_id", safeTargetId)
           .order("created_at", { ascending: true }),
         supabase
           .from("document_tramite_instance_edges")
           .select("*")
           .eq("org_id", profile.org_id)
-          .eq("instance_id", target.id)
+          .eq("instance_id", safeTargetId)
           .order("priority", { ascending: true }),
         supabase
           .from("document_tramite_instance_evidence")
           .select("*")
           .eq("org_id", profile.org_id)
-          .eq("instance_id", target.id)
+          .eq("instance_id", safeTargetId)
           .order("created_at", { ascending: true }),
         supabase
           .from("document_tramite_instance_events")
           .select("*")
           .eq("org_id", profile.org_id)
-          .eq("instance_id", target.id)
+          .eq("instance_id", safeTargetId)
           .order("created_at", { ascending: false }),
       ]);
 
