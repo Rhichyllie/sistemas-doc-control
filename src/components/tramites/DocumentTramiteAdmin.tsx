@@ -1778,6 +1778,17 @@ export function DocumentTramiteAdmin() {
         execution.error ||
         root ||
         'Não foi possível registrar sua decisão. Verifique permissões e tente novamente.';
+      const alreadyCompletedLike =
+        /já conclu|etapa .*ativa|instância não está ativa|p_decision=completed/i.test(
+          detailed ?? '',
+        );
+      if (alreadyCompletedLike) {
+        setProcessActionError(null);
+        toast.message('Esta etapa já havia sido concluída. Lista atualizada.');
+        closeProcessActionDialog();
+        void Promise.all([catalog.refresh?.(), executions.refresh?.()]);
+        return;
+      }
       setProcessActionError(detailed);
       toast.error(root || 'Não foi possível concluir a etapa.');
       success = false;
