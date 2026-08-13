@@ -220,13 +220,19 @@ export function useOperationalCockpit() {
   const now = new Date().toISOString()
   const managerialView = profile?.role === 'admin' || profile?.role === 'manager'
   const result = useMemo(() => {
-    const documentsById = new Map(documents.map((document) => [document.id, document]))
+    const safeDocuments = documents ?? []
+    const safeQueue = queue ?? []
+    const safeNotifications = notifications ?? []
+    const safeEntries = entries ?? []
+    const safeGroupMembers = groupMembers ?? []
+    const safeWorkItems = workCenter.workItems ?? []
+    const documentsById = new Map(safeDocuments.map((document) => [document.id, document]))
     const activityItems: OperationalActivityItem[] = []
     const correctionDocumentIds = new Set<string>()
     const relevantReviewDocumentIds = new Set<string>()
 
-    for (const item of queue) {
-      const isCompletedStatus = ['approved', 'completed', 'rejected'].includes(item.doc_status)
+    for (const item of safeQueue) {
+      const isCompletedStatus = ['approved', 'completed', 'rejected'].includes(item.doc_status ?? '')
       if (isCompletedStatus) continue
 
       const isMineOrManager =
@@ -236,7 +242,7 @@ export function useOperationalCockpit() {
         (
           item.assignment_type === 'group'
           && item.assignee_group_id
-          && groupMembers.some(
+          && safeGroupMembers.some(
             (gm) => gm.user_id === profile?.id && gm.group_id === item.assignee_group_id
           )
         ) ||
@@ -300,12 +306,12 @@ export function useOperationalCockpit() {
       }
     }
 
-    for (const notification of notifications) {
+    for (const notification of safeNotifications) {
       const document = notification.document_id ? documentsById.get(notification.document_id) : undefined
       const label = getDocumentLabel(document, notification)
 
       if (isCorrectionNotification(notification)) {
-        if (document && !['draft', 'rejected'].includes(document.status)) continue
+        if (document && !['draft', 'rejected'].includes(document.status ?? '')) continue
         if (notification.document_id && correctionDocumentIds.has(notification.document_id)) continue
         if (notification.document_id) correctionDocumentIds.add(notification.document_id)
 
@@ -334,7 +340,7 @@ export function useOperationalCockpit() {
 
       activityItems.push({
         id: `notification-${notification.id}`,
-        type: isMentionNotification(notification) ? 'mention' : notification.type.includes('approved') ? 'recent_update' : 'informational',
+        type: isMentionNotification(notification) ? 'mention' : (notification.type ?? '').includes('approved') ? 'recent_update' : 'informational',
         title: notification.title,
         description: notification.body ?? 'Nova notificação do TRAMITA.',
         documentId: notification.document_id,
@@ -352,11 +358,11 @@ export function useOperationalCockpit() {
       })
     }
 
-    for (const document of documents) {
+    for (const document of safeDocuments) {
       if (
-        (document.status === 'rejected' || document.correction)
-        && document.author_id === profile?.id
-        && !correctionDocumentIds.has(document.id)
+        ((document.status === 'rejected' || document.correction)
+          && document.author_id === profile?.id
+          && !correctionDocumentIds.has(document.id))
       ) {
         correctionDocumentIds.add(document.id)
         activityItems.push({
@@ -415,7 +421,7 @@ export function useOperationalCockpit() {
       })
     }
 
-    for (const wi of workCenter.workItems) {
+    for (const wi of safeWorkItems) {
       if (
         wi.type !== "suggested_tramite" &&
         wi.type !== "tramite_step" &&
@@ -508,9 +514,9 @@ export function useOperationalCockpit() {
     const awaitingDocumentIds = new Set(
       actionableItems.map((item) => item.documentId).filter((id): id is string => Boolean(id)),
     )
-    const recentActivities = entries.length
-      ? mapAuditEntriesToRecentActivities(entries)
-      : documentsFallback(documents)
+    const recentActivities = safeEntries.length
+      ? mapAuditEntriesToRecentActivities(safeEntries)
+      : documentsFallback(safeDocuments)
 
     const kpis: OperationalKpis = {
       myPending: actionableItems.length,
@@ -518,7 +524,7 @@ export function useOperationalCockpit() {
       rejectedForCorrection: correctionDocumentIds.size,
       nearingReview: relevantReviewDocumentIds.size,
       overdue: sortedItems.filter((item) => item.type === 'overdue').length,
-      approvalsPending: queue.length,
+      approvalsPending: safeQueue.length,
       unreadNotifications: unreadCount,
     }
 
@@ -527,17 +533,17 @@ export function useOperationalCockpit() {
       activityItems: sortedItems,
       recentActivities,
       approvalSummary: {
-        total: queue.length,
-        overdue: queue.filter((item) => item.overdue).length,
-        onTime: queue.filter((item) => item.due_at && !item.overdue).length,
-        withoutDueDate: queue.filter((item) => !item.due_at).length,
+        total: safeQueue.length,
+        overdue: safeQueue.filter((item) => item.overdue).length,
+        onTime: safeQueue.filter((item) => item.due_at && !item.overdue).length,
+        withoutDueDate: safeQueue.filter((item) => !item.due_at).length,
       },
       emptyStates: {
         activities: sortedItems.length === 0,
         recentActivities: recentActivities.length === 0,
-        approvals: queue.length === 0,
+        approvals: safeQueue.length === 0,
       },
-      recentActivitiesSource: entries.length ? ('audit_trail' as const) : ('documents' as const),
+      recentActivitiesSource: safeEntries.length ? ('audit_trail' as const) : ('documents' as const),
       generatedAt: now,
     }
   }, [
@@ -551,6 +557,7 @@ export function useOperationalCockpit() {
     queue,
     unreadCount,
     workCenter.workItems,
+    documentsFallback,
   ])
 
   const error = documentsError ?? queueError

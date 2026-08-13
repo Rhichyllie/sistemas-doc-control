@@ -162,6 +162,100 @@ export function useNotifications(options: { organizationView?: boolean } = {}) {
     void fetchNotifications();
   }, [fetchNotifications]);
 
+  useEffect(() => {
+    if (!profile?.id) return;
+    if (schemaStatus !== "enterprise" && schemaStatus !== "legacy") return;
+
+    const enterprise = schemaStatus === "enterprise";
+    const table = enterprise ? "internal_notifications" : "notifications";
+    const orgId = profile.org_id;
+    const userId = profile.id;
+
+    if (enterprise && !orgId) return;
+
+    const channelName = enterprise
+      ? `notifications-enterprise-${orgId}-${userId}-${organizationView ? "org" : "user"}`
+      : `notifications-legacy-${userId}`;
+
+    const filter = enterprise
+      ? `org_id=eq.${orgId}`
+      : `user_id=eq.${userId}`;
+
+    const handleInsert = (record: Record<string, unknown>) => {
+      const normalized = normalizeInternalNotification(record);
+      if (!normalized) return;
+
+      if (enterprise && !organizationView) {
+        if (normalized.recipient_user_id !== userId) return;
+      }
+      if (normalized.dismissed_at) return;
+
+      setNotifications((current) => {
+        if (current.some((n) => n.id === normalized.id)) return current;
+        return [normalized, ...current].slice(0, 200);
+      });
+    };
+
+    const handleUpdate = (record: Record<string, unknown>) => {
+      const normalized = normalizeInternalNotification(record);
+      if (!normalized) return;
+
+      if (enterprise && !organizationView) {
+        if (normalized.recipient_user_id !== userId) return;
+      }
+
+      setNotifications((current) => {
+        const existingIndex = current.findIndex((n) => n.id === normalized.id);
+
+        if (enterprise && normalized.dismissed_at) {
+          if (existingIndex === -1) return current;
+          return current.filter((n) => n.id !== normalized.id);
+        }
+
+        if (existingIndex === -1) {
+          if (enterprise && normalized.dismissed_at) return current;
+          return [normalized, ...current].slice(0, 200);
+        }
+
+        const next = current.slice();
+        next[existingIndex] = normalized;
+        return next;
+      });
+    };
+
+    const handleDelete = (record: Record<string, unknown>) => {
+      const id = String(record.id ?? "");
+      if (!id) return;
+      setNotifications((current) => current.filter((n) => n.id !== id));
+    };
+
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table,
+          filter,
+        },
+        (payload) => {
+          if (payload.eventType === "INSERT" && payload.new) {
+            handleInsert(payload.new as Record<string, unknown>);
+          } else if (payload.eventType === "UPDATE" && payload.new) {
+            handleUpdate(payload.new as Record<string, unknown>);
+          } else if (payload.eventType === "DELETE" && payload.old) {
+            handleDelete(payload.old as Record<string, unknown>);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [schemaStatus, profile?.id, profile?.org_id, organizationView]);
+
   const markRead = useCallback(
     async (notificationId: string) => {
       if (!profile?.id) return false;

@@ -243,13 +243,18 @@ export function OperationalHome() {
   const home = useOperationalHome();
   const cockpit = useOperationalCockpit();
   const workCenter = useDocumentWorkCenter();
-  const canSeeAllInstances = workCenter.canViewOrganization;
-  const isEmptyP12 = workCenter.tramiteStatus === "not_installed" || workCenter.tramiteStatus === "restricted";
-  const hasActiveTramiteInstances = (workCenter.activeInstances ?? []).length > 0;
-  const hasSuggestedTramitesOnly = !hasActiveTramiteInstances && workCenter.workItems.some(
-    (item) => item.type === "suggested_tramite",
-  );
-  const hasOnlyAttentionAlerts = !hasActiveTramiteInstances && !hasSuggestedTramitesOnly;
+  const canSeeAllInstances = workCenter.canViewOrganization ?? false;
+  const isEmptyP12 =
+    workCenter.tramiteStatus === "not_installed" ||
+    workCenter.tramiteStatus === "restricted";
+  const safeActiveInstances = workCenter.activeInstances ?? [];
+  const safeWorkItems = workCenter.workItems ?? [];
+  const hasActiveTramiteInstances = safeActiveInstances.length > 0;
+  const hasSuggestedTramitesOnly =
+    !hasActiveTramiteInstances &&
+    safeWorkItems.some((item) => item.type === "suggested_tramite");
+  const hasOnlyAttentionAlerts =
+    !hasActiveTramiteInstances && !hasSuggestedTramitesOnly;
   const [typeFilter, setTypeFilter] =
     useState<OperationalActivityType | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<
@@ -262,10 +267,12 @@ export function OperationalHome() {
     month: "long",
     year: "numeric",
   }).format(new Date());
-  const currentDateCapitalized = currentDate.charAt(0).toUpperCase() + currentDate.slice(1);
+  const currentDateCapitalized =
+    currentDate.charAt(0).toUpperCase() + currentDate.slice(1);
+  const safeActivityItems = cockpit.activityItems ?? [];
   const filteredActivities = useMemo(
     () =>
-      cockpit.activityItems.filter((item) => {
+      safeActivityItems.filter((item) => {
         if (typeFilter !== "all" && item.type !== typeFilter) return false;
         if (priorityFilter === "critical" && item.priority !== "critical") {
           return false;
@@ -278,48 +285,68 @@ export function OperationalHome() {
         }
         return true;
       }),
-    [cockpit.activityItems, priorityFilter, typeFilter],
+    [safeActivityItems, priorityFilter, typeFilter],
   );
   const attentionItems = useMemo(
     () =>
-      workCenter.workItems
+      safeWorkItems
         .filter((item) => {
-          if (item.priority === "critical") return true
-          if (item.type === "attention") return true
-          if (item.type === "suggested_tramite") return true
-          if (item.type === "tramite_step" && !item.responsibleName) return true
+          if (item.priority === "critical") return true;
+          if (item.type === "attention") return true;
+          if (item.type === "suggested_tramite") return true;
+          if (item.type === "tramite_step" && !item.responsibleName) return true;
           if (
-            (item.type === "tramite_step" || item.type === "approval")
-            && item.dueAt
+            (item.type === "tramite_step" || item.type === "approval") &&
+            item.dueAt
           ) {
-            const due = new Date(item.dueAt)
-            const now = new Date()
-            const diffMs = due.getTime() - now.getTime()
-            const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
-            return diffDays >= 0 && diffDays <= 3
+            const due = new Date(item.dueAt);
+            const now = new Date();
+            const diffMs = due.getTime() - now.getTime();
+            const diffDays = Math.ceil(
+              diffMs / (1000 * 60 * 60 * 24),
+            );
+            return diffDays >= 0 && diffDays <= 3;
           }
-          return false
+          return false;
         })
         .slice(0, 8),
-    [workCenter.workItems],
+    [safeWorkItems],
   );
 
+  const kpis = cockpit.kpis ?? {
+    myPending: 0,
+    awaitingMyAction: 0,
+    rejectedForCorrection: 0,
+    nearingReview: 0,
+    overdue: 0,
+    approvalsPending: 0,
+    unreadNotifications: 0,
+  };
+
   const metrics: MetricCard[] = useMemo(() => {
-    const inProgress = workCenter.activeInstances.filter(
-      (instance) => canSeeAllInstances ? true : !instance.isOverdue,
+    const inProgress = safeActiveInstances.filter(
+      (instance) => (canSeeAllInstances ? true : !instance.isOverdue),
     ).length;
-    const reviewPending = cockpit.kpis.nearingReview;
+    const reviewPending = kpis.nearingReview ?? 0;
     const operationalAlerts = attentionItems.length;
     return [
       {
         label: "Pendentes de aprovação",
-        hint: cockpit.kpis.approvalsPending > 0 ? "Sem alteração hoje" : "Sem itens para aprovar",
-        value: cockpit.kpis.approvalsPending,
+        hint:
+          (kpis.approvalsPending ?? 0) > 0
+            ? "Sem alteração hoje"
+            : "Sem itens para aprovar",
+        value: kpis.approvalsPending ?? 0,
         accent: "bg-gradient-to-b from-sky-200 to-sky-400",
       },
       {
-        label: canSeeAllInstances ? "Fluxos em tramitação (Gestão)" : "Em tramitação",
-        hint: inProgress > 0 ? `${inProgress} fluxo(s) ativo(s)` : "Nenhum fluxo ativo",
+        label: canSeeAllInstances
+          ? "Fluxos em tramitação (Gestão)"
+          : "Em tramitação",
+        hint:
+          inProgress > 0
+            ? `${inProgress} fluxo(s) ativo(s)`
+            : "Nenhum fluxo ativo",
         value: inProgress,
         accent: "bg-gradient-to-b from-emerald-200 to-emerald-400",
       },
@@ -328,17 +355,20 @@ export function OperationalHome() {
         hint: reviewPending > 0 ? "Sem alteração hoje" : "Sem revisões pendentes",
         value: reviewPending,
         accent: "bg-gradient-to-b from-amber-200 to-amber-400",
-        badgeLabel: cockpit.kpis.overdue > 0 ? "Atenção" : "Tudo em dia",
-        badgeTone: cockpit.kpis.overdue > 0 ? "amber" : "emerald",
+        badgeLabel: (kpis.overdue ?? 0) > 0 ? "Atenção" : "Tudo em dia",
+        badgeTone: (kpis.overdue ?? 0) > 0 ? "amber" : "emerald",
       },
       {
         label: "Alertas operacionais",
-        hint: operationalAlerts > 0 ? `${operationalAlerts} item(s) requerem ação` : "Sem itens críticos",
+        hint:
+          operationalAlerts > 0
+            ? `${operationalAlerts} item(s) requerem ação`
+            : "Sem itens críticos",
         value: operationalAlerts,
         accent: "bg-gradient-to-b from-rose-200 to-rose-400",
       },
     ];
-  }, [cockpit.kpis, workCenter.activeInstances, attentionItems.length, canSeeAllInstances]);
+  }, [kpis, safeActiveInstances, attentionItems.length, canSeeAllInstances]);
 
   return (
     <div className="space-y-8">
@@ -409,8 +439,8 @@ export function OperationalHome() {
               variant="secondary"
               className="shrink-0 self-start border-sky-100 bg-sky-50 text-sky-700"
             >
-              {cockpit.kpis.myPending}{" "}
-              {cockpit.kpis.myPending === 1 ? "pendência" : "pendências"}
+              {kpis.myPending ?? 0}{" "}
+              {(kpis.myPending ?? 0) === 1 ? "pendência" : "pendências"}
             </Badge>
           </CardHeader>
           <CardContent className="space-y-4 pt-5">
