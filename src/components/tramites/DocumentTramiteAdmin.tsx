@@ -693,16 +693,22 @@ export function DocumentTramiteAdmin() {
         .filter(
           (template) =>
             template.is_active &&
-            template.status !== "archived" &&
-            Boolean(template.current_version),
+            template.status === "published" &&
+            Boolean(template.published_version ?? template.current_version),
         )
         .sort((left, right) => {
-          if (left.status === right.status) {
-            return (
-              new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
-            );
-          }
-          return left.status === "published" ? -1 : 1;
+          const leftVer =
+            left.published_version?.version_number ??
+            left.current_version?.version_number ??
+            0;
+          const rightVer =
+            right.published_version?.version_number ??
+            right.current_version?.version_number ??
+            0;
+          if (leftVer !== rightVer) return rightVer - leftVer;
+          return (
+            new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
+          );
         }),
     [catalog.templates],
   );
@@ -1172,7 +1178,10 @@ export function DocumentTramiteAdmin() {
     if (!newOpen || selectedSourceTemplateId || availableSourceTemplates.length === 0) {
       return;
     }
-    setSelectedSourceTemplateId(availableSourceTemplates[0].id);
+    const firstPublished = availableSourceTemplates.find(
+      (template) => template.status === "published",
+    );
+    setSelectedSourceTemplateId((firstPublished ?? availableSourceTemplates[0]).id);
   }, [availableSourceTemplates, newOpen, selectedSourceTemplateId]);
 
   const selectedProcessRow =
@@ -2798,11 +2807,17 @@ export function DocumentTramiteAdmin() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Selecione um modelo</SelectItem>
-                        {availableSourceTemplates.map((template) => (
-                          <SelectItem key={template.id} value={template.id}>
-                            {template.name}
-                          </SelectItem>
-                        ))}
+                        {availableSourceTemplates.map((template) => {
+                          const ver =
+                            template.published_version?.version_number ??
+                            template.current_version?.version_number ??
+                            1;
+                          return (
+                            <SelectItem key={template.id} value={template.id}>
+                              [{template.code}] {template.name} · v{ver}
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   </div>
