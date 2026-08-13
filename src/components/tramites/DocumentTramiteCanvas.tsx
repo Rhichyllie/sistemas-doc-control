@@ -118,17 +118,17 @@ function FlowCanvas({
   }, [edges, setFlowEdges]);
 
   useEffect(() => {
-    const sig = `${graph.nodes.length}:${graph.edges.length}:${graph.nodes
+    const sig = `${flowNodes.length}:${flowEdges.length}:${flowNodes
       .map((n) => `${n.id}@${n.position.x},${n.position.y}`)
       .join("|")}`;
-    if (lastGraphSig.current && lastGraphSig.current !== sig) {
+    if (lastGraphSig.current !== sig) {
       const timer = window.setTimeout(() => {
-        fitView({ padding: 0.2, duration: 350, maxZoom: 1.2 });
-      }, 80);
+        fitView({ padding: 0.25, duration: 400, maxZoom: 1.2 });
+      }, 90);
+      lastGraphSig.current = sig;
       return () => window.clearTimeout(timer);
     }
-    lastGraphSig.current = sig;
-  }, [graph.nodes, graph.edges, fitView]);
+  }, [flowNodes, flowEdges, fitView]);
 
   const handleNodeClick: NodeMouseHandler<TramiteFlowNode> = (_, node) => {
     onSelectNode(node.id);
