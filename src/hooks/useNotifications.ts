@@ -166,6 +166,7 @@ export function useNotifications(options: { organizationView?: boolean } = {}) {
     if (!profile?.id) return;
     if (schemaStatus !== "enterprise" && schemaStatus !== "legacy") return;
 
+    let destroyed = false;
     const enterprise = schemaStatus === "enterprise";
     const table = enterprise ? "internal_notifications" : "notifications";
     const orgId = profile.org_id;
@@ -173,15 +174,22 @@ export function useNotifications(options: { organizationView?: boolean } = {}) {
 
     if (enterprise && !orgId) return;
 
+    const nonce =
+      (typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2, 14) +
+          Date.now().toString(36));
+
     const channelName = enterprise
-      ? `notifications-enterprise-${orgId}-${userId}-${organizationView ? "org" : "user"}`
-      : `notifications-legacy-${userId}`;
+      ? `notifications-enterprise-${orgId}-${userId}-${organizationView ? "org" : "user"}-${nonce}`
+      : `notifications-legacy-${userId}-${nonce}`;
 
     const filter = enterprise
       ? `org_id=eq.${orgId}`
       : `user_id=eq.${userId}`;
 
     const handleInsert = (record: Record<string, unknown>) => {
+      if (destroyed) return;
       const normalized = normalizeInternalNotification(record);
       if (!normalized) return;
 
@@ -197,6 +205,7 @@ export function useNotifications(options: { organizationView?: boolean } = {}) {
     };
 
     const handleUpdate = (record: Record<string, unknown>) => {
+      if (destroyed) return;
       const normalized = normalizeInternalNotification(record);
       if (!normalized) return;
 
@@ -224,35 +233,73 @@ export function useNotifications(options: { organizationView?: boolean } = {}) {
     };
 
     const handleDelete = (record: Record<string, unknown>) => {
+      if (destroyed) return;
       const id = String(record.id ?? "");
       if (!id) return;
       setNotifications((current) => current.filter((n) => n.id !== id));
     };
 
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table,
-          filter,
-        },
-        (payload) => {
-          if (payload.eventType === "INSERT" && payload.new) {
-            handleInsert(payload.new as Record<string, unknown>);
-          } else if (payload.eventType === "UPDATE" && payload.new) {
-            handleUpdate(payload.new as Record<string, unknown>);
-          } else if (payload.eventType === "DELETE" && payload.old) {
-            handleDelete(payload.old as Record<string, unknown>);
-          }
-        },
-      )
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      channel = supabase
+        .channel(channelName, {
+          config: {
+            broadcast: { ack: false, self: false },
+            presence: { key: "" },
+          },
+        })
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table,
+            filter,
+          },
+          (payload) => {
+            if (payload.eventType === "INSERT" && payload.new) {
+              handleInsert(payload.new as Record<string, unknown>);
+            } else if (payload.eventType === "UPDATE" && payload.new) {
+              handleUpdate(payload.new as Record<string, unknown>);
+            } else if (payload.eventType === "DELETE" && payload.old) {
+              handleDelete(payload.old as Record<string, unknown>);
+            }
+          },
+        );
+
+      channel.subscribe((status, err) => {
+        if (destroyed) return;
+        if (
+          (status as unknown as string) === "CHANNEL_ERROR" ||
+          (status as unknown as string) === "TIMED_OUT" ||
+          err
+        ) {
+          console.warn(
+            "[useNotifications] Realtime channel status:",
+            status,
+            err ?? null,
+          );
+        }
+      });
+    } catch (realtimeError) {
+      console.error(
+        "[useNotifications] Failed to setup realtime channel — notifications will fall back to pull-only",
+        realtimeError,
+      );
+      channel = null;
+    }
 
     return () => {
-      void supabase.removeChannel(channel);
+      destroyed = true;
+      if (channel) {
+        try {
+          void supabase.removeChannel(channel).catch(() => {
+            /* noop: cleanup failures must not propagate */
+          });
+        } catch {
+          /* noop */
+        }
+      }
     };
   }, [schemaStatus, profile?.id, profile?.org_id, organizationView]);
 
