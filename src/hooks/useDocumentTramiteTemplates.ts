@@ -1314,6 +1314,8 @@ const deleteTemplate = useCallback(
       return false;
     }
 
+    const localTemplate = templates.find((t) => t.id === templateId);
+
     if (isLocalMode) {
       setIsSaving(true);
       setError(null);
@@ -1331,6 +1333,36 @@ const deleteTemplate = useCallback(
     setError(null);
     const remoteId = await ensureRemoteTemplateId(templateId);
     if (!remoteId) {
+      setIsSaving(false);
+      return false;
+    }
+
+    // 0. REGRA DE NEGÓCIO: somente rascunho exclui. Publicado só arquiva.
+    let effectiveStatus = localTemplate?.status ?? null;
+    if (!effectiveStatus) {
+      try {
+        const statusRow = await supabase
+          .from("document_tramite_templates")
+          .select("id,status")
+          .eq("id", remoteId)
+          .eq("org_id", profile.org_id)
+          .maybeSingle();
+        if (
+          statusRow &&
+          statusRow.data &&
+          typeof (statusRow.data as { status?: unknown }).status === "string"
+        ) {
+          effectiveStatus = (statusRow.data as { status: DocumentTramiteTemplateStatus }).status;
+        }
+      } catch {
+        // fallback: mantém effectiveStatus null (não sabemos → considera seguro,
+        // o RLS do banco vai bloquear published de qualquer forma).
+      }
+    }
+    if (effectiveStatus === "published") {
+      setError(
+        "Modelo publicado não pode ser excluído. Para preservar histórico, arquive-o ou crie uma cópia (duplicata) em rascunho para editar e depois arquive a versão antiga.",
+      );
       setIsSaving(false);
       return false;
     }

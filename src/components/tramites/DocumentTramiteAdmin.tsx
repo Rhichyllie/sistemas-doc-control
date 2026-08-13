@@ -605,6 +605,7 @@ export function DocumentTramiteAdmin() {
   const [processActionError, setProcessActionError] = useState<string | null>(null)
   const [cancelTarget, setCancelTarget] = useState<ProcessRow | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<ProcessRow | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ProcessRow | null>(null)
   const profileGroupIds = useMemo(
     () =>
       new Set(
@@ -1474,6 +1475,17 @@ export function DocumentTramiteAdmin() {
       setArchiveTarget(null);
     } else {
       toast.error(catalog.error || "Não foi possível arquivar o modelo.");
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget?.templateId) return;
+    const success = await catalog.deleteTemplate(deleteTarget.templateId);
+    if (success) {
+      toast.success("Modelo de fluxo excluído.");
+      setDeleteTarget(null);
+    } else {
+      toast.error(catalog.error || "Não foi possível excluir o modelo de fluxo.");
     }
   }
 
@@ -2366,19 +2378,43 @@ export function DocumentTramiteAdmin() {
                             {row.rowType === 'template' &&
                               row.templateId &&
                               row.statusBucket === 'active' && (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setArchiveTarget(row);
-                                  }}
-                                >
-                                  <Archive className="h-4 w-4 mr-1" />
-                                  Arquivar
-                                </Button>
+                                <>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setArchiveTarget(row);
+                                    }}
+                                  >
+                                    <Archive className="h-4 w-4 mr-1" />
+                                    Arquivar
+                                  </Button>
+                                  {(() => {
+                                    const tpl = catalog.templates.find(
+                                      (t) => t.id === row.templateId,
+                                    );
+                                    const canDelete = !tpl || tpl.status === 'draft';
+                                    if (!canDelete) return null;
+                                    return (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setDeleteTarget(row);
+                                        }}
+                                      >
+                                        <Trash2 className="h-4 w-4 mr-1" />
+                                        Excluir
+                                      </Button>
+                                    );
+                                  })()}
+                                </>
                               )}
                           </div>
                         </td>
@@ -3124,6 +3160,44 @@ export function DocumentTramiteAdmin() {
             >
               {catalog.isSaving && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
               Confirmar arquivamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir modelo de fluxo?</DialogTitle>
+            <DialogDescription>
+              {deleteTarget && (
+                <>
+                  O modelo <strong className="text-slate-800">{deleteTarget.templateName}</strong>
+                  será excluído permanentemente. Essa ação não poderá ser desfeita.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={catalog.isSaving}
+            >
+              Voltar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void handleConfirmDelete()}
+              disabled={catalog.isSaving}
+            >
+              {catalog.isSaving && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              Confirmar exclusão
             </Button>
           </DialogFooter>
         </DialogContent>

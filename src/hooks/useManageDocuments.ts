@@ -185,6 +185,97 @@ export function useManageDocuments() {
     setError(null);
 
     try {
+      // Validações de regra de negócio ANTES de tentar o delete.
+      // 1. Carrega status do documento + vínculos para não excluir em cascata
+      //    sem o usuário saber (viola regra: se está em fluxo, cancele o fluxo primeiro).
+      const docCheckQ = supabase
+        .from("documents")
+        .select("id,status,title")
+        .eq("id", documentId)
+        .eq("org_id", profile.org_id)
+        .maybeSingle();
+
+      const activeInstancesQ = supabase
+        .from("document_tramite_instances")
+        .select("id", { count: "exact", head: true })
+        .eq("document_id", documentId)
+        .eq("org_id", profile.org_id)
+        .in("status", ["active", "pending", "started"]);
+
+      const closedInstancesQ = supabase
+        .from("document_tramite_instances")
+        .select("id", { count: "exact", head: true })
+        .eq("document_id", documentId)
+        .eq("org_id", profile.org_id)
+        .in("status", ["completed", "approved", "rejected", "failed", "cancelled"])
+        .limit(1);
+
+      const [docCheckSettled, activeSettled, closedSettled] = await Promise.allSettled([
+        docCheckQ,
+        activeInstancesQ,
+        closedInstancesQ,
+      ]);
+
+      const docCheck = docCheckSettled.status === "fulfilled" ? docCheckSettled.value : null;
+      const activeInstances =
+        activeSettled.status === "fulfilled"
+          ? activeSettled.value
+          : { data: null, count: null, error: null };
+      const closedInstances =
+        closedSettled.status === "fulfilled"
+          ? closedSettled.value
+          : { data: null, count: null, error: null };
+
+      const docStatus = docCheck?.data?.status ? String(docCheck.data.status) : null;
+
+      const NON_DELETABLE_STATUSES = new Set([
+        "approved",
+        "approved_with_comments",
+        "published",
+        "aprovado",
+        "received",
+        "in_analysis",
+        "awaiting_revision",
+      ]);
+      if (docStatus && NON_DELETABLE_STATUSES.has(docStatus)) {
+        const label = (() => {
+          switch (docStatus) {
+            case "approved":
+            case "approved_with_comments":
+            case "aprovado":
+              return "aprovado";
+            case "published":
+              return "publicado";
+            case "received":
+              return "recebido";
+            case "in_analysis":
+              return "em análise";
+            case "awaiting_revision":
+              return "aguardando revisão formal";
+            default:
+              return docStatus;
+          }
+        })();
+        setError(
+          `Documento ${label} não pode ser excluído. Somente rascunhos, rejeitados ou cancelados são removíveis. Revogue/arquive o documento se ele já foi consolidado.`,
+        );
+        return null;
+      }
+
+      if ((activeInstances.count ?? 0) > 0) {
+        setError(
+          `Este documento está vinculado a ${activeInstances.count} fluxo(s) em andamento. Primeiro encerre (cancele) o(s) fluxo(s) de aprovação associados, e depois exclua o documento.`,
+        );
+        return null;
+      }
+
+      if ((closedInstances.count ?? 0) > 0) {
+        setError(
+          `Este documento já possui histórico de trâmites concluídos/enviados e não pode ser excluído para preservar a rastreabilidade. Em vez disso, você pode arquivá-lo ou marcá-lo como obsoleto.`,
+        );
+        return null;
+      }
+
       const baseMatch: Record<string, unknown> = { id: documentId };
 
       const buildDeleteQuery = (match: Record<string, unknown>) => {
@@ -227,7 +318,6 @@ export function useManageDocuments() {
         }
       }
 
-      // Também remove do cache local, independentemente do resultado do banco
       try {
         const nextLocal = loadLocalDocuments(profile.org_id).filter(
           (document) => document.id !== documentId,
@@ -252,8 +342,6 @@ export function useManageDocuments() {
         throw primaryError;
       }
 
-      // Fallback: mesmo que o banco não encontrou, removemos a linha da UI
-      // e avisamos o usuário para atualizar. Isso evita "aparenta não excluir".
       return {
         warning:
           "Documento removido da lista. Atualize a página para confirmar a exclusão no banco.",
