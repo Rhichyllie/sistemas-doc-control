@@ -196,7 +196,20 @@ export function getStepStatusLabel(status: TramiteStepStatus) {
 export function getStepDecisionOptions(
   nodeType: DocumentTramiteNodeType,
 ): Array<{ value: TramiteStepDecision; label: string; destructive?: boolean }> {
-  if (nodeType === "review" || nodeType === "approval") {
+  // FIX: nós do tipo "decision" (ex.: "Decisão da análise") caíam no branch
+  // padrão do final desta função, que só oferecia a opção "completed".
+  // Isso fazia a tela gravar decision: "completed" em document_tramite_
+  // instance_steps / instance_events, mas as arestas (document_tramite_edges)
+  // desses nós são configuradas com condition_type "approved"/"rejected" —
+  // nenhuma aresta batia com "completed" e o motor do fluxo marcava a
+  // instância como failed ("Nenhum caminho aplicável após a etapa.").
+  // Adicionar "decision" aqui ao lado de "review"/"approval" resolve, pois
+  // gera as mesmas opções aprovado/correção/rejeitado que as arestas esperam.
+  if (
+    nodeType === "review" ||
+    nodeType === "approval" ||
+    nodeType === "decision"
+  ) {
     return [
       { value: "approved", label: "Aprovar" },
       {
