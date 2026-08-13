@@ -193,505 +193,152 @@ export function useDocumentWorkCenter() {
   }, [profile?.org_id]);
 
   const result = useMemo(() => {
-    const documentsById = new Map(
-      documentsState.documents.map((document) => [document.id, document]),
-    );
-    const instancesByDocument = new Map<string, DocumentTramiteInstance[]>();
-    for (const instance of tramiteState.instances) {
-      const current = instancesByDocument.get(instance.document_id) ?? [];
-      current.push(instance);
-      instancesByDocument.set(instance.document_id, current);
-    }
-    const stepsByInstance = new Map<string, DocumentTramiteInstanceStep[]>();
-    for (const step of tramiteState.steps) {
-      const current = stepsByInstance.get(step.instance_id) ?? [];
-      current.push(step);
-      stepsByInstance.set(step.instance_id, current);
-    }
-    const templatesById = new Map(
-      templatesState.templates.map((template) => [template.id, template]),
-    );
-    const usersById = new Map(
-      actorsState.users.map((user) => [user.id, user.full_name]),
-    );
-    const groupMemberIds = actorsState.groupMembers;
-    const notificationFields = (documentId: string, stepId?: string | null) => {
-      const related = notificationState.notifications.filter(
-        (notification) =>
+    try {
+      const safeDocStateDocs = documentsState.documents ?? [];
+      const safeInstances = tramiteState.instances ?? [];
+      const safeSteps = tramiteState.steps ?? [];
+      const safeTemplates = templatesState.templates ?? [];
+      const safeActorsUsers = actorsState.users ?? [];
+      const safeActorsGroups = actorsState.groups ?? [];
+      const safeActorsGroupMembers = actorsState.groupMembers ?? [];
+      const safeNotifications = notificationState.notifications ?? [];
+      const safeApprovalQueue = approvalState.queue ?? [];
+      const safeAuditEntries = auditState.entries ?? [];
+      const safePublishedTemplates = templatesState.publishedTemplates ?? [];
+      const safeAbsences = availabilityState.absencesWithoutSubstitute ?? [];
+      const safeActiveSubstitutions =
+        (availabilityState.activeSubstitutionCount as number | undefined) ?? 0;
+      const safeCriticalUnread =
+        (notificationState.criticalUnreadCount as number | undefined) ?? 0;
+      const safeEscalationUnread =
+        (notificationState.escalationUnreadCount as number | undefined) ?? 0;
+
+      const documentsById = new Map(
+        safeDocStateDocs.map((document) => [document.id, document]),
+      );
+      const instancesByDocument = new Map<string, DocumentTramiteInstance[]>();
+      for (const instance of safeInstances) {
+        const current = instancesByDocument.get(instance.document_id) ?? [];
+        current.push(instance);
+        instancesByDocument.set(instance.document_id, current);
+      }
+      const stepsByInstance = new Map<string, DocumentTramiteInstanceStep[]>();
+      for (const step of safeSteps) {
+        const current = stepsByInstance.get(step.instance_id) ?? [];
+        current.push(step);
+        stepsByInstance.set(step.instance_id, current);
+      }
+      const templatesById = new Map(
+        safeTemplates.map((template) => [template.id, template]),
+      );
+      const usersById = new Map(
+        safeActorsUsers.map((user) => [user.id, user.full_name]),
+      );
+      const groupMemberIds = safeActorsGroupMembers;
+      const notificationFields = (documentId: string, stepId?: string | null) => {
+        const related = safeNotifications.filter((notification) =>
           notification.tramite_step_id === stepId ||
           (!notification.tramite_step_id &&
             notification.document_id === documentId),
-      );
-      return {
-        notificationCount: related.filter((notification) => !notification.read)
-          .length,
-        escalated: related.some(
-          (notification) =>
-            !notification.read && isEscalationNotification(notification),
-        ),
-      };
-    };
-    const groupsById = new Map(
-      actorsState.groups.map((group) => [group.id, group.name]),
-    );
-    const profileGroupIds = new Set(
-      actorsState.groupMembers
-        .filter(
-          (member) =>
-            member.user_id === profile?.id && member.is_active !== false,
-        )
-        .map((member) => member.group_id),
-    );
-    const isManager = profile?.role === "admin" || profile?.role === "manager";
-    const workItems: DocumentWorkItem[] = [];
-
-    function deadlineFields(
-      dueAt: string | null,
-      suggested = false,
-      policyName: string | null = null,
-    ) {
-      const businessDaysRemaining = dueAt
-        ? calendarState.canUseCalendar
-          ? calendarState.getBusinessDaysUntil(dueAt.slice(0, 10))
-          : daysUntilWorkItem(dueAt)
-        : null;
-      return {
-        dueAt,
-        dueAtSuggested: suggested,
-        deadlineMode: calendarState.canUseCalendar
-          ? ("operational_calendar" as const)
-          : ("simple_date" as const),
-        businessDaysRemaining,
-        slaPolicyName: policyName,
-      };
-    }
-
-    function documentFields(document: Document) {
-      return {
-        documentId: document.id,
-        documentCode: document.code,
-        documentTitle: document.title,
-        projectId: document.project_id,
-        projectName: document.project?.name ?? null,
-        docType: document.doc_type,
-        area: document.area,
-        documentStatus: document.status,
-        externalLink: (document as any).external_link ?? null,
-      };
-    }
-
-    function stepResponsible(
-      step: DocumentTramiteInstanceStep,
-      document: Document | undefined,
-    ) {
-      if (step.assignment_type === "specific_user") {
-        return step.assignee_user_id
-          ? (usersById.get(step.assignee_user_id) ?? "Usuário atribuído")
-          : null;
-      }
-      if (step.assignment_type === "approval_group") {
-        return step.assignee_group_id
-          ? (groupsById.get(step.assignee_group_id) ?? "Grupo atribuído")
-          : null;
-      }
-      if (step.assignment_type === "role") {
-        return step.required_role ? `Papel: ${step.required_role}` : null;
-      }
-      if (
-        step.assignment_type === "author" ||
-        step.assignment_type === "document_owner" ||
-        step.assignment_type === "none" ||
-        !step.assignment_type
-      ) {
-        return document?.author?.full_name ?? "Autor do documento";
-      }
-      return null;
-    }
-
-    for (const step of tramiteState.steps.filter(
-      (item) =>
-        item.status === "active" ||
-        item.status === "pending" ||
-        item.status === "blocked" ||
-        (isManager && item.status === "completed"),
-    )) {
-      const document = documentsById.get(step.document_id);
-      if (!document) continue;
-      const suggestedDeadline = step.due_at
-        ? null
-        : calendarState.suggestDeadline(
-            (step.started_at ?? step.created_at).slice(0, 10),
-            {
-              kind: "tramite_step",
-              docType: document.doc_type,
-              area: document.area,
-              projectId: document.project_id,
-              stepType: step.node_type,
-            },
-          );
-      const effectiveDueAt = step.due_at ?? suggestedDeadline?.dueDate ?? null;
-      const deadline = deadlineFields(
-        effectiveDueAt,
-        !step.due_at && Boolean(suggestedDeadline?.dueDate),
-        suggestedDeadline?.policy?.name ?? null,
-      );
-      const assigneeAvailability = step.assignee_user_id
-        ? availabilityState.getAvailability(step.assignee_user_id, {
-            projectId: document.project_id,
-            docType: document.doc_type,
-            area: document.area,
-            stepType: step.node_type,
-          })
-        : null;
-      const substituteName = assigneeAvailability?.substituteUserId
-        ? (usersById.get(assigneeAvailability.substituteUserId) ??
-          "Substituto configurado")
-        : null;
-      const responsibleName = stepResponsible(step, document);
-      const isMine = isStepAssignedToProfile(
-        step,
-        document,
-        profile ? { id: profile.id, role: profile.role } : null,
-        profileGroupIds,
-      );
-      workItems.push({
-        id: `tramite-step-${step.id}`,
-        type: "tramite_step",
-        origin: "tramite",
-        priority: calculateWorkItemPriority({
-          type: "tramite_step",
-          dueAt: effectiveDueAt,
-          hasResponsible: Boolean(responsibleName),
-          remainingDays: deadline.businessDaysRemaining,
-        }),
-        title: step.label,
-        description: step.description || "Etapa ativa de trâmite documental.",
-        ...documentFields(document),
-        ...deadline,
-        assigneeUnavailable: assigneeAvailability?.unavailable ?? false,
-        substitutionActive: Boolean(substituteName),
-        delegateCanAct: Boolean(
-          profile?.id &&
-          notificationState.schemaStatus === "enterprise" &&
-          profile.role !== "admin" &&
-          profile.role !== "manager" &&
-          assigneeAvailability?.substituteUserId === profile.id,
-        ),
-        substituteName,
-        absenceLabel: assigneeAvailability?.absence
-          ? getAbsenceTypeLabel(assigneeAvailability.absence.absence_type)
-          : null,
-        responsibleName,
-        isMine,
-        createdAt: step.started_at ?? step.created_at,
-        statusLabel: normalizeWorkItemStatus(step.status, effectiveDueAt),
-        actionLabel: buildWorkItemAction("tramite_step"),
-        ...notificationFields(document.id, step.id),
-      });
-    }
-
-    for (const approval of approvalState.queue) {
-      const document = documentsById.get(approval.documentId);
-      if (!document) continue;
-      const responsibleName =
-        approval.assignment_type === "group"
-          ? approval.assignee_group_name
-          : approval.assignment_type === "user"
-            ? approval.assignee_user_name
-            : `Papel: ${approval.required_role}`;
-      const approvalIsMine =
-        approval.assignment_type === "group"
-          ? Boolean(
-              approval.assignee_group_id &&
-              profileGroupIds.has(approval.assignee_group_id),
-            )
-          : approval.assignment_type === "user"
-            ? (approval.assignee_user_id ?? approval.assignee_id) ===
-              profile?.id
-            : approval.required_role === profile?.role;
-      workItems.push({
-        id: `approval-${approval.stepId}`,
-        type: "approval",
-        origin: "approval",
-        priority: calculateWorkItemPriority({
-          type: "approval",
-          dueAt: approval.due_at,
-          hasResponsible: Boolean(responsibleName),
-          remainingDays: approval.due_at
-            ? deadlineFields(approval.due_at).businessDaysRemaining
-            : null,
-        }),
-        title: approval.step_label,
-        description: "Etapa pendente no fluxo formal de aprovação.",
-        ...documentFields(document),
-        ...deadlineFields(approval.due_at),
-        responsibleName,
-        isMine: approvalIsMine,
-        createdAt: approval.created_at,
-        statusLabel: normalizeWorkItemStatus("pending", approval.due_at),
-        actionLabel: buildWorkItemAction("approval"),
-        ...notificationFields(document.id),
-      });
-    }
-
-    for (const document of documentsState.documents) {
-      const owned = document.author_id === profile?.id;
-      if (document.status === "draft") {
-        workItems.push({
-          id: `draft-${document.id}`,
-          type: "draft",
-          origin: "creation",
-          priority: "low",
-          title: document.correction
-            ? "Correção documental pendente"
-            : "Documento em rascunho",
-          description:
-            document.correction?.reason ??
-            "Documento criado e ainda sem submissão formal.",
-          ...documentFields(document),
-          dueAt: null,
-          responsibleName: document.author?.full_name ?? null,
-          isMine: owned,
-          createdAt: document.updated_at,
-          statusLabel: document.correction ? "Correção necessária" : "Rascunho",
-          actionLabel: buildWorkItemAction("draft"),
-          ...notificationFields(document.id),
-        });
-      }
-
-      if (
-        document.working_revision &&
-        ["draft", "rejected"].includes(document.working_revision.status)
-      ) {
-        workItems.push({
-          id: `formal-revision-${document.working_revision.id}`,
-          type: "formal_revision",
-          origin: "revision",
-          priority: calculateWorkItemPriority({ type: "formal_revision" }),
-          title: `Revisão ${document.working_revision.revision} em preparação`,
-          description:
-            document.working_revision.status === "rejected"
-              ? "A revisão formal precisa de correção antes do reenvio."
-              : "Existe uma revisão formal ainda não enviada.",
-          ...documentFields(document),
-          dueAt: null,
-          responsibleName: document.author?.full_name ?? null,
-          isMine: owned,
-          createdAt: document.updated_at,
-          statusLabel: normalizeWorkItemStatus(
-            document.working_revision.status,
-          ),
-          actionLabel: buildWorkItemAction("formal_revision"),
-          ...notificationFields(document.id),
-        });
-      }
-
-      const suggestedReview = document.next_review_at
-        ? null
-        : calendarState.suggestDeadline(
-            (document.published_at ?? document.created_at).slice(0, 10),
-            {
-              kind: "document_review",
-              docType: document.doc_type,
-              area: document.area,
-              projectId: document.project_id,
-            },
-          );
-      const effectiveReviewAt =
-        document.next_review_at ?? suggestedReview?.dueDate ?? null;
-      const reviewDeadline = deadlineFields(
-        effectiveReviewAt,
-        !document.next_review_at && Boolean(suggestedReview?.dueDate),
-        suggestedReview?.policy?.name ?? null,
-      );
-      const reviewDays = reviewDeadline.businessDaysRemaining;
-      const reviewOverdue = effectiveReviewAt
-        ? (daysUntilWorkItem(effectiveReviewAt) ?? 0) < 0
-        : false;
-      if (
-        document.status === "published" &&
-        reviewDays !== null &&
-        reviewDays <= 30
-      ) {
-        workItems.push({
-          id: `review-${document.id}`,
-          type: "review_due",
-          origin: "revision",
-          priority: calculateWorkItemPriority({
-            type: "review_due",
-            dueAt: effectiveReviewAt,
-            remainingDays: reviewDays,
-          }),
-          title: reviewOverdue
-            ? "Revisão documental atrasada"
-            : "Próxima revisão documental",
-          description: reviewOverdue
-            ? "A data programada para revisão já passou."
-            : reviewDays === 0
-              ? "A revisão está prevista para hoje."
-              : `A revisão está prevista para daqui a ${reviewDays} dias úteis.`,
-          ...documentFields(document),
-          ...reviewDeadline,
-          responsibleName: document.author?.full_name ?? null,
-          isMine: owned,
-          createdAt: document.updated_at,
-          statusLabel: normalizeWorkItemStatus("published", effectiveReviewAt),
-          actionLabel: buildWorkItemAction("review_due"),
-          ...notificationFields(document.id),
-        });
-      }
-
-      if (!document.code) {
-        workItems.push({
-          id: `attention-code-${document.id}`,
-          type: "attention",
-          origin: "creation",
-          priority: "high",
-          title: "Documento sem código",
-          description:
-            "O documento não possui código oficial legível e precisa ser revisado.",
-          ...documentFields(document),
-          dueAt: null,
-          responsibleName: document.author?.full_name ?? null,
-          isMine: owned,
-          createdAt: document.updated_at,
-          statusLabel: "Atenção",
-          actionLabel: buildWorkItemAction("attention"),
-          ...notificationFields(document.id),
-        });
-      }
-    }
-
-    const suggestedTemplateByDocument = new Map<
-      string,
-      DocumentTramiteTemplate
-    >();
-    for (const entry of auditState.entries) {
-      const templateId = entry.metadata?.suggested_tramite_template_id;
-      if (
-        entry.action !== "created" ||
-        typeof templateId !== "string" ||
-        suggestedTemplateByDocument.has(entry.document_id)
-      ) {
-        continue;
-      }
-      const template = templatesById.get(templateId);
-      if (template?.status === "published" && template.is_active) {
-        suggestedTemplateByDocument.set(entry.document_id, template);
-      }
-    }
-
-    for (const document of documentsState.documents) {
-      if (instancesByDocument.has(document.id)) continue;
-      const suggested =
-        suggestedTemplateByDocument.get(document.id) ??
-        [...templatesState.publishedTemplates]
-          .filter((template) => templateApplies(template, document))
-          .sort(
-            (left, right) =>
-              templateSpecificity(right, document) -
-                templateSpecificity(left, document) ||
-              left.name.localeCompare(right.name),
-          )[0];
-      if (!suggested) continue;
-
-      const sug =
-        suggested as unknown as {
-          graph?: {
-            nodes?: Array<{
-              assignment_type?: string;
-              assignee_user_id?: string | null;
-              assignee_group_id?: string | null;
-              required_role?: string;
-              assignee_user_name?: string | null;
-              assignee_group_name?: string | null;
-              label?: string;
-              position_x?: number;
-            }>;
-          };
-        };
-      const firstNode = Array.isArray(sug.graph?.nodes) && sug.graph!.nodes!.length > 0
-        ? [...sug.graph!.nodes!].sort(
-            (a, b) => (a.position_x ?? 0) - (b.position_x ?? 0),
-          )[0]
-        : null;
-      const suggestedFirstAssignee = firstNode ?? null;
-
-      const isMineSuggested =
-        document.author_id === profile?.id ||
-        (() => {
-          if (!profile || !suggestedFirstAssignee) return false;
-          const step = suggestedFirstAssignee;
-          if (
-            step.assignment_type === "author" ||
-            step.assignment_type === "document_owner"
-          ) {
-            return document.author_id === profile.id;
-          }
-          if (
-            step.assignment_type === "specific_user" ||
-            step.assignee_user_id
-          ) {
-            return step.assignee_user_id === profile.id;
-          }
-          if (
-            step.assignment_type === "approval_group" ||
-            step.assignee_group_id
-          ) {
-            return step.assignee_group_id
-              ? groupMemberIds.some(
-                  (row) =>
-                    row.group_id === step.assignee_group_id &&
-                    row.user_id === profile.id,
-                )
-              : false;
-          }
-          if (step.assignment_type === "role" || step.required_role) {
-            return profile.role === step.required_role;
-          }
-          return false;
-        })();
-
-      workItems.push({
-        id: `suggested-tramite-${document.id}-${suggested.id}`,
-        type: "suggested_tramite",
-        origin: "tramite",
-        priority: calculateWorkItemPriority({ type: "suggested_tramite" }),
-        title: "Trâmite aplicável ainda não iniciado",
-        description: `Modelo sugerido: ${suggested.name}.${suggestedFirstAssignee?.label ? ` · Próximo passo: ${suggestedFirstAssignee.label}` : ""}`,
-        ...documentFields(document),
-        dueAt: null,
-        responsibleName:
-          (suggestedFirstAssignee?.assignee_user_name as string | null) ??
-          (suggestedFirstAssignee?.assignee_group_name as string | null) ??
-          (suggestedFirstAssignee?.required_role as string | null) ??
-          document.author?.full_name ??
-          null,
-        isMine: isMineSuggested,
-        createdAt: document.updated_at,
-        statusLabel: "Aguardando próximo passo",
-        actionLabel: buildWorkItemAction("suggested_tramite"),
-        ...notificationFields(document.id),
-      });
-    }
-
-    const allInstancesRaw = tramiteState.instances
-      .filter((instance) =>
-        isManager
-          ? ["active", "pending", "completed", "cancelled", "failed"].includes(instance.status)
-          : instance.status === "active",
-      )
-      .map((instance) => {
-        const document = documentsById.get(instance.document_id);
-        const instanceSteps = stepsByInstance.get(instance.id) ?? [];
-        const activeSteps = instanceSteps.filter(
-          (step) => step.status === "active",
         );
-        const summary = summarizeInstance(instance, instanceSteps);
-        const suggestedDueDates = activeSteps
-          .map((step) => {
-            if (step.due_at || !document) return null;
-            return calendarState.suggestDeadline(
+        return {
+          notificationCount: related.filter((notification) => !notification.read)
+            .length,
+          escalated: related.some(
+            (notification) =>
+              !notification.read && isEscalationNotification(notification),
+          ),
+        };
+      };
+      const groupsById = new Map(
+        safeActorsGroups.map((group) => [group.id, group.name]),
+      );
+      const profileGroupIds = new Set(
+        safeActorsGroupMembers
+          .filter(
+            (member) =>
+              member.user_id === profile?.id && member.is_active !== false,
+          )
+          .map((member) => member.group_id),
+      );
+      const isManager = profile?.role === "admin" || profile?.role === "manager";
+      const workItems: DocumentWorkItem[] = [];
+
+      function deadlineFields(
+        dueAt: string | null,
+        suggested = false,
+        policyName: string | null = null,
+      ) {
+        const businessDaysRemaining = dueAt
+          ? calendarState.canUseCalendar
+            ? calendarState.getBusinessDaysUntil(dueAt.slice(0, 10))
+            : daysUntilWorkItem(dueAt)
+          : null;
+        return {
+          dueAt,
+          dueAtSuggested: suggested,
+          deadlineMode: calendarState.canUseCalendar
+            ? ("operational_calendar" as const)
+            : ("simple_date" as const),
+          businessDaysRemaining,
+          slaPolicyName: policyName,
+        };
+      }
+
+      function documentFields(document: Document) {
+        return {
+          documentId: document.id,
+          documentCode: document.code,
+          documentTitle: document.title,
+          projectId: document.project_id,
+          projectName: document.project?.name ?? null,
+          docType: document.doc_type,
+          area: document.area,
+          documentStatus: document.status,
+          externalLink: (document as any).external_link ?? null,
+        };
+      }
+
+      function stepResponsible(
+        step: DocumentTramiteInstanceStep,
+        document: Document | undefined,
+      ) {
+        if (step.assignment_type === "specific_user") {
+          return step.assignee_user_id
+            ? (usersById.get(step.assignee_user_id) ?? "Usuário atribuído")
+            : null;
+        }
+        if (step.assignment_type === "approval_group") {
+          return step.assignee_group_id
+            ? (groupsById.get(step.assignee_group_id) ?? "Grupo atribuído")
+            : null;
+        }
+        if (step.assignment_type === "role") {
+          return step.required_role ? `Papel: ${step.required_role}` : null;
+        }
+        if (
+          step.assignment_type === "author" ||
+          step.assignment_type === "document_owner" ||
+          step.assignment_type === "none" ||
+          !step.assignment_type
+        ) {
+          return document?.author?.full_name ?? "Autor do documento";
+        }
+        return null;
+      }
+
+      for (const step of safeSteps.filter(
+        (item) =>
+          item.status === "active" ||
+          item.status === "pending" ||
+          item.status === "blocked" ||
+          (isManager && item.status === "completed"),
+      )) {
+        const document = documentsById.get(step.document_id);
+        if (!document) continue;
+        const suggestedDeadline = step.due_at
+          ? null
+          : calendarState.suggestDeadline(
               (step.started_at ?? step.created_at).slice(0, 10),
               {
                 kind: "tramite_step",
@@ -700,109 +347,508 @@ export function useDocumentWorkCenter() {
                 projectId: document.project_id,
                 stepType: step.node_type,
               },
-            ).dueDate;
-          })
-          .filter((value): value is string => Boolean(value))
-          .sort();
-        const effectiveInstanceDueAt =
-          summary.nextDueAt ?? suggestedDueDates[0] ?? null;
-        const mine = activeSteps.some((step) =>
-          isStepAssignedToProfile(
-            step,
-            document,
-            profile ? { id: profile.id, role: profile.role } : null,
-            profileGroupIds,
+            );
+        const effectiveDueAt = step.due_at ?? suggestedDeadline?.dueDate ?? null;
+        const deadline = deadlineFields(
+          effectiveDueAt,
+          !step.due_at && Boolean(suggestedDeadline?.dueDate),
+          suggestedDeadline?.policy?.name ?? null,
+        );
+        const assigneeAvailability = step.assignee_user_id
+          ? availabilityState.getAvailability(step.assignee_user_id, {
+              projectId: document.project_id,
+              docType: document.doc_type,
+              area: document.area,
+              stepType: step.node_type,
+            })
+          : null;
+        const substituteName = assigneeAvailability?.substituteUserId
+          ? (usersById.get(assigneeAvailability.substituteUserId) ??
+            "Substituto configurado")
+          : null;
+        const responsibleName = stepResponsible(step, document);
+        const isMine = isStepAssignedToProfile(
+          step,
+          document,
+          profile ? { id: profile.id, role: profile.role } : null,
+          profileGroupIds,
+        );
+        workItems.push({
+          id: `tramite-step-${step.id}`,
+          type: "tramite_step",
+          origin: "tramite",
+          priority: calculateWorkItemPriority({
+            type: "tramite_step",
+            dueAt: effectiveDueAt,
+            hasResponsible: Boolean(responsibleName),
+            remainingDays: deadline.businessDaysRemaining,
+          }),
+          title: step.label,
+          description: step.description || "Etapa ativa de trâmite documental.",
+          ...documentFields(document),
+          ...deadline,
+          assigneeUnavailable: assigneeAvailability?.unavailable ?? false,
+          substitutionActive: Boolean(substituteName),
+          delegateCanAct: Boolean(
+            profile?.id &&
+            notificationState.schemaStatus === "enterprise" &&
+            profile.role !== "admin" &&
+            profile.role !== "manager" &&
+            assigneeAvailability?.substituteUserId === profile.id,
           ),
-        );
-        return {
-          id: instance.id,
-          documentId: instance.document_id,
-          documentCode: document?.code ?? null,
-          documentTitle: document?.title ?? "Documento não encontrado",
-          projectId: document?.project_id ?? null,
-          projectName: document?.project?.name ?? null,
-          templateName:
-            templatesById.get(instance.template_id)?.name ??
-            "Modelo de trâmite",
-          instanceCode: instance.code,
-          activeStepLabels: activeSteps.map((step) => step.label),
-          progress: summary.progress,
-          dueAt: effectiveInstanceDueAt,
-          dueAtSuggested: !summary.nextDueAt && Boolean(effectiveInstanceDueAt),
-          deadlineMode: (calendarState.canUseCalendar
-            ? "operational_calendar"
-            : "simple_date") as DeadlineMode,
-          isOverdue: effectiveInstanceDueAt
-            ? (daysUntilWorkItem(effectiveInstanceDueAt) ?? 0) < 0
-            : summary.isOverdue,
-          isMine: mine,
-          externalLink: (document as any)?.external_link ?? null,
-          updatedAt: instance.updated_at,
-        };
-      });
+          substituteName,
+          absenceLabel: assigneeAvailability?.absence
+            ? getAbsenceTypeLabel(assigneeAvailability.absence.absence_type)
+            : null,
+          responsibleName,
+          isMine,
+          createdAt: step.started_at ?? step.created_at,
+          statusLabel: normalizeWorkItemStatus(step.status, effectiveDueAt),
+          actionLabel: buildWorkItemAction("tramite_step"),
+          ...notificationFields(document.id, step.id),
+        });
+      }
 
-    const sortedItems = sortWorkItemsByUrgency(workItems);
-    const accessibleItems = isManager
-      ? sortedItems
-      : sortedItems.filter((item) => item.isMine);
-    const accessibleInstances = isManager
-      ? allInstancesRaw.sort(
-          (left, right) =>
-            Number(right.isOverdue) - Number(left.isOverdue) ||
-            new Date(right.updatedAt).getTime() -
-              new Date(left.updatedAt).getTime(),
-        )
-      : allInstancesRaw
-          .filter((instance) => instance.isMine)
-          .sort(
-            (left, right) =>
-              Number(right.isOverdue) - Number(left.isOverdue) ||
-              new Date(right.updatedAt).getTime() -
-                new Date(left.updatedAt).getTime(),
-          );
-    const accessibleRecentDocuments = isManager
-      ? documentsState.documents
-      : documentsState.documents.filter(
-          (document) => document.author_id === profile?.id,
-        );
-    return {
-      workItems: accessibleItems,
-      groups: groupWorkItems(accessibleItems),
-      activeInstances: accessibleInstances,
-      allInstancesIsManager: isManager,
-      recentDocuments: [...accessibleRecentDocuments]
-        .sort(
-          (left, right) =>
-            new Date(right.updated_at).getTime() -
-            new Date(left.updated_at).getTime(),
-        )
-        .slice(0, 8),
-      documentsWithoutSlaPolicy: ["ready", "empty"].includes(
-        calendarState.status,
-      )
-        ? accessibleRecentDocuments.filter(
-            (document) =>
-              document.status === "published" &&
-              !calendarState.suggestDeadline(document.created_at.slice(0, 10), {
+      for (const approval of safeApprovalQueue) {
+        const document = documentsById.get(approval.documentId);
+        if (!document) continue;
+        const responsibleName =
+          approval.assignment_type === "group"
+            ? approval.assignee_group_name
+            : approval.assignment_type === "user"
+              ? approval.assignee_user_name
+              : `Papel: ${approval.required_role}`;
+        const approvalIsMine =
+          approval.assignment_type === "group"
+            ? Boolean(
+                approval.assignee_group_id &&
+                profileGroupIds.has(approval.assignee_group_id),
+              )
+            : approval.assignment_type === "user"
+              ? (approval.assignee_user_id ?? approval.assignee_id) ===
+                profile?.id
+              : approval.required_role === profile?.role;
+        workItems.push({
+          id: `approval-${approval.stepId}`,
+          type: "approval",
+          origin: "approval",
+          priority: calculateWorkItemPriority({
+            type: "approval",
+            dueAt: approval.due_at,
+            hasResponsible: Boolean(responsibleName),
+            remainingDays: approval.due_at
+              ? deadlineFields(approval.due_at).businessDaysRemaining
+              : null,
+          }),
+          title: approval.step_label,
+          description: "Etapa pendente no fluxo formal de aprovação.",
+          ...documentFields(document),
+          ...deadlineFields(approval.due_at),
+          responsibleName,
+          isMine: approvalIsMine,
+          createdAt: approval.created_at,
+          statusLabel: normalizeWorkItemStatus("pending", approval.due_at),
+          actionLabel: buildWorkItemAction("approval"),
+          ...notificationFields(document.id),
+        });
+      }
+
+      for (const document of safeDocStateDocs) {
+        const owned = document.author_id === profile?.id;
+        if (document.status === "draft") {
+          workItems.push({
+            id: `draft-${document.id}`,
+            type: "draft",
+            origin: "creation",
+            priority: "low",
+            title: document.correction
+              ? "Correção documental pendente"
+              : "Documento em rascunho",
+            description:
+              document.correction?.reason ??
+              "Documento criado e ainda sem submissão formal.",
+            ...documentFields(document),
+            dueAt: null,
+            responsibleName: document.author?.full_name ?? null,
+            isMine: owned,
+            createdAt: document.updated_at,
+            statusLabel: document.correction ? "Correção necessária" : "Rascunho",
+            actionLabel: buildWorkItemAction("draft"),
+            ...notificationFields(document.id),
+          });
+        }
+
+        if (
+          document.working_revision &&
+          ["draft", "rejected"].includes(document.working_revision.status)
+        ) {
+          workItems.push({
+            id: `formal-revision-${document.working_revision.id}`,
+            type: "formal_revision",
+            origin: "revision",
+            priority: calculateWorkItemPriority({ type: "formal_revision" }),
+            title: `Revisão ${document.working_revision.revision} em preparação`,
+            description:
+              document.working_revision.status === "rejected"
+                ? "A revisão formal precisa de correção antes do reenvio."
+                : "Existe uma revisão formal ainda não enviada.",
+            ...documentFields(document),
+            dueAt: null,
+            responsibleName: document.author?.full_name ?? null,
+            isMine: owned,
+            createdAt: document.updated_at,
+            statusLabel: normalizeWorkItemStatus(
+              document.working_revision.status,
+            ),
+            actionLabel: buildWorkItemAction("formal_revision"),
+            ...notificationFields(document.id),
+          });
+        }
+
+        const suggestedReview = document.next_review_at
+          ? null
+          : calendarState.suggestDeadline(
+              (document.published_at ?? document.created_at).slice(0, 10),
+              {
                 kind: "document_review",
                 docType: document.doc_type,
                 area: document.area,
                 projectId: document.project_id,
-              }).policy,
-          ).length
-        : 0,
-      absentWithoutSubstitute:
-        availabilityState.absencesWithoutSubstitute.length,
-      activeSubstitutions: availabilityState.activeSubstitutionCount,
-      deadlinesWithAbsentAssignee: accessibleItems.filter(
-        (item) =>
-          item.type === "tramite_step" &&
-          item.assigneeUnavailable &&
-          Boolean(item.dueAt),
-      ).length,
-      criticalUnreadNotifications: notificationState.criticalUnreadCount,
-      openEscalations: notificationState.escalationUnreadCount,
-    };
+              },
+            );
+        const effectiveReviewAt =
+          document.next_review_at ?? suggestedReview?.dueDate ?? null;
+        const reviewDeadline = deadlineFields(
+          effectiveReviewAt,
+          !document.next_review_at && Boolean(suggestedReview?.dueDate),
+          suggestedReview?.policy?.name ?? null,
+        );
+        const reviewDays = reviewDeadline.businessDaysRemaining;
+        const reviewOverdue = effectiveReviewAt
+          ? (daysUntilWorkItem(effectiveReviewAt) ?? 0) < 0
+          : false;
+        if (
+          document.status === "published" &&
+          reviewDays !== null &&
+          reviewDays <= 30
+        ) {
+          workItems.push({
+            id: `review-${document.id}`,
+            type: "review_due",
+            origin: "revision",
+            priority: calculateWorkItemPriority({
+              type: "review_due",
+              dueAt: effectiveReviewAt,
+              remainingDays: reviewDays,
+            }),
+            title: reviewOverdue
+              ? "Revisão documental atrasada"
+              : "Próxima revisão documental",
+            description: reviewOverdue
+              ? "A data programada para revisão já passou."
+              : reviewDays === 0
+                ? "A revisão está prevista para hoje."
+                : `A revisão está prevista para daqui a ${reviewDays} dias úteis.`,
+            ...documentFields(document),
+            ...reviewDeadline,
+            responsibleName: document.author?.full_name ?? null,
+            isMine: owned,
+            createdAt: document.updated_at,
+            statusLabel: normalizeWorkItemStatus("published", effectiveReviewAt),
+            actionLabel: buildWorkItemAction("review_due"),
+            ...notificationFields(document.id),
+          });
+        }
+
+        if (!document.code) {
+          workItems.push({
+            id: `attention-code-${document.id}`,
+            type: "attention",
+            origin: "creation",
+            priority: "high",
+            title: "Documento sem código",
+            description:
+              "O documento não possui código oficial legível e precisa ser revisado.",
+            ...documentFields(document),
+            dueAt: null,
+            responsibleName: document.author?.full_name ?? null,
+            isMine: owned,
+            createdAt: document.updated_at,
+            statusLabel: "Atenção",
+            actionLabel: buildWorkItemAction("attention"),
+            ...notificationFields(document.id),
+          });
+        }
+      }
+
+      const suggestedTemplateByDocument = new Map<
+        string,
+        DocumentTramiteTemplate
+      >();
+      for (const entry of safeAuditEntries) {
+        const templateId = entry.metadata?.suggested_tramite_template_id;
+        if (
+          entry.action !== "created" ||
+          typeof templateId !== "string" ||
+          suggestedTemplateByDocument.has(entry.document_id)
+        ) {
+          continue;
+        }
+        const template = templatesById.get(templateId);
+        if (template?.status === "published" && template.is_active) {
+          suggestedTemplateByDocument.set(entry.document_id, template);
+        }
+      }
+
+      for (const document of safeDocStateDocs) {
+        if (instancesByDocument.has(document.id)) continue;
+        const suggested =
+          suggestedTemplateByDocument.get(document.id) ??
+          [...safePublishedTemplates]
+            .filter((template) => templateApplies(template, document))
+            .sort(
+              (left, right) =>
+                templateSpecificity(right, document) -
+                  templateSpecificity(left, document) ||
+                left.name.localeCompare(right.name),
+            )[0];
+        if (!suggested) continue;
+
+        const sug =
+          suggested as unknown as {
+            graph?: {
+              nodes?: Array<{
+                assignment_type?: string;
+                assignee_user_id?: string | null;
+                assignee_group_id?: string | null;
+                required_role?: string;
+                assignee_user_name?: string | null;
+                assignee_group_name?: string | null;
+                label?: string;
+                position_x?: number;
+              }>;
+            };
+          };
+        const firstNode = Array.isArray(sug.graph?.nodes) && sug.graph!.nodes!.length > 0
+          ? [...sug.graph!.nodes!].sort(
+              (a, b) => (a.position_x ?? 0) - (b.position_x ?? 0),
+            )[0]
+          : null;
+        const suggestedFirstAssignee = firstNode ?? null;
+
+        const isMineSuggested =
+          document.author_id === profile?.id ||
+          (() => {
+            if (!profile || !suggestedFirstAssignee) return false;
+            const step = suggestedFirstAssignee;
+            if (
+              step.assignment_type === "author" ||
+              step.assignment_type === "document_owner"
+            ) {
+              return document.author_id === profile.id;
+            }
+            if (
+              step.assignment_type === "specific_user" ||
+              step.assignee_user_id
+            ) {
+              return step.assignee_user_id === profile.id;
+            }
+            if (
+              step.assignment_type === "approval_group" ||
+              step.assignee_group_id
+            ) {
+              return step.assignee_group_id
+                ? groupMemberIds.some(
+                    (row) =>
+                      row.group_id === step.assignee_group_id &&
+                      row.user_id === profile.id,
+                  )
+                : false;
+            }
+            if (step.assignment_type === "role" || step.required_role) {
+              return profile.role === step.required_role;
+            }
+            return false;
+          })();
+
+        workItems.push({
+          id: `suggested-tramite-${document.id}-${suggested.id}`,
+          type: "suggested_tramite",
+          origin: "tramite",
+          priority: calculateWorkItemPriority({ type: "suggested_tramite" }),
+          title: "Trâmite aplicável ainda não iniciado",
+          description: `Modelo sugerido: ${suggested.name}.${suggestedFirstAssignee?.label ? ` · Próximo passo: ${suggestedFirstAssignee.label}` : ""}`,
+          ...documentFields(document),
+          dueAt: null,
+          responsibleName:
+            (suggestedFirstAssignee?.assignee_user_name as string | null) ??
+            (suggestedFirstAssignee?.assignee_group_name as string | null) ??
+            (suggestedFirstAssignee?.required_role as string | null) ??
+            document.author?.full_name ??
+            null,
+          isMine: isMineSuggested,
+          createdAt: document.updated_at,
+          statusLabel: "Aguardando próximo passo",
+          actionLabel: buildWorkItemAction("suggested_tramite"),
+          ...notificationFields(document.id),
+        });
+      }
+
+      const allInstancesRaw = safeInstances
+        .filter((instance) =>
+          isManager
+            ? ["active", "pending", "completed", "cancelled", "failed"].includes(instance.status)
+            : instance.status === "active",
+        )
+        .map((instance) => {
+          const document = documentsById.get(instance.document_id);
+          const instanceSteps = stepsByInstance.get(instance.id) ?? [];
+          const activeSteps = instanceSteps.filter(
+            (step) => step.status === "active",
+          );
+          const summary = summarizeInstance(instance, instanceSteps);
+          const suggestedDueDates = activeSteps
+            .map((step) => {
+              if (step.due_at || !document) return null;
+              return calendarState.suggestDeadline(
+                (step.started_at ?? step.created_at).slice(0, 10),
+                {
+                  kind: "tramite_step",
+                  docType: document.doc_type,
+                  area: document.area,
+                  projectId: document.project_id,
+                  stepType: step.node_type,
+                },
+              ).dueDate;
+            })
+            .filter((value): value is string => Boolean(value))
+            .sort();
+          const effectiveInstanceDueAt =
+            summary.nextDueAt ?? suggestedDueDates[0] ?? null;
+          const mine = activeSteps.some((step) =>
+            isStepAssignedToProfile(
+              step,
+              document,
+              profile ? { id: profile.id, role: profile.role } : null,
+              profileGroupIds,
+            ),
+          );
+          return {
+            id: instance.id,
+            documentId: instance.document_id,
+            documentCode: document?.code ?? null,
+            documentTitle: document?.title ?? "Documento não encontrado",
+            projectId: document?.project_id ?? null,
+            projectName: document?.project?.name ?? null,
+            templateName:
+              templatesById.get(instance.template_id)?.name ??
+              "Modelo de trâmite",
+            instanceCode: instance.code,
+            activeStepLabels: activeSteps.map((step) => step.label),
+            progress: summary.progress,
+            dueAt: effectiveInstanceDueAt,
+            dueAtSuggested: !summary.nextDueAt && Boolean(effectiveInstanceDueAt),
+            deadlineMode: (calendarState.canUseCalendar
+              ? "operational_calendar"
+              : "simple_date") as DeadlineMode,
+            isOverdue: effectiveInstanceDueAt
+              ? (daysUntilWorkItem(effectiveInstanceDueAt) ?? 0) < 0
+              : summary.isOverdue,
+            isMine: mine,
+            externalLink: (document as any)?.external_link ?? null,
+            updatedAt: instance.updated_at,
+          };
+        });
+
+      const sortedItems = sortWorkItemsByUrgency(workItems);
+      const accessibleItems = isManager
+        ? sortedItems
+        : sortedItems.filter((item) => item.isMine);
+      const accessibleInstances = isManager
+        ? allInstancesRaw.sort(
+            (left, right) =>
+              Number(right.isOverdue) - Number(left.isOverdue) ||
+              new Date(right.updatedAt).getTime() -
+                new Date(left.updatedAt).getTime(),
+          )
+        : allInstancesRaw
+            .filter((instance) => instance.isMine)
+            .sort(
+              (left, right) =>
+                Number(right.isOverdue) - Number(left.isOverdue) ||
+                new Date(right.updatedAt).getTime() -
+                  new Date(left.updatedAt).getTime(),
+            );
+      const accessibleRecentDocuments = isManager
+        ? safeDocStateDocs
+        : safeDocStateDocs.filter(
+            (document) => document.author_id === profile?.id,
+          );
+      return {
+        workItems: accessibleItems,
+        groups: groupWorkItems(accessibleItems),
+        activeInstances: accessibleInstances,
+        allInstancesIsManager: isManager,
+        recentDocuments: [...accessibleRecentDocuments]
+          .sort(
+            (left, right) =>
+              new Date(right.updated_at).getTime() -
+              new Date(left.updated_at).getTime(),
+          )
+          .slice(0, 8),
+        documentsWithoutSlaPolicy: ["ready", "empty"].includes(
+          calendarState.status,
+        )
+          ? accessibleRecentDocuments.filter(
+              (document) =>
+                document.status === "published" &&
+                !calendarState.suggestDeadline(document.created_at.slice(0, 10), {
+                  kind: "document_review",
+                  docType: document.doc_type,
+                  area: document.area,
+                  projectId: document.project_id,
+                }).policy,
+            ).length
+          : 0,
+        absentWithoutSubstitute: safeAbsences.length,
+        activeSubstitutions: safeActiveSubstitutions,
+        deadlinesWithAbsentAssignee: accessibleItems.filter(
+          (item) =>
+            item.type === "tramite_step" &&
+            item.assigneeUnavailable &&
+            Boolean(item.dueAt),
+        ).length,
+        criticalUnreadNotifications: safeCriticalUnread,
+        openEscalations: safeEscalationUnread,
+      };
+    } catch (workCenterError) {
+      console.error(
+        "[useDocumentWorkCenter] useMemo failed — returning safe empty fallback",
+        workCenterError,
+      );
+      const fallbackIsManager =
+        profile?.role === "admin" || profile?.role === "manager";
+      return {
+        workItems: [],
+        groups: {
+          myPending: [],
+          overdue: [],
+          tramite: [],
+          approval: [],
+          review: [],
+          creation: [],
+        },
+        activeInstances: [],
+        allInstancesIsManager: fallbackIsManager,
+        recentDocuments: [],
+        documentsWithoutSlaPolicy: 0,
+        absentWithoutSubstitute: 0,
+        activeSubstitutions: 0,
+        deadlinesWithAbsentAssignee: 0,
+        criticalUnreadNotifications: 0,
+        openEscalations: 0,
+      };
+    }
   }, [
     actorsState.groupMembers,
     actorsState.groups,
