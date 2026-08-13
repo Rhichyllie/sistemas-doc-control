@@ -7,7 +7,9 @@ import {
   buildSequentialTramiteCode,
   extractHighestSequenceFromCodes,
   generateTramiteCode,
+  type DocumentTramiteEdge,
   type DocumentTramiteGraph,
+  type DocumentTramiteNode,
   type DocumentTramiteTemplate,
   type DocumentTramiteTemplateScope,
   type DocumentTramiteTemplateStatus,
@@ -826,11 +828,80 @@ export function useDocumentTramiteTemplates() {
         await refresh();
         return null;
       }
+      const versionId = String(versionResult.data.id);
+
+      const updateCurrentVersion = await supabase
+        .from("document_tramite_templates")
+        .update({ current_version_id: versionId, updated_by: profile.id })
+        .eq("id", templateId)
+        .eq("org_id", profile.org_id);
+      if (updateCurrentVersion.error) {
+        const msg = "Atualize o modelo manualmente ou revise o schema P-12.";
+        setError(
+          `O modelo e a versão foram criados, mas o vínculo da versão corrente falhou. ${getErrorMessage(updateCurrentVersion.error, msg)}`,
+        );
+      }
+
+      const nodesPayload = input.graph.nodes.map((node) => {
+        const record = node as unknown as Record<string, unknown>;
+        return {
+          org_id: profile.org_id,
+          template_id: templateId,
+          version_id: versionId,
+          node_id: String(record.id),
+          node_type: String(record.node_type),
+          label: typeof record.label === "string" ? record.label : null,
+          x: typeof record.x === "number" ? record.x : 0,
+          y: typeof record.y === "number" ? record.y : 0,
+          assignment_type: typeof record.assignment_type === "string" ? record.assignment_type : "none",
+          assignee_user_id: typeof record.assignee_user_id === "string" ? record.assignee_user_id : null,
+          assignee_group_id: typeof record.assignee_group_id === "string" ? record.assignee_group_id : null,
+          required_role: typeof record.required_role === "string" ? record.required_role : null,
+          sla_hours: typeof record.sla_hours === "number" ? record.sla_hours : null,
+          auto_assign_strategy: typeof record.auto_assign_strategy === "string" ? record.auto_assign_strategy : null,
+          allow_evidence: record.allow_evidence === true,
+          require_evidence: record.require_evidence === true,
+          allow_comment: record.allow_comment !== false,
+          require_comment: record.require_comment === true,
+          priority: typeof record.priority === "number" ? record.priority : 100,
+          metadata: isRecord(record.metadata) ? record.metadata : {},
+        };
+      });
+      if (nodesPayload.length) {
+        const nodesResult = await supabase.from("document_tramite_nodes").insert(nodesPayload);
+        if (nodesResult.error) {
+          const msg = "Verifique grants e policies na tabela document_tramite_nodes.";
+          setError(`O modelo foi criado, mas os nós não foram persistidos. ${getErrorMessage(nodesResult.error, msg)}`);
+        }
+      }
+
+      const edgesPayload = input.graph.edges.map((edge) => {
+        const record = edge as unknown as Record<string, unknown>;
+        return {
+          org_id: profile.org_id,
+          template_id: templateId,
+          version_id: versionId,
+          edge_id: String(record.id),
+          source_node_id: String(record.source),
+          target_node_id: String(record.target),
+          edge_type: typeof record.edge_type === "string" ? record.edge_type : "default",
+          label: typeof record.label === "string" ? record.label : null,
+          priority: typeof record.priority === "number" ? record.priority : 100,
+          metadata: isRecord(record.metadata) ? record.metadata : {},
+        };
+      });
+      if (edgesPayload.length) {
+        const edgesResult = await supabase.from("document_tramite_edges").insert(edgesPayload);
+        if (edgesResult.error) {
+          const msg = "Verifique grants e policies na tabela document_tramite_edges.";
+          setError(`O modelo foi criado, mas as arestas não foram persistidas. ${getErrorMessage(edgesResult.error, msg)}`);
+        }
+      }
 
       await supabase.from("document_tramite_events").insert({
         org_id: profile.org_id,
         template_id: templateId,
-        version_id: versionResult.data.id,
+        version_id: versionId,
         event_type: "created",
         actor_id: profile.id,
         metadata: { preset: true },

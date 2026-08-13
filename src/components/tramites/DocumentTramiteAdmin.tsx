@@ -116,7 +116,7 @@ interface ProcessRow {
   rowType: "instance" | "template";
   instanceId: string | null;
   templateId: string | null;
-  documentId: string;
+  documentId: string | null;
   documentCode: string | null;
   documentTitle: string;
   templateName: string;
@@ -970,11 +970,24 @@ export function DocumentTramiteAdmin() {
         disciplines,
         projects.projects,
       );
-      if (!sourceDocument) continue;
-      const safeDocumentId = stripTramiteUuid(sourceDocument.id) ?? sourceDocument.id;
-      if (!safeDocumentId || !UUID_ANY.test(String(safeDocumentId))) continue;
-      if (!documentsById.has(safeDocumentId)) continue;
-      if (docsWithAnyInstance.has(safeDocumentId)) continue;
+      const hasDocumentMatch = Boolean(sourceDocument);
+      const safeDocumentId = hasDocumentMatch
+        ? stripTramiteUuid(sourceDocument!.id) ?? sourceDocument!.id
+        : null;
+      const shouldSkipByDocumentInstance =
+        hasDocumentMatch &&
+        Boolean(safeDocumentId) &&
+        docsWithAnyInstance.has(String(safeDocumentId));
+      if (shouldSkipByDocumentInstance) continue;
+
+      const documentFull = hasDocumentMatch
+        ? documentsState.documents.find((d) => d.id === sourceDocument!.id)
+        : undefined;
+      const validDocumentUuid =
+        hasDocumentMatch &&
+        Boolean(safeDocumentId) &&
+        UUID_ANY.test(String(safeDocumentId)) &&
+        documentsById.has(String(safeDocumentId));
 
       const actionableNodes = sortFlowNodes(
         (template.current_version?.graph.nodes ?? []).filter(
@@ -984,11 +997,10 @@ export function DocumentTramiteAdmin() {
       const firstNode = actionableNodes[0] ?? null;
       const statusBucket: Exclude<ProcessStateFilter, "all"> =
         template.status === "archived" ? "cancelled" : "active";
-      const documentFull = documentsState.documents.find(
-        (d) => d.id === sourceDocument.id,
-      );
       const firstNodeIsMine = Boolean(
         firstNode &&
+          hasDocumentMatch &&
+          documentFull &&
           isNodeAssignedToProfile(
             firstNode,
             documentFull,
@@ -997,33 +1009,69 @@ export function DocumentTramiteAdmin() {
           ),
       );
 
+      if (hasDocumentMatch && validDocumentUuid) {
+        rows.push({
+          id: `template-${template.id}`,
+          rowType: "template",
+          instanceId: null,
+          templateId: template.id,
+          documentId: sourceDocument!.id,
+          documentCode: sourceDocument!.code,
+          documentTitle: sourceDocument!.title,
+          templateName: template.name,
+          projectName:
+            sourceDocument!.project_name ??
+            (template.project_id
+              ? projectsById.get(template.project_id)?.name ?? "Sem projeto"
+              : "Sem projeto"),
+          projectId: sourceDocument!.project_id ?? template.project_id ?? null,
+          docType: sourceDocument!.doc_type ?? template.doc_type ?? null,
+          area: sourceDocument!.area ?? template.area ?? null,
+          currentStepId: null,
+          currentStepNodeType: firstNode?.node_type ?? null,
+          currentStepAssignmentType: firstNode?.assignment_type ?? null,
+          currentStepLabel: firstNode?.label ?? "Fluxo modelado",
+          responsibleName: firstNode
+            ? resolveFlowResponsibleName(firstNode, usersById, groupsById, null)
+            : "Aguardando definição",
+          statusBucket,
+          statusLabel: getTemplateStatusLabel(template.status),
+          isMine: firstNodeIsMine,
+          canDelegate: false,
+          progress: 0,
+          totalSteps: actionableNodes.length,
+          completedSteps: 0,
+          dueAt: null,
+          startedAt: template.updated_at,
+        });
+        continue;
+      }
+
       rows.push({
-        id: `template-${template.id}`,
+        id: `template-livre-${template.id}`,
         rowType: "template",
         instanceId: null,
         templateId: template.id,
-        documentId: sourceDocument.id,
-        documentCode: sourceDocument.code,
-        documentTitle: sourceDocument.title,
+        documentId: null,
+        documentCode: template.code ?? "—",
+        documentTitle: "Modelo livre (sem documento associado)",
         templateName: template.name,
-        projectName:
-          sourceDocument.project_name ??
-          (template.project_id
-            ? projectsById.get(template.project_id)?.name ?? "Sem projeto"
-            : "Sem projeto"),
-        projectId: sourceDocument.project_id ?? template.project_id ?? null,
-        docType: sourceDocument.doc_type ?? template.doc_type ?? null,
-        area: sourceDocument.area ?? template.area ?? null,
+        projectName: template.project_id
+          ? projectsById.get(template.project_id)?.name ?? "Sem projeto"
+          : "Sem projeto",
+        projectId: template.project_id ?? null,
+        docType: template.doc_type ?? null,
+        area: template.area ?? null,
         currentStepId: null,
         currentStepNodeType: firstNode?.node_type ?? null,
         currentStepAssignmentType: firstNode?.assignment_type ?? null,
         currentStepLabel: firstNode?.label ?? "Fluxo modelado",
         responsibleName: firstNode
           ? resolveFlowResponsibleName(firstNode, usersById, groupsById, null)
-          : "Aguardando definição",
+          : "Definir ao iniciar",
         statusBucket,
         statusLabel: getTemplateStatusLabel(template.status),
-        isMine: firstNodeIsMine,
+        isMine: false,
         canDelegate: false,
         progress: 0,
         totalSteps: actionableNodes.length,
@@ -1135,7 +1183,9 @@ export function DocumentTramiteAdmin() {
     const template = selectedProcessRow.templateId
       ? templatesById.get(selectedProcessRow.templateId) ?? null
       : null;
-    const document = documentsById.get(selectedProcessRow.documentId) ?? null;
+    const document = selectedProcessRow.documentId
+      ? documentsById.get(selectedProcessRow.documentId) ?? null
+      : null;
     const documentSummary = document
       ? mapDocumentToPreviewSummary(document, disciplines, projects.projects)
       : template
@@ -1656,6 +1706,10 @@ export function DocumentTramiteAdmin() {
       ) ?? false);
 
     let success = false;
+    if (!currentRow.documentId) {
+      setProcessActionError('Modelos livres (sem documento associado) não podem ser aprovados diretamente. Inicie o fluxo em um documento existente.');
+      return;
+    }
     const document = documentsById.get(currentRow.documentId);
     const availability =
       currentRow.currentStepAssignmentType === 'specific_user' &&
@@ -2291,7 +2345,7 @@ export function DocumentTramiteAdmin() {
                               )}
                             {row.rowType === 'template' &&
                               row.templateId &&
-                              row.statusBucket !== 'cancelled' && (
+                              row.statusBucket === 'active' && (
                                 <Button
                                   type="button"
                                   size="sm"
