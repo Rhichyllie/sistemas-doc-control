@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import { DocumentTramiteModeler } from "@/components/tramites/DocumentTramiteModeler";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -501,9 +502,14 @@ function buildApprovalFlowGraph(
             ? `Decisão ${stage.areaLabel}`
             : "Decisão da análise",
         description:
-          "Aprovado segue para a próxima revisão técnica ou publicação. Reprovado encerra o fluxo sem publicar.",
+          "Aprovado segue para a próxima revisão técnica ou publicação. Reprovado encerra o fluxo sem publicar. Necessita correção encerra o fluxo para o autor emitir nova revisão.",
         instructions:
-          "Defina se o documento foi aprovado para seguir no fluxo ou reprovado para encerramento sem publicação.",
+          "Defina se o documento foi aprovado para seguir no fluxo, reprovado para encerramento sem publicação, ou se necessita correção do autor. Comentário obrigatório em qualquer decisão.",
+        // Exige comentário em toda decisão tomada aqui — é o que garante,
+        // no banco, que "necessita correção" sempre venha acompanhada do
+        // que precisa ser ajustado (o RPC bloqueia sem isso quando
+        // require_comment é true).
+        require_comment: true,
         metadata: {
           configured_area: stage.areaLabel,
           configured_order: index + 1,
@@ -513,6 +519,7 @@ function buildApprovalFlowGraph(
               ? "seguir para publicação"
               : "seguir para análise de revisão técnica",
           rejected_outcome: "encerrar fluxo sem publicação",
+          needs_correction_outcome: "encerrar fluxo para o autor emitir nova revisão",
         },
       },
     );
@@ -530,6 +537,15 @@ function buildApprovalFlowGraph(
     edges.push(
       createTramiteEdge(decisionNode.id, end.id, "rejected", {
         priority: 10,
+      }),
+    );
+    // CORREÇÃO: faltava o caminho de saída para "needs_correction" — sem
+    // ele, qualquer decisão de "necessita correção" tomada aqui derruba a
+    // instância inteira com status "failed" (0 edges aplicáveis), do
+    // mesmo jeito que aconteceu nos modelos antigos corrigidos manualmente.
+    edges.push(
+      createTramiteEdge(decisionNode.id, end.id, "needs_correction", {
+        priority: 7,
       }),
     );
     previousNodeId = decisionNode.id;
@@ -1421,136 +1437,71 @@ export function DocumentTramiteAdmin() {
             (stripTramiteUuid(inst.document_id) ?? inst.document_id) === safeDocumentId &&
             (inst.status === 'active' || (inst.status as string) === 'pending'),
         );
-        if (existingActiveInstance) {
-          const matchedTemplate = templatesById.get(
-            stripTramiteUuid(existingActiveInstance.template_id) ?? existingActiveInstance.template_id ?? '',
-          ) ?? templatesById.get(currentRow.templateId) ?? null;
-          const liveSteps = (executions.steps ?? []).filter(
-            (step) => step.instance_id === existingActiveInstance.id,
-          );
-          const liveDocument = documentsById.get(
-            stripTramiteUuid(existingActiveInstance.document_id) ?? existingActiveInstance.document_id,
-          ) ?? null;
-          const liveActionableSteps = liveSteps.filter(
-            (step) => step.node_type !== 'start' && step.node_type !== 'end',
-          );
-          const liveCurrentStep =
-            liveActionableSteps.find((step) => step.status === 'active') ??
-            liveActionableSteps.find((step) => step.status === 'pending') ??
-            null;
-          if (liveCurrentStep) {
-            const liveIsMine =
-              (() => {
-                if (!profile) return false;
-                const assignment = (liveCurrentStep.assignment_type ?? 'none') as DocumentTramiteAssignmentType;
-                if (
-                  assignment === 'none' ||
-                  assignment === 'author' ||
-                  assignment === 'document_owner'
-                ) {
-                  return liveDocument?.author_id === profile.id;
-                }
-                if (assignment === 'specific_user') {
-                  return liveCurrentStep.assignee_user_id === profile.id;
-                }
-                if (assignment === 'approval_group') {
-                  return Boolean(
-                    liveCurrentStep.assignee_group_id && profileGroupIds.has(liveCurrentStep.assignee_group_id),
-                  );
-                }
-                return assignment === 'role' && liveCurrentStep.required_role === profile.role;
-              })();
-            currentRow = {
-              id: existingActiveInstance.id,
-              rowType: 'instance',
-              instanceId: existingActiveInstance.id,
-              templateId: matchedTemplate?.id ?? null,
-              documentId: existingActiveInstance.document_id,
-              documentCode: liveDocument?.code ?? existingActiveInstance.document_id,
-              documentTitle: liveDocument?.title ?? existingActiveInstance.document_id,
-              templateName: matchedTemplate?.name ?? 'Fluxo manual',
-              projectName:
-                liveDocument?.project?.name ??
-                (liveDocument?.project_id
-                  ? projectsById.get(liveDocument.project_id)?.name ?? 'Sem projeto'
-                  : 'Sem projeto'),
-              projectId: liveDocument?.project_id ?? existingActiveInstance.project_id ?? null,
-              docType: liveDocument?.doc_type ?? matchedTemplate?.doc_type ?? null,
-              area: liveDocument?.area ?? matchedTemplate?.area ?? null,
-              currentStepId: liveCurrentStep.id,
-              currentStepNodeType: liveCurrentStep.node_type ?? null,
-              currentStepAssignmentType: liveCurrentStep.assignment_type ?? null,
-              currentStepLabel: liveCurrentStep.label ?? 'Sem etapa ativa',
-              responsibleName:
-                liveCurrentStep.assignment_type === 'specific_user'
-                  ? usersById.get(liveCurrentStep.assignee_user_id ?? '') ?? 'Usuário atribuído'
-                  : liveCurrentStep.assignment_type === 'approval_group'
-                    ? groupsById.get(liveCurrentStep.assignee_group_id ?? '') ?? 'Grupo atribuído'
-                    : liveCurrentStep.assignment_type === 'role'
-                      ? `Papel: ${liveCurrentStep.required_role ?? 'workflow'}`
-                      : liveCurrentStep.assignment_type === 'author' ||
-                          liveCurrentStep.assignment_type === 'document_owner' ||
-                          !liveCurrentStep.assignment_type ||
-                          (liveCurrentStep.assignment_type as DocumentTramiteAssignmentType) === 'none'
-                        ? liveDocument?.author?.full_name ?? 'Autor do documento'
-                        : 'Aguardando definição',
-              statusBucket: existingActiveInstance.status === 'completed'
-                ? 'completed'
-                : existingActiveInstance.status === 'cancelled' || existingActiveInstance.status === 'failed'
-                  ? 'cancelled'
-                  : liveIsMine
-                    ? 'my_action'
-                    : existingActiveInstance.status === 'active'
-                      ? 'waiting_others'
-                      : 'active',
-              statusLabel: existingActiveInstance.status ?? 'Ativo',
-              isMine: liveIsMine,
-              canDelegate: false,
-              progress: liveActionableSteps.length
-                ? Math.round(
-                    (liveActionableSteps.filter(
-                      (s) => s.status === 'completed' || s.status === 'skipped',
-                    ).length /
-                      liveActionableSteps.length) *
-                      100,
-                  )
-                : 0,
-              totalSteps: liveActionableSteps.length,
-              completedSteps: liveActionableSteps.filter(
-                (s) => s.status === 'completed' || s.status === 'skipped',
-              ).length,
-              dueAt: liveCurrentStep.due_at ?? existingActiveInstance.updated_at,
-              startedAt: existingActiveInstance.started_at ?? existingActiveInstance.created_at,
-            } satisfies ProcessRow;
+
+        // ---------------------------------------------------------------
+        // CORREÇÃO (closure obsoleto): antes, o código chamava
+        // execution.startInstance(...), esperava executions.refresh(), e
+        // em seguida tentava reencontrar a instância lendo
+        // executions.instances — mas esse valor ainda reflete o estado de
+        // ANTES do refresh terminar de propagar pro React nesta mesma
+        // execução da função (mesmo depois do await). O retorno de
+        // startInstance() já traz o instance_id certo, e a consulta abaixo
+        // busca os dados direto no Supabase (sem depender do estado do
+        // hook), então nunca fica "atrasada".
+        // ---------------------------------------------------------------
+        let startResult: Awaited<ReturnType<typeof execution.startInstance>> | null = null;
+        if (!existingActiveInstance) {
+          toast.loading('Iniciando o fluxo automaticamente…', { id: 'start-instance-for-action' });
+          try {
+            startResult = await execution.startInstance({
+              documentId: safeDocumentId,
+              templateId: currentRow.templateId,
+              templateVersionId: templatesById.get(currentRow.templateId ?? '')?.current_version?.id ?? null,
+            });
+          } finally {
+            toast.dismiss('start-instance-for-action');
           }
         }
-        if (currentRow.rowType === 'template' && !currentRow.currentStepId) {
-          toast.loading('Iniciando o fluxo automaticamente…', { id: 'start-instance-for-action' });
-          await execution.startInstance({
-            documentId: safeDocumentId,
-            templateId: currentRow.templateId,
-            templateVersionId: templatesById.get(currentRow.templateId ?? '')?.current_version?.id ?? null,
-          });
-          await Promise.all([executions.refresh(), catalog.refresh()]);
+
+        const targetInstanceId =
+          startResult?.instance_id ?? existingActiveInstance?.id ?? null;
+
+        if (!targetInstanceId) {
+          setProcessActionError('Não foi possível iniciar o fluxo (nenhum instance_id retornado). Atualize a página e tente novamente.');
+          toast.error('Não foi possível iniciar o fluxo. Tente novamente.');
+          return;
         }
-        const liveInstancesAfter = executions.instances ?? [];
-        const matchedInstance = liveInstancesAfter.find(
-          (inst) =>
-            (stripTramiteUuid(inst.template_id) ?? inst.template_id) ===
-              (stripTramiteUuid(currentRow.templateId) ?? currentRow.templateId) &&
-            (stripTramiteUuid(inst.document_id) ?? inst.document_id) === safeDocumentId,
-        ) ?? existingActiveInstance ?? null;
-        toast.dismiss('start-instance-for-action');
+
+        // Busca fresca e direta no banco — não depende do estado do hook.
+        const [instanceFetch, stepsFetch] = await Promise.all([
+          supabase
+            .from('document_tramite_instances')
+            .select('*')
+            .eq('id', targetInstanceId)
+            .maybeSingle(),
+          supabase
+            .from('document_tramite_instance_steps')
+            .select('*')
+            .eq('instance_id', targetInstanceId)
+            .order('created_at', { ascending: true }),
+        ]);
+
+        const matchedInstance = instanceFetch.data ?? null;
         if (!matchedInstance) {
-          setProcessActionError('Fluxo iniciado, mas não foi possível recuperar a etapa ativa. Atualize a página e tente novamente.');
+          setProcessActionError('Fluxo iniciado, mas não foi possível recuperar a instância. Atualize a página e tente novamente.');
           toast.error('Fluxo iniciado. Atualize a página para continuar.');
           return;
         }
-        const matchedTemplate = templatesById.get(currentRow.templateId ?? '') ?? templatesById.get(matchedInstance.template_id ?? '') ?? null;
-        const liveSteps = (executions.steps ?? []).filter(
-          (step) => step.instance_id === matchedInstance.id,
-        );
-        const liveDocument = documentsById.get(matchedInstance.document_id) ?? documentsById.get(stripTramiteUuid(matchedInstance.document_id) ?? '') ?? null;
+
+        const matchedTemplate =
+          templatesById.get(stripTramiteUuid(matchedInstance.template_id) ?? matchedInstance.template_id ?? '') ??
+          templatesById.get(currentRow.templateId ?? '') ??
+          null;
+        const liveSteps = (stepsFetch.data ?? []) as DocumentTramiteInstanceStep[];
+        const liveDocument =
+          documentsById.get(matchedInstance.document_id) ??
+          documentsById.get(stripTramiteUuid(matchedInstance.document_id) ?? '') ??
+          null;
         const liveActionableSteps = liveSteps.filter(
           (step) => step.node_type !== 'start' && step.node_type !== 'end',
         );
@@ -1558,11 +1509,13 @@ export function DocumentTramiteAdmin() {
           liveActionableSteps.find((step) => step.status === 'active') ??
           liveActionableSteps.find((step) => step.status === 'pending') ??
           null;
+
         if (!liveCurrentStep) {
           setProcessActionError('Fluxo iniciado sem etapa ativa detectada. Atualize a página para prosseguir.');
           toast.error('Fluxo iniciado sem etapa ativa. Atualize a página para continuar.');
           return;
         }
+
         const liveIsMine =
           (() => {
             if (!profile) return false;
@@ -1584,6 +1537,7 @@ export function DocumentTramiteAdmin() {
             }
             return assignment === 'role' && liveCurrentStep.required_role === profile.role;
           })();
+
         currentRow = {
           id: matchedInstance.id,
           rowType: 'instance',
