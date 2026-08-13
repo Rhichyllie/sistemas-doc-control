@@ -242,13 +242,47 @@ function Metric({ metric }: { metric: MetricCard }) {
 export function OperationalHome() {
   const home = useOperationalHome();
   const cockpit = useOperationalCockpit();
-  const workCenter = useDocumentWorkCenter();
-  const canSeeAllInstances = workCenter.canViewOrganization ?? false;
+  const rawWorkCenter = useDocumentWorkCenter() as
+    | (ReturnType<typeof useDocumentWorkCenter> & {
+        canViewOrganization?: boolean;
+        tramiteStatus?: string;
+        isLoading?: boolean;
+      })
+    | null
+    | undefined;
+  const workCenter = (rawWorkCenter ?? {
+    workItems: [],
+    groups: {
+      myPending: [],
+      overdue: [],
+      tramite: [],
+      approval: [],
+      review: [],
+      creation: [],
+    },
+    activeInstances: [],
+    allInstancesIsManager: false,
+    recentDocuments: [],
+    documentsWithoutSlaPolicy: 0,
+    absentWithoutSubstitute: 0,
+    activeSubstitutions: 0,
+    deadlinesWithAbsentAssignee: 0,
+    criticalUnreadNotifications: 0,
+    openEscalations: 0,
+    canViewOrganization: false,
+    tramiteStatus: undefined as string | undefined,
+    isLoading: false,
+  }) as NonNullable<typeof rawWorkCenter>;
+  const canSeeAllInstances = Boolean(workCenter.canViewOrganization);
   const isEmptyP12 =
     workCenter.tramiteStatus === "not_installed" ||
     workCenter.tramiteStatus === "restricted";
-  const safeActiveInstances = workCenter.activeInstances ?? [];
-  const safeWorkItems = workCenter.workItems ?? [];
+  const safeActiveInstances = Array.isArray(workCenter.activeInstances)
+    ? workCenter.activeInstances
+    : [];
+  const safeWorkItems = Array.isArray(workCenter.workItems)
+    ? workCenter.workItems
+    : [];
   const hasActiveTramiteInstances = safeActiveInstances.length > 0;
   const hasSuggestedTramitesOnly =
     !hasActiveTramiteInstances &&
