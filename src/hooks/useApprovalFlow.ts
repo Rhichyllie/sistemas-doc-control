@@ -1289,16 +1289,36 @@ export function useApprovalFlow() {
       .eq('org_id', profile.org_id)
       .single()
 
-    const notifications = [...new Set(userIds)].map((userId) => ({
+    const uniqueUserIds = [...new Set(userIds)]
+    const body = doc ? `${doc.code ?? ''} — ${doc.title}` : ''
+
+    const notifications = uniqueUserIds.map((userId) => ({
       org_id: profile.org_id,
       user_id: userId,
       document_id: documentId,
       type,
       title,
-      body: doc ? `${doc.code ?? ''} — ${doc.title}` : '',
+      body,
     }))
 
     await supabase.from('notifications').insert(notifications)
+
+    // Dispara o e-mail (Edge Function "notify-tramite-step") para os mesmos
+    // destinatários. Não bloqueia nem falha o fluxo principal se o e-mail
+    // não sair — a notificação interna acima já foi garantida.
+    try {
+      await supabase.functions.invoke('notify-tramite-step', {
+        body: {
+          document_id: documentId,
+          user_ids: uniqueUserIds,
+          type,
+          title,
+          body,
+        },
+      })
+    } catch {
+      // Falha de e-mail não deve interromper o fluxo de aprovação.
+    }
   }
 
   return {
