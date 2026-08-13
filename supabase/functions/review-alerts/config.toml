@@ -1,3 +1,5 @@
 ﻿[functions.review-alerts]
 verify_jwt = false
 schedule = "0 7 * * *"
+[functions.send-approval-email]
+enabled = false
