@@ -34,6 +34,7 @@ import { Route as AuthenticatedDocumentsDocumentIdRouteImport } from './routes/a
 import { Route as AuthenticatedDocumentosTramitesRouteImport } from './routes/authenticated/documentos/tramites'
 import { Route as AuthenticatedDocumentosRegrasRouteImport } from './routes/authenticated/documentos/regras'
 import { Route as AuthenticatedDocumentosNovoInteligenteRouteImport } from './routes/authenticated/documentos/novo-inteligente'
+import { Route as AuthenticatedDocumentosLeituraRouteImport } from './routes/authenticated/documentos/leitura'
 import { Route as AuthenticatedDocumentosCodificacaoRouteImport } from './routes/authenticated/documentos/codificacao'
 import { Route as AuthenticatedDocumentosCentralRouteImport } from './routes/authenticated/documentos/central'
 import { Route as AuthenticatedConfiguracoesTrilhaDeAuditoriaRouteImport } from './routes/authenticated/configuracoes/trilha-de-auditoria'
@@ -44,6 +45,7 @@ import { Route as AuthenticatedConfiguracoesEquipeRouteImport } from './routes/a
 import { Route as AuthenticatedConfiguracoesCodificacaoDocumentalRouteImport } from './routes/authenticated/configuracoes/codificacao-documental'
 import { Route as AuthenticatedConfiguracoesCalendarioRouteImport } from './routes/authenticated/configuracoes/calendario'
 import { Route as AuthenticatedAuditoriaRelatoriosRouteImport } from './routes/authenticated/auditoria/relatorios'
+import { Route as AuthenticatedAuditoriaExcecoesRouteImport } from './routes/authenticated/auditoria/excecoes'
 import { Route as AuthenticatedBibliotecaBibliotecaIdRouteRouteImport } from './routes/authenticated/biblioteca/$bibliotecaId/route'
 import { Route as AuthenticatedConfiguracoesCodificacaoDocumentalTiposDocumentoRouteImport } from './routes/authenticated/configuracoes/codificacao-documental.tipos-documento'
 import { Route as AuthenticatedConfiguracoesCodificacaoDocumentalDisciplinasRouteImport } from './routes/authenticated/configuracoes/codificacao-documental.disciplinas'
@@ -196,6 +198,12 @@ const AuthenticatedDocumentosNovoInteligenteRoute =
     path: '/documentos/novo-inteligente',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedDocumentosLeituraRoute =
+  AuthenticatedDocumentosLeituraRouteImport.update({
+    id: '/documentos/leitura',
+    path: '/documentos/leitura',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDocumentosCodificacaoRoute =
   AuthenticatedDocumentosCodificacaoRouteImport.update({
     id: '/documentos/codificacao',
@@ -254,6 +262,12 @@ const AuthenticatedAuditoriaRelatoriosRoute =
   AuthenticatedAuditoriaRelatoriosRouteImport.update({
     id: '/auditoria/relatorios',
     path: '/auditoria/relatorios',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAuditoriaExcecoesRoute =
+  AuthenticatedAuditoriaExcecoesRouteImport.update({
+    id: '/auditoria/excecoes',
+    path: '/auditoria/excecoes',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedBibliotecaBibliotecaIdRouteRoute =
@@ -354,6 +368,7 @@ export interface FileRoutesByFullPath {
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
   '/authenticated/biblioteca/$bibliotecaId': typeof AuthenticatedBibliotecaBibliotecaIdRouteRouteWithChildren
+  '/authenticated/auditoria/excecoes': typeof AuthenticatedAuditoriaExcecoesRoute
   '/authenticated/auditoria/relatorios': typeof AuthenticatedAuditoriaRelatoriosRoute
   '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
   '/authenticated/configuracoes/codificacao-documental': typeof AuthenticatedConfiguracoesCodificacaoDocumentalRouteWithChildren
@@ -364,6 +379,7 @@ export interface FileRoutesByFullPath {
   '/authenticated/configuracoes/trilha-de-auditoria': typeof AuthenticatedConfiguracoesTrilhaDeAuditoriaRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
+  '/authenticated/documentos/leitura': typeof AuthenticatedDocumentosLeituraRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
   '/authenticated/documentos/tramites': typeof AuthenticatedDocumentosTramitesRoute
@@ -403,6 +419,7 @@ export interface FileRoutesByTo {
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
   '/authenticated/biblioteca/$bibliotecaId': typeof AuthenticatedBibliotecaBibliotecaIdRouteRouteWithChildren
+  '/authenticated/auditoria/excecoes': typeof AuthenticatedAuditoriaExcecoesRoute
   '/authenticated/auditoria/relatorios': typeof AuthenticatedAuditoriaRelatoriosRoute
   '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
   '/authenticated/configuracoes/codificacao-documental': typeof AuthenticatedConfiguracoesCodificacaoDocumentalRouteWithChildren
@@ -413,6 +430,7 @@ export interface FileRoutesByTo {
   '/authenticated/configuracoes/trilha-de-auditoria': typeof AuthenticatedConfiguracoesTrilhaDeAuditoriaRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
+  '/authenticated/documentos/leitura': typeof AuthenticatedDocumentosLeituraRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
   '/authenticated/documentos/tramites': typeof AuthenticatedDocumentosTramitesRoute
@@ -453,6 +471,7 @@ export interface FileRoutesById {
   '/authenticated/schema-doctor': typeof AuthenticatedSchemaDoctorRoute
   '/authenticated/trilha-de-auditoria': typeof AuthenticatedTrilhaDeAuditoriaRoute
   '/authenticated/biblioteca/$bibliotecaId': typeof AuthenticatedBibliotecaBibliotecaIdRouteRouteWithChildren
+  '/authenticated/auditoria/excecoes': typeof AuthenticatedAuditoriaExcecoesRoute
   '/authenticated/auditoria/relatorios': typeof AuthenticatedAuditoriaRelatoriosRoute
   '/authenticated/configuracoes/calendario': typeof AuthenticatedConfiguracoesCalendarioRoute
   '/authenticated/configuracoes/codificacao-documental': typeof AuthenticatedConfiguracoesCodificacaoDocumentalRouteWithChildren
@@ -463,6 +482,7 @@ export interface FileRoutesById {
   '/authenticated/configuracoes/trilha-de-auditoria': typeof AuthenticatedConfiguracoesTrilhaDeAuditoriaRoute
   '/authenticated/documentos/central': typeof AuthenticatedDocumentosCentralRoute
   '/authenticated/documentos/codificacao': typeof AuthenticatedDocumentosCodificacaoRoute
+  '/authenticated/documentos/leitura': typeof AuthenticatedDocumentosLeituraRoute
   '/authenticated/documentos/novo-inteligente': typeof AuthenticatedDocumentosNovoInteligenteRoute
   '/authenticated/documentos/regras': typeof AuthenticatedDocumentosRegrasRoute
   '/authenticated/documentos/tramites': typeof AuthenticatedDocumentosTramitesRoute
@@ -504,6 +524,7 @@ export interface FileRouteTypes {
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
     | '/authenticated/biblioteca/$bibliotecaId'
+    | '/authenticated/auditoria/excecoes'
     | '/authenticated/auditoria/relatorios'
     | '/authenticated/configuracoes/calendario'
     | '/authenticated/configuracoes/codificacao-documental'
@@ -514,6 +535,7 @@ export interface FileRouteTypes {
     | '/authenticated/configuracoes/trilha-de-auditoria'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
+    | '/authenticated/documentos/leitura'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
     | '/authenticated/documentos/tramites'
@@ -553,6 +575,7 @@ export interface FileRouteTypes {
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
     | '/authenticated/biblioteca/$bibliotecaId'
+    | '/authenticated/auditoria/excecoes'
     | '/authenticated/auditoria/relatorios'
     | '/authenticated/configuracoes/calendario'
     | '/authenticated/configuracoes/codificacao-documental'
@@ -563,6 +586,7 @@ export interface FileRouteTypes {
     | '/authenticated/configuracoes/trilha-de-auditoria'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
+    | '/authenticated/documentos/leitura'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
     | '/authenticated/documentos/tramites'
@@ -602,6 +626,7 @@ export interface FileRouteTypes {
     | '/authenticated/schema-doctor'
     | '/authenticated/trilha-de-auditoria'
     | '/authenticated/biblioteca/$bibliotecaId'
+    | '/authenticated/auditoria/excecoes'
     | '/authenticated/auditoria/relatorios'
     | '/authenticated/configuracoes/calendario'
     | '/authenticated/configuracoes/codificacao-documental'
@@ -612,6 +637,7 @@ export interface FileRouteTypes {
     | '/authenticated/configuracoes/trilha-de-auditoria'
     | '/authenticated/documentos/central'
     | '/authenticated/documentos/codificacao'
+    | '/authenticated/documentos/leitura'
     | '/authenticated/documentos/novo-inteligente'
     | '/authenticated/documentos/regras'
     | '/authenticated/documentos/tramites'
@@ -814,6 +840,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDocumentosNovoInteligenteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/authenticated/documentos/leitura': {
+      id: '/authenticated/documentos/leitura'
+      path: '/documentos/leitura'
+      fullPath: '/authenticated/documentos/leitura'
+      preLoaderRoute: typeof AuthenticatedDocumentosLeituraRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/authenticated/documentos/codificacao': {
       id: '/authenticated/documentos/codificacao'
       path: '/documentos/codificacao'
@@ -882,6 +915,13 @@ declare module '@tanstack/react-router' {
       path: '/auditoria/relatorios'
       fullPath: '/authenticated/auditoria/relatorios'
       preLoaderRoute: typeof AuthenticatedAuditoriaRelatoriosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/authenticated/auditoria/excecoes': {
+      id: '/authenticated/auditoria/excecoes'
+      path: '/auditoria/excecoes'
+      fullPath: '/authenticated/auditoria/excecoes'
+      preLoaderRoute: typeof AuthenticatedAuditoriaExcecoesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/authenticated/biblioteca/$bibliotecaId': {
@@ -1121,9 +1161,11 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSchemaDoctorRoute: typeof AuthenticatedSchemaDoctorRoute
   AuthenticatedTrilhaDeAuditoriaRoute: typeof AuthenticatedTrilhaDeAuditoriaRoute
   AuthenticatedBibliotecaBibliotecaIdRouteRoute: typeof AuthenticatedBibliotecaBibliotecaIdRouteRouteWithChildren
+  AuthenticatedAuditoriaExcecoesRoute: typeof AuthenticatedAuditoriaExcecoesRoute
   AuthenticatedAuditoriaRelatoriosRoute: typeof AuthenticatedAuditoriaRelatoriosRoute
   AuthenticatedDocumentosCentralRoute: typeof AuthenticatedDocumentosCentralRoute
   AuthenticatedDocumentosCodificacaoRoute: typeof AuthenticatedDocumentosCodificacaoRoute
+  AuthenticatedDocumentosLeituraRoute: typeof AuthenticatedDocumentosLeituraRoute
   AuthenticatedDocumentosNovoInteligenteRoute: typeof AuthenticatedDocumentosNovoInteligenteRoute
   AuthenticatedDocumentosRegrasRoute: typeof AuthenticatedDocumentosRegrasRoute
   AuthenticatedDocumentosTramitesRoute: typeof AuthenticatedDocumentosTramitesRoute
@@ -1148,10 +1190,12 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedTrilhaDeAuditoriaRoute: AuthenticatedTrilhaDeAuditoriaRoute,
   AuthenticatedBibliotecaBibliotecaIdRouteRoute:
     AuthenticatedBibliotecaBibliotecaIdRouteRouteWithChildren,
+  AuthenticatedAuditoriaExcecoesRoute: AuthenticatedAuditoriaExcecoesRoute,
   AuthenticatedAuditoriaRelatoriosRoute: AuthenticatedAuditoriaRelatoriosRoute,
   AuthenticatedDocumentosCentralRoute: AuthenticatedDocumentosCentralRoute,
   AuthenticatedDocumentosCodificacaoRoute:
     AuthenticatedDocumentosCodificacaoRoute,
+  AuthenticatedDocumentosLeituraRoute: AuthenticatedDocumentosLeituraRoute,
   AuthenticatedDocumentosNovoInteligenteRoute:
     AuthenticatedDocumentosNovoInteligenteRoute,
   AuthenticatedDocumentosRegrasRoute: AuthenticatedDocumentosRegrasRoute,

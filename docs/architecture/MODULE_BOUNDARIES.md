@@ -33,8 +33,29 @@ As fronteiras abaixo impedem que telas diferentes respondam à mesma pergunta ou
 
 - Consolida trilha, pacote formal, manifesto, cobertura, limitações, hash técnico e histórico append-only de exportações.
 - A P-27 está concluída com relatórios formais de auditoria.
-- A P-27.1 futura tratará exceções e reconciliação; não pertence a esta organização estrutural.
+- A P-27.1 trata exceções e reconciliação em tabelas próprias.
 - Não altera a operação auditada.
+
+## Exceções e Reconciliação
+
+- Detecta lacunas, divergências, fontes ausentes e inconsistências auditáveis.
+- Registra runs e exceções em contrato próprio.
+- Permite reconhecer, ignorar ou resolver uma exceção com nota.
+- Não corrige documentos, versões, aprovações, trâmites, evidências,
+  notificações, prazos ou responsáveis.
+- Não substitui Relatórios de Auditoria; prepara investigação antes do piloto.
+
+## OCR e Leitura Documental
+
+- Registra solicitações de leitura técnica, páginas extraídas, método, origem,
+  confiança, warnings, erros e limitações.
+- Armazena somente texto observado, extraído ou informado manualmente com
+  método explícito.
+- Não resume, interpreta, corrige, classifica, infere campos ou preenche
+  metadados operacionais.
+- OCR falho, indisponível ou sem texto não invalida o documento e não altera
+  status, prazos, responsáveis, versões, aprovações, trâmites ou evidências.
+- Prepara base para busca e inteligência futuras sem executar IA na P-29.
 
 ## Documentos
 
