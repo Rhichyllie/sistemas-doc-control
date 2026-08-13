@@ -1721,9 +1721,11 @@ function DocumentsListPage() {
                         </TableCell>
                         <TableCell className="font-medium">
                           <div>{doc.title}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {doc.project?.name || "Sem projeto"}
-                          </div>
+                          {!libraryId && (
+                            <div className="text-xs text-muted-foreground">
+                              {doc.project?.name || "Sem projeto"}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           {displayedStatus ? (
