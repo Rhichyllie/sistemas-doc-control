@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   Background,
   Controls,
@@ -6,7 +6,9 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
+  useEdgesState,
   useNodesState,
+  useReactFlow,
   type Connection,
   type Edge,
   type NodeMouseHandler,
@@ -103,10 +105,30 @@ function FlowCanvas({
   );
   const [flowNodes, setFlowNodes, onNodesChange] =
     useNodesState<TramiteFlowNode>(nodes);
+  const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState<Edge>(edges);
+  const { fitView } = useReactFlow();
+  const lastGraphSig = useRef<string>("");
 
   useEffect(() => {
     setFlowNodes(nodes);
   }, [nodes, setFlowNodes]);
+
+  useEffect(() => {
+    setFlowEdges(edges);
+  }, [edges, setFlowEdges]);
+
+  useEffect(() => {
+    const sig = `${graph.nodes.length}:${graph.edges.length}:${graph.nodes
+      .map((n) => `${n.id}@${n.position.x},${n.position.y}`)
+      .join("|")}`;
+    if (lastGraphSig.current && lastGraphSig.current !== sig) {
+      const timer = window.setTimeout(() => {
+        fitView({ padding: 0.2, duration: 350, maxZoom: 1.2 });
+      }, 80);
+      return () => window.clearTimeout(timer);
+    }
+    lastGraphSig.current = sig;
+  }, [graph.nodes, graph.edges, fitView]);
 
   const handleNodeClick: NodeMouseHandler<TramiteFlowNode> = (_, node) => {
     onSelectNode(node.id);
@@ -115,8 +137,9 @@ function FlowCanvas({
   return (
     <ReactFlow
       nodes={flowNodes}
-      edges={edges}
+      edges={flowEdges}
       onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
       nodeTypes={nodeTypes}
       fitView
       minZoom={0.25}
