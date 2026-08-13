@@ -1236,67 +1236,120 @@ export function useDocumentTramiteTemplates() {
     [updateTemplate],
   );
 
-  const deleteTemplate = useCallback(
-    async (templateId: string) => {
-      if (!profile?.id || !profile.org_id || !canManage) {
-        setError("Somente administradores e gestores podem excluir trâmites.");
-        return false;
-      }
+const deleteTemplate = useCallback(
+  async (templateId: string) => {
+    if (!profile?.id || !profile.org_id || !canManage) {
+      setError("Somente administradores e gestores podem excluir trâmites.");
+      return false;
+    }
 
-      if (isLocalMode) {
-        setIsSaving(true);
-        setError(null);
-        const nextTemplates = templates.filter((template) => template.id !== templateId);
-        const nextVersions = versions.filter((version) => version.template_id !== templateId);
-        saveLocalTramiteStore(profile.org_id, nextTemplates, nextVersions);
-        setTemplates(nextTemplates);
-        setVersions(nextVersions);
-        setSchemaStatus(nextTemplates.length ? "ready" : "empty");
-        setIsSaving(false);
-        return true;
-      }
-
+    if (isLocalMode) {
       setIsSaving(true);
       setError(null);
-      const remoteId = await ensureRemoteTemplateId(templateId);
-      if (!remoteId) {
-        setIsSaving(false);
-        return false;
-      }
-      const result = await supabase
-        .from("document_tramite_templates")
-        .delete()
-        .eq("id", remoteId)
-        .eq("org_id", profile.org_id);
+      const nextTemplates = templates.filter((template) => template.id !== templateId);
+      const nextVersions = versions.filter((version) => version.template_id !== templateId);
+      saveLocalTramiteStore(profile.org_id, nextTemplates, nextVersions);
+      setTemplates(nextTemplates);
+      setVersions(nextVersions);
+      setSchemaStatus(nextTemplates.length ? "ready" : "empty");
+      setIsSaving(false);
+      return true;
+    }
 
-      if (!result.error) {
-        setIsSaving(false);
-        await refresh();
-        return true;
-      }
+    setIsSaving(true);
+    setError(null);
+    const remoteId = await ensureRemoteTemplateId(templateId);
+    if (!remoteId) {
+      setIsSaving(false);
+      return false;
+    }
 
+    // 1. Verifica se existem instâncias (execuções reais) deste template.
+    // Se houver, bloqueia igual antes — isso é intencional, preserva o
+    // histórico/rastreabilidade de documentos que já passaram pelo fluxo.
+    const instancesCheck = await supabase
+      .from("document_tramite_instances")
+      .select("id", { count: "exact", head: true })
+      .eq("template_id", remoteId);
+
+    if ((instancesCheck.count ?? 0) > 0) {
       setError(
-        isDeleteRestrictedByExecution(result.error)
-          ? "Este fluxo já possui execuções iniciadas e não pode ser excluído. Arquive-o ou encerre os trâmites vinculados antes de tentar novamente."
-          : getErrorMessage(
-              result.error,
-              "Não foi possível excluir o trâmite.",
-            ),
+        "Este fluxo já possui execuções iniciadas e não pode ser excluído. Arquive-o ou encerre os trâmites vinculados antes de tentar novamente.",
       );
       setIsSaving(false);
       return false;
-    },
-    [
-      canManage,
-      ensureRemoteTemplateId,
-      isLocalMode,
-      profile?.id,
-      profile?.org_id,
-      refresh,
-      templates,
-      versions,
-    ],
-  );
+    }
+
+    // 2. Sem instâncias: seguro apagar os registros de modelagem (versões,
+    // nós, conexões, eventos) antes do template, respeitando as FKs.
+    const [deleteEvents, deleteNodes, deleteEdges] = await Promise.all([
+      supabase.from("document_tramite_events").delete().eq("template_id", remoteId),
+      supabase.from("document_tramite_nodes").delete().eq("template_id", remoteId),
+      supabase.from("document_tramite_edges").delete().eq("template_id", remoteId),
+    ]);
+
+    if (deleteEvents.error || deleteNodes.error || deleteEdges.error) {
+      setError(
+        getErrorMessage(
+          deleteEvents.error || deleteNodes.error || deleteEdges.error,
+          "Não foi possível limpar os dados de modelagem do fluxo.",
+        ),
+      );
+      setIsSaving(false);
+      return false;
+    }
+
+    const deleteVersions = await supabase
+      .from("document_tramite_template_versions")
+      .delete()
+      .eq("template_id", remoteId);
+
+    if (deleteVersions.error) {
+      setError(
+        getErrorMessage(
+          deleteVersions.error,
+          "Não foi possível remover as versões do fluxo.",
+        ),
+      );
+      setIsSaving(false);
+      return false;
+    }
+
+    // 3. Agora sim, remove o template.
+    const result = await supabase
+      .from("document_tramite_templates")
+      .delete()
+      .eq("id", remoteId)
+      .eq("org_id", profile.org_id);
+
+    if (!result.error) {
+      setIsSaving(false);
+      await refresh();
+      return true;
+    }
+
+    setError(
+      isDeleteRestrictedByExecution(result.error)
+        ? "Este fluxo já possui execuções iniciadas e não pode ser excluído. Arquive-o ou encerre os trâmites vinculados antes de tentar novamente."
+        : getErrorMessage(
+            result.error,
+            "Não foi possível excluir o trâmite.",
+          ),
+    );
+    setIsSaving(false);
+    return false;
+  },
+  [
+    canManage,
+    ensureRemoteTemplateId,
+    isLocalMode,
+    profile?.id,
+    profile?.org_id,
+    refresh,
+    templates,
+    versions,
+  ],
+);
 
   const duplicateTemplate = useCallback(
     async (template: DocumentTramiteTemplate) => {

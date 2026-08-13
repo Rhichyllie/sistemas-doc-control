@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  Archive,
   CheckCircle2,
   Eye,
   Filter,
@@ -20,6 +21,7 @@ import { toast } from "sonner";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { DocumentTramiteModeler } from "@/components/tramites/DocumentTramiteModeler";
+import { TramiteCancelDialog } from "@/components/tramite-execution/TramiteCancelDialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -601,6 +603,8 @@ export function DocumentTramiteAdmin() {
   const [processAction, setProcessAction] = useState<'approve' | 'reject' | null>(null)
   const [processActionComment, setProcessActionComment] = useState('')
   const [processActionError, setProcessActionError] = useState<string | null>(null)
+  const [cancelTarget, setCancelTarget] = useState<ProcessRow | null>(null)
+  const [archiveTarget, setArchiveTarget] = useState<ProcessRow | null>(null)
   const profileGroupIds = useMemo(
     () =>
       new Set(
@@ -1383,6 +1387,35 @@ export function DocumentTramiteAdmin() {
     setProcessAction(null)
     setProcessActionComment('')
     setProcessActionError(null)
+  }
+
+  async function handleConfirmCancel(reason: string) {
+    if (!cancelTarget?.instanceId) return;
+    try {
+      await execution.cancelInstance({
+        instanceId: cancelTarget.instanceId,
+        reason,
+      });
+      toast.success("Trâmite cancelado com sucesso.");
+      setCancelTarget(null);
+    } catch (error) {
+      const message =
+      (error as Error)?.message ||
+      execution.error ||
+      "Não foi possível cancelar o trâmite.";
+      toast.error(message);
+    }
+  }
+
+  async function handleConfirmArchive() {
+    if (!archiveTarget?.templateId) return;
+    const success = await catalog.archiveTemplate(archiveTarget.templateId);
+    if (success) {
+      toast.success("Modelo arquivado. Ele não aparecerá mais para novas execuções.");
+      setArchiveTarget(null);
+    } else {
+      toast.error(catalog.error || "Não foi possível arquivar o modelo.");
+    }
   }
 
   async function handleConfirmProcessAction() {
@@ -2239,6 +2272,40 @@ export function DocumentTramiteAdmin() {
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
+                            {row.rowType === 'instance' &&
+                              row.instanceId &&
+                              !['completed', 'cancelled'].includes(row.statusBucket) && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setCancelTarget(row);
+                                  }}
+                                >
+                                  <XCircle className="h-4 w-4 mr-1" />
+                                  Cancelar
+                                </Button>
+                              )}
+                            {row.rowType === 'template' &&
+                              row.templateId &&
+                              row.statusBucket !== 'cancelled' && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setArchiveTarget(row);
+                                  }}
+                                >
+                                  <Archive className="h-4 w-4 mr-1" />
+                                  Arquivar
+                                </Button>
+                              )}
                           </div>
                         </td>
                       </tr>
@@ -2928,6 +2995,55 @@ export function DocumentTramiteAdmin() {
               {processAction === 'approve'
                 ? 'Confirmar aprovação'
                 : 'Solicitar correção'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <TramiteCancelDialog
+        open={cancelTarget !== null}
+        onOpenChange={(open) => !open && setCancelTarget(null)}
+        isCancelling={execution.isCancelling}
+        onConfirm={async (reason) => {
+          await handleConfirmCancel(reason);
+        }}
+      />
+
+      <Dialog
+        open={archiveTarget !== null}
+        onOpenChange={(open) => !open && setArchiveTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Arquivar modelo de fluxo?</DialogTitle>
+            <DialogDescription>
+              {archiveTarget && (
+                <>
+                  O modelo <strong className="text-slate-800">{archiveTarget.templateName}</strong>
+                  será arquivado. Ele não aparecerá mais para novas execuções, mas todo o histórico
+                  de execuções existentes será preservado para auditoria.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setArchiveTarget(null)}
+              disabled={catalog.isSaving}
+            >
+              Voltar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void handleConfirmArchive()}
+              disabled={catalog.isSaving}
+              className="bg-slate-700 hover:bg-slate-800"
+            >
+              {catalog.isSaving && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              Confirmar arquivamento
             </Button>
           </DialogFooter>
         </DialogContent>
