@@ -40,6 +40,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { DocumentRouterLink } from "@/components/documents/DocumentRouterLink";
 import { useDocumentWorkCenter } from "@/hooks/useDocumentWorkCenter";
+import type { DocumentWorkCenterInstance } from "@/hooks/useDocumentWorkCenter";
+import type { Document } from "@/hooks/useDocuments";
 import type {
   DocumentWorkItem,
   DocumentWorkItemOrigin,
@@ -247,7 +249,41 @@ function WorkItemCard({ item }: { item: DocumentWorkItem }) {
 }
 
 export function DocumentWorkCenter() {
-  const workCenter = useDocumentWorkCenter();
+  const rawWorkCenter = useDocumentWorkCenter() as any;
+  const workCenter = (rawWorkCenter ?? {
+    workItems: [],
+    groups: {
+      myPending: [],
+      overdue: [],
+      tramite: [],
+      approval: [],
+      review: [],
+      creation: [],
+    },
+    activeInstances: [],
+    allInstancesIsManager: false,
+    recentDocuments: [],
+    documentsWithoutSlaPolicy: 0,
+    absentWithoutSubstitute: 0,
+    activeSubstitutions: 0,
+    deadlinesWithAbsentAssignee: 0,
+    criticalUnreadNotifications: 0,
+    openEscalations: 0,
+    profile: null,
+    canViewOrganization: false,
+    isLoading: false,
+  }) as NonNullable<typeof rawWorkCenter>;
+
+  const safeWorkItems: DocumentWorkItem[] = Array.isArray(workCenter.workItems)
+    ? (workCenter.workItems as DocumentWorkItem[])
+    : [];
+  const safeActiveInstances: any[] = Array.isArray(workCenter.activeInstances)
+    ? (workCenter.activeInstances as any[])
+    : [];
+  const safeRecentDocuments: Document[] = Array.isArray(workCenter.recentDocuments)
+    ? (workCenter.recentDocuments as Document[])
+    : [];
+
   const [scope, setScope] = useState<ScopeFilter>("mine");
   const [search, setSearch] = useState("");
   const [urgency, setUrgency] = useState("all");
@@ -259,10 +295,10 @@ export function DocumentWorkCenter() {
 
   const scopedItems = useMemo(
     () =>
-      workCenter.workItems.filter(
+      safeWorkItems.filter(
         (item) => scope === "organization" || item.isMine,
       ),
-    [scope, workCenter.workItems],
+    [scope, safeWorkItems],
   );
   const filteredItems = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase("pt-BR");
@@ -287,10 +323,10 @@ export function DocumentWorkCenter() {
     });
   }, [area, docType, origin, projectId, scopedItems, search, status, urgency]);
 
-  const scopedInstances = workCenter.activeInstances.filter(
+  const scopedInstances = safeActiveInstances.filter(
     (instance) => scope === "organization" || instance.isMine,
   );
-  const attentionItems = scopedItems
+  const attentionItems = scopedInstances
     .filter(
       (item) =>
         item.priority === "critical" ||
@@ -299,20 +335,20 @@ export function DocumentWorkCenter() {
         (item.type === "tramite_step" && !item.responsibleName),
     )
     .slice(0, 6);
-  const recentDocuments = workCenter.recentDocuments.filter(
+  const recentDocuments = safeRecentDocuments.filter(
     (document) =>
       scope === "organization" || document.author_id === workCenter.profile?.id,
   );
   const docTypes = [
-    ...new Set(workCenter.workItems.map((item) => item.docType)),
+    ...new Set(safeWorkItems.map((item) => item.docType)),
   ]
     .filter(Boolean)
     .sort();
-  const areas = [...new Set(workCenter.workItems.map((item) => item.area))]
+  const areas = [...new Set(safeWorkItems.map((item) => item.area))]
     .filter(Boolean)
     .sort();
   const statuses = [
-    ...new Set(workCenter.workItems.map((item) => item.documentStatus)),
+    ...new Set(safeWorkItems.map((item) => item.documentStatus)),
   ]
     .filter(Boolean)
     .sort();
@@ -395,7 +431,7 @@ export function DocumentWorkCenter() {
           <AlertDescription>{workCenter.error}</AlertDescription>
         </Alert>
       )}
-      {workCenter.warnings.map((warning) => (
+      {(Array.isArray((workCenter as any).warnings) ? (workCenter as any).warnings as string[] : []).map((warning: string) => (
         <Alert key={warning}>
           <ShieldAlert className="h-4 w-4" />
           <AlertTitle>Fonte em modo de compatibilidade</AlertTitle>
@@ -513,7 +549,7 @@ export function DocumentWorkCenter() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os projetos</SelectItem>
-                {workCenter.projects.map((project) => (
+                {(Array.isArray((workCenter as any).projects) ? (workCenter as any).projects as any[] : []).map((project: any) => (
                   <SelectItem key={project.id} value={project.id}>
                     {project.code ? `${project.code} · ` : ""}
                     {project.name}
@@ -623,8 +659,8 @@ export function DocumentWorkCenter() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-medium">{item.title}</p>
-                      <Badge variant={priorityVariant(item.priority)}>
-                        {PRIORITY_LABELS[item.priority]}
+                      <Badge variant={priorityVariant(item.priority as any)}>
+                        {PRIORITY_LABELS[item.priority as DocumentWorkItemPriority]}
                       </Badge>
                     </div>
                     <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">

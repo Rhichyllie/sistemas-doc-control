@@ -1193,7 +1193,30 @@ function SlaOverviewCard({
 }
 
 function RecentActivitiesCard() {
-  const cockpit = useOperationalCockpit();
+  const rawCockpit = useOperationalCockpit();
+  const cockpit = (rawCockpit ?? {
+    profile: null,
+    isLoading: false,
+    error: null,
+    warnings: [],
+    activityItems: [],
+    kpis: {
+      myPending: 0, critical: 0, nearingDue: 0, teamAwaitingMe: 0,
+      correctionsForMe: 0, recentUpdates: 0, overdues: 0, mentions: 0,
+      informational: 0, managerialMonitoring: 0, total: 0,
+    },
+    allActivityTypes: new Set<any>(),
+    activitySource: "approvals" as const,
+    recentActivitiesSource: "documents" as const,
+    recentActivities: [],
+    approvals: [],
+    generatedAt: new Date().toISOString(),
+  }) as NonNullable<typeof rawCockpit>;
+
+  const safeRecentActivities = Array.isArray((cockpit as any).recentActivities)
+    ? (cockpit as any).recentActivities
+    : [];
+  const isLoadingCockpit = Boolean(cockpit.isLoading);
 
   return (
     <Card className="border-slate-200 shadow-sm">
@@ -1204,12 +1227,12 @@ function RecentActivitiesCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {cockpit.isLoading ? (
+        {isLoadingCockpit ? (
           Array.from({ length: 5 }).map((_, index) => (
             <Skeleton key={index} className="h-16 w-full rounded-xl" />
           ))
-        ) : cockpit.recentActivities.length ? (
-          cockpit.recentActivities.slice(0, 5).map((activity) => {
+        ) : safeRecentActivities.length ? (
+          safeRecentActivities.slice(0, 5).map((activity: any) => {
             const content = (
               <div className="rounded-xl border border-slate-100 px-3 py-3 transition-colors hover:bg-slate-50">
                 <div className="flex items-start gap-3">

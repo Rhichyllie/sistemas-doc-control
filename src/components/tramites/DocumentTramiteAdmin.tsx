@@ -566,18 +566,146 @@ function buildApprovalFlowGraph(
 
 export function DocumentTramiteAdmin() {
   const { profile } = useAuthContext();
-  const catalog = useDocumentTramiteTemplates();
-  const projects = useProjectOptions();
-  const documentsState = useDocuments();
-  const executions = useDocumentTramiteInstances({
+  const rawCatalog = useDocumentTramiteTemplates() as
+    | ReturnType<typeof useDocumentTramiteTemplates>
+    | null
+    | undefined;
+  const catalog = (rawCatalog ?? {
+    templates: [],
+    versions: [],
+    publishedTemplates: [],
+    isLoading: false,
+    isSaving: false,
+    error: null,
+    schemaStatus: "loading" as const,
+    isLocalMode: false,
+    canManage: false,
+    refresh: async () => {},
+    getNextTramiteCode: async () => null,
+    createTemplate: async () => ({ ok: false, error: null } as any),
+    updateTemplate: async () => ({ ok: false, error: null } as any),
+    ensureDraftVersion: async () => ({ ok: false, error: null } as any),
+    saveGraph: async () => ({ ok: false, error: null } as any),
+    publishTemplate: async () => ({ ok: false, error: null } as any),
+    archiveTemplate: async () => ({ ok: false, error: null } as any),
+    deleteTemplate: async () => ({ ok: false, error: null } as any),
+    exportTemplates: (() => new Blob([])) as any,
+  }) as NonNullable<typeof rawCatalog>;
+
+  const rawProjects = useProjectOptions();
+  const projects = (rawProjects ?? {
+    projects: [],
+    isLoading: false,
+    error: null,
+    refresh: async () => {},
+    total: 0,
+  }) as NonNullable<typeof rawProjects>;
+
+  const rawDocumentsState = useDocuments();
+  const documentsState = (rawDocumentsState ?? {
+    documents: [],
+    loading: true,
+    error: null,
+    schemaFallback: false,
+    refetch: async () => {},
+  }) as NonNullable<typeof rawDocumentsState>;
+
+  const rawExecutions = useDocumentTramiteInstances({
     loadAllSteps: true,
     recentLimit: 500,
   });
-  const { disciplines } = useLocalData();
-  const actors = useWorkflowActors();
-  const operationalCalendar = useOperationalCalendar();
-  const availabilityState = useTeamAvailability();
-  const notificationState = useNotifications();
+  const executions = (rawExecutions ?? {
+    instances: [],
+    selectedInstance: null,
+    activeInstance: null,
+    steps: [],
+    edges: [],
+    evidence: [],
+    events: [],
+    isLoading: true,
+    error: null,
+    schemaStatus: "loading" as const,
+    refresh: async () => {},
+    loadGraph: async () => {},
+    refreshGraphForInstance: async () => {},
+    setInstanceId: () => {},
+  }) as NonNullable<typeof rawExecutions>;
+
+  const rawLocalData = useLocalData();
+  const disciplines = (rawLocalData?.disciplines ?? []) as any[];
+
+  const rawActors = useWorkflowActors();
+  const actors = (rawActors ?? {
+    users: [],
+    groups: [],
+    groupMembers: [],
+    isLoading: false,
+    error: null,
+    canUseGroups: false,
+    compatibilityMessage: null,
+    refresh: async () => {},
+  }) as NonNullable<typeof rawActors>;
+
+  const rawOperationalCalendar = useOperationalCalendar();
+  const operationalCalendar = (rawOperationalCalendar ?? {
+    calendars: [],
+    holidays: [],
+    policies: [],
+    status: "loading" as const,
+    error: null,
+    isSaving: false,
+    enterpriseStatus: "loading" as const,
+    importRuns: [],
+    canManage: false,
+    refresh: async () => {},
+    refreshEnterprise: async () => {},
+    saveCalendar: async () => {},
+    saveHolidayImport: async () => ({ ok: false } as any),
+    savePolicy: async () => {},
+    deleteCalendar: async () => {},
+    deletePolicy: async () => {},
+    createCalendar: async () => ({ ok: false, error: null } as any),
+    createPolicy: async () => ({ ok: false, error: null } as any),
+    applyPolicyToDocument: async () => ({ ok: false, error: null } as any),
+    getDeadlineMode: (() => "calendar") as any,
+    computeDeadline: ((() => null) as any),
+    getSlaSummaryForDocument: (() => null) as any,
+  }) as NonNullable<typeof rawOperationalCalendar>;
+
+  const rawAvailabilityState = useTeamAvailability();
+  const availabilityState = (rawAvailabilityState ?? {
+    absences: [],
+    delegations: [],
+    status: "loading" as const,
+    error: null,
+    isSaving: false,
+    canManage: false,
+    refresh: async () => {},
+    saveAbsence: async () => {},
+    saveDelegation: async () => {},
+    deleteAbsence: async () => {},
+    deleteDelegation: async () => {},
+    absencesWithoutSubstitute: [],
+    activeSubstitutionCount: 0,
+  }) as NonNullable<typeof rawAvailabilityState>;
+
+  const rawNotificationState = useNotifications();
+  const notificationState = (rawNotificationState ?? {
+    notifications: [],
+    unreadCount: 0,
+    loading: true,
+    schemaStatus: "unknown" as const,
+    organizationView: false,
+    criticalUnreadCount: 0,
+    escalationUnreadCount: 0,
+    setOrganizationView: () => {},
+    refresh: async () => {},
+    markRead: async () => {},
+    markAllRead: async () => {},
+    dismiss: async () => {},
+    dismissAll: async () => {},
+  }) as NonNullable<typeof rawNotificationState>;
+
   const { actOnStep, loading: approvalActionLoading } = useApprovalFlow();
   const execution = useDocumentTramiteExecution(executions.refresh);
   const [editingId, setEditingId] = useState<string | null>(null);

@@ -15,10 +15,33 @@ import {
   useOperationalCockpit,
 } from '@/hooks/useOperationalCockpit'
 import { getDeadlineModeLabel } from '@/lib/operationalCalendar'
+import {
+  PageErrorBoundary,
+  PageErrorView,
+} from '@/components/shared/route-error-boundary'
 
 export const Route = createFileRoute('/authenticated/atividades')({
-  component: ActivitiesPage,
+  component: ActivitiesPageWrapped,
+  errorComponent: ({ error, reset }) => (
+    <PageErrorView
+      title="Falha ao carregar a página Atividades"
+      subtitle="Ocorreu um erro inesperado ao montar a Caixa de Atividades. Os detalhes abaixo ajudam a diagnosticar o problema."
+      error={error}
+      reset={reset}
+    />
+  ),
 })
+
+function ActivitiesPageWrapped() {
+  return (
+    <PageErrorBoundary
+      title="Falha ao carregar a página Atividades"
+      subtitle="Ocorreu um erro inesperado ao montar a Caixa de Atividades. Os detalhes abaixo ajudam a diagnosticar o problema."
+    >
+      <ActivitiesPage />
+    </PageErrorBoundary>
+  )
+}
 
 const TYPE_OPTIONS: { value: OperationalActivityType | 'all'; label: string }[] = [
   { value: 'all', label: 'Todos os tipos' },

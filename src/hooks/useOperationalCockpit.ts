@@ -220,12 +220,13 @@ export function useOperationalCockpit() {
   const now = new Date().toISOString()
   const managerialView = profile?.role === 'admin' || profile?.role === 'manager'
   const result = useMemo(() => {
+    try {
     const safeDocuments = documents ?? []
     const safeQueue = queue ?? []
     const safeNotifications = notifications ?? []
     const safeEntries = entries ?? []
     const safeGroupMembers = groupMembers ?? []
-    const safeWorkItems = workCenter.workItems ?? []
+    const safeWorkItems = (workCenter as any)?.workItems ?? []
     const documentsById = new Map(safeDocuments.map((document) => [document.id, document]))
     const activityItems: OperationalActivityItem[] = []
     const correctionDocumentIds = new Set<string>()
@@ -546,6 +547,32 @@ export function useOperationalCockpit() {
       recentActivitiesSource: safeEntries.length ? ('audit_trail' as const) : ('documents' as const),
       generatedAt: now,
     }
+    } catch (e) {
+      console.error('[useOperationalCockpit] useMemo result crashed', e)
+      const safeAct = profile?.role === 'manager' || profile?.role === 'admin'
+      return {
+        activityItems: [],
+        kpis: {
+          myPending: 0,
+          awaitingMyAction: 0,
+          rejectedForCorrection: 0,
+          nearingReview: 0,
+          overdue: 0,
+          approvalsPending: 0,
+          unreadNotifications: 0,
+        },
+        allActivityTypes: new Set<OperationalActivityType>(),
+        activitySource: safeAct ? ('mixed' as const) : ('approvals' as const),
+        recentActivitiesSource: entries?.length ? ('audit_trail' as const) : ('documents' as const),
+        generatedAt: now,
+        recentActivities: [],
+        approvals: [],
+        emptyStates: {
+          recentActivities: true,
+          approvals: true,
+        },
+      }
+    }
   }, [
     documents,
     entries,
@@ -569,16 +596,38 @@ export function useOperationalCockpit() {
       : queueCompatibilityMessage,
   ].filter((warning): warning is string => Boolean(warning))
 
+  const safeResult: NonNullable<typeof result> = (result ?? {
+    activityItems: [],
+    kpis: {
+      myPending: 0,
+      awaitingMyAction: 0,
+      rejectedForCorrection: 0,
+      nearingReview: 0,
+      overdue: 0,
+      approvalsPending: 0,
+      unreadNotifications: 0,
+    },
+    allActivityTypes: new Set<OperationalActivityType>(),
+    activitySource: 'approvals' as const,
+    recentActivitiesSource: 'documents' as const,
+    recentActivities: [],
+    approvals: [],
+    generatedAt: new Date().toISOString(),
+    emptyStates: { recentActivities: true, approvals: true },
+  }) as NonNullable<typeof result>
+
+  const safeWorkCenterLoading = Boolean((workCenter as any)?.isLoading)
+
   return {
     profile,
     isLoading:
       documentsLoading ||
       queueLoading ||
-      workCenter.isLoading ||
+      safeWorkCenterLoading ||
       notificationsLoading ||
       auditLoading,
     error,
     warnings,
-    ...result,
+    ...safeResult,
   }
 }
