@@ -93,22 +93,35 @@ export function ActivityInboxPreview({
 }
 
 function ActivityRow({ item }: { item: OperationalActivityItem }) {
-  const meta = TYPE_META[item.type]
+  const meta =
+    TYPE_META[item.type as OperationalActivityType] ?? {
+      label: typeof item.type === 'string' ? item.type : 'Atividade',
+      icon: Info,
+    }
   const Icon = meta.icon
-  const dueDate = formatDueDate(item.dueAt)
+  const dueDate = (() => {
+    try {
+      return formatDueDate(item.dueAt ?? null)
+    } catch {
+      return null
+    }
+  })()
+  const safePriority = (item.priority ?? 'medium') as 'critical' | 'high' | 'medium' | 'low'
+  const safeStatus = (item.status ?? 'Nova') as string
+  const safeTarget = (item.target ?? 'document') as 'document' | 'approval' | string
   const content = (
     <>
       <div className={cn(
         'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground',
-        item.priority === 'critical' && 'bg-destructive/10 text-destructive',
-        item.priority === 'high' && 'bg-amber-100 text-amber-700',
+        safePriority === 'critical' && 'bg-destructive/10 text-destructive',
+        safePriority === 'high' && 'bg-amber-100 text-amber-700',
       )}>
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="font-medium">{item.title}</p>
-          <Badge variant={item.priority === 'critical' ? 'destructive' : 'outline'}>{meta.label}</Badge>
+          <p className="font-medium">{item.title ?? 'Sem título'}</p>
+          <Badge variant={safePriority === 'critical' ? 'destructive' : 'outline'}>{meta.label}</Badge>
         </div>
         {(item.documentCode || item.documentTitle) && (
           <div className="mt-1">
@@ -124,58 +137,62 @@ function ActivityRow({ item }: { item: OperationalActivityItem }) {
             </DocumentRouterLink>
           </div>
         )}
-        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.description}</p>
+        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.description ?? ''}</p>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {item.projectName && <span>{item.projectName}</span>}
           {item.area && <span>{item.area}</span>}
           {dueDate && <span>Prazo: {dueDate}</span>}
-          <span className="font-medium text-foreground/70">{item.suggestedAction}</span>
+          <span className="font-medium text-foreground/70">{item.suggestedAction ?? ''}</span>
         </div>
       </div>
       <Badge
         className="shrink-0 self-start"
-        variant={item.priority === 'critical' ? 'destructive' : item.status === 'Nova' ? 'default' : 'secondary'}
+        variant={safePriority === 'critical' ? 'destructive' : safeStatus === 'Nova' ? 'default' : 'secondary'}
       >
-        {item.status}
+        {safeStatus}
       </Badge>
     </>
   )
 
   const cardWrapperClass = 'flex gap-3 px-5 py-4 transition-colors hover:bg-muted/40'
 
-  if (item.target === 'document' && item.documentId) {
-    return (
-      <Link
-        to="/authenticated/documents/$documentId"
-        params={{ documentId: item.documentId }}
-        className={cardWrapperClass}
-      >
-        {content}
-      </Link>
-    )
-  }
-
-  if (item.target === 'approval') {
-    if (item.externalLink && item.documentId) {
+  try {
+    if (safeTarget === 'document' && item.documentId) {
       return (
-        <a
-          href={item.externalLink}
-          target="_blank"
-          rel="noopener noreferrer"
+        <Link
+          to="/authenticated/documents/$documentId"
+          params={{ documentId: item.documentId }}
           className={cardWrapperClass}
         >
           {content}
-        </a>
+        </Link>
       )
     }
-    return (
-      <Link
-        to="/authenticated/documentos/tramites"
-        className={cardWrapperClass}
-      >
-        {content}
-      </Link>
-    )
+
+    if (safeTarget === 'approval') {
+      if (item.externalLink && item.documentId) {
+        return (
+          <a
+            href={item.externalLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cardWrapperClass}
+          >
+            {content}
+          </a>
+        )
+      }
+      return (
+        <Link
+          to="/authenticated/documentos/tramites"
+          className={cardWrapperClass}
+        >
+          {content}
+        </Link>
+      )
+    }
+  } catch (e) {
+    console.warn('[ActivityRow] safe render fallback', e)
   }
 
   return <div className="flex gap-3 px-5 py-4">{content}</div>

@@ -240,8 +240,51 @@ function Metric({ metric }: { metric: MetricCard }) {
 }
 
 export function OperationalHome() {
-  const home = useOperationalHome();
-  const cockpit = useOperationalCockpit();
+  const rawHome = useOperationalHome() as
+    | {
+        profile?: { full_name?: string | null } | null;
+        refresh?: () => Promise<void> | void;
+        isLoading?: boolean;
+        canManage?: boolean;
+      }
+    | null
+    | undefined;
+  const home = (rawHome ?? {
+    profile: null,
+    refresh: async () => {},
+    isLoading: false,
+    canManage: false,
+  }) as NonNullable<typeof rawHome>;
+
+  const rawCockpit = useOperationalCockpit() as
+    | {
+        activityItems?: any[] | null;
+        kpis?: {
+          myPending?: number;
+          awaitingMyAction?: number;
+          rejectedForCorrection?: number;
+          nearingReview?: number;
+          overdue?: number;
+          approvalsPending?: number;
+          unreadNotifications?: number;
+        } | null;
+        isLoading?: boolean;
+      }
+    | null
+    | undefined;
+  const cockpit = (rawCockpit ?? {
+    activityItems: [],
+    kpis: {
+      myPending: 0,
+      awaitingMyAction: 0,
+      rejectedForCorrection: 0,
+      nearingReview: 0,
+      overdue: 0,
+      approvalsPending: 0,
+      unreadNotifications: 0,
+    },
+    isLoading: false,
+  }) as NonNullable<typeof rawCockpit>;
   const rawWorkCenter = useDocumentWorkCenter() as
     | (ReturnType<typeof useDocumentWorkCenter> & {
         canViewOrganization?: boolean;
@@ -294,7 +337,7 @@ export function OperationalHome() {
   const [priorityFilter, setPriorityFilter] = useState<
     "all" | "actionable" | "critical"
   >("all");
-  const firstName = home.profile?.full_name?.trim().split(/\s+/)[0];
+  const firstName = home.profile?.full_name?.trim()?.split(/\s+/)[0];
   const currentDate = new Intl.DateTimeFormat("pt-BR", {
     weekday: "long",
     day: "2-digit",
@@ -424,7 +467,7 @@ export function OperationalHome() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => void home.refresh()}
+              onClick={() => void (home.refresh ?? (async () => {}))()}
               disabled={home.isLoading}
               className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white rounded-xl px-4 py-2"
             >
