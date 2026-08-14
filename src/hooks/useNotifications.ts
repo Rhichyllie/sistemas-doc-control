@@ -240,103 +240,62 @@ export function useNotifications(options: { organizationView?: boolean } = {}) {
     };
 
     let channel: ReturnType<typeof supabase.channel> | null = null;
-    let cancelled = false;
-    const setupChannel = () => {
-      if (destroyed || cancelled) return;
-      try {
-        channel = supabase.channel(channelName, {
+    try {
+      channel = supabase
+        .channel(channelName, {
           config: {
             broadcast: { ack: false, self: false },
-            presence: { key: "", enabled: false },
+            presence: { key: "" },
           },
-        });
-
-        try {
-          channel.on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table,
-              filter,
-            },
-            (payload) => {
-              if (destroyed) return;
-              try {
-                if (payload.eventType === "INSERT" && payload.new) {
-                  handleInsert(payload.new as Record<string, unknown>);
-                } else if (payload.eventType === "UPDATE" && payload.new) {
-                  handleUpdate(payload.new as Record<string, unknown>);
-                } else if (payload.eventType === "DELETE" && payload.old) {
-                  handleDelete(payload.old as Record<string, unknown>);
-                }
-              } catch (innerHandlerError) {
-                console.error(
-                  "[useNotifications] Realtime payload handler error",
-                  innerHandlerError,
-                  payload,
-                );
-              }
-            },
-          );
-        } catch (onError) {
-          console.error(
-            "[useNotifications] Failed to attach postgres_changes listener",
-            onError,
-          );
-          channel = null;
-          return;
-        }
-
-        try {
-          channel.subscribe((status, err) => {
-            if (destroyed || cancelled) return;
-            if (
-              (status as unknown as string) !== "SUBSCRIBED" ||
-              err
-            ) {
-              console.warn(
-                "[useNotifications] Realtime channel status:",
-                status,
-                err ?? null,
-              );
+        })
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table,
+            filter,
+          },
+          (payload) => {
+            if (payload.eventType === "INSERT" && payload.new) {
+              handleInsert(payload.new as Record<string, unknown>);
+            } else if (payload.eventType === "UPDATE" && payload.new) {
+              handleUpdate(payload.new as Record<string, unknown>);
+            } else if (payload.eventType === "DELETE" && payload.old) {
+              handleDelete(payload.old as Record<string, unknown>);
             }
-          });
-        } catch (subscribeError) {
-          console.error(
-            "[useNotifications] subscribe() threw synchronously",
-            subscribeError,
-          );
-          channel = null;
-        }
-      } catch (realtimeError) {
-        console.error(
-          "[useNotifications] Failed to setup realtime channel — notifications will fall back to pull-only",
-          realtimeError,
+          },
         );
-        channel = null;
-      }
-    };
 
-    const timeoutId = window.setTimeout(setupChannel, 0);
+      channel.subscribe((status, err) => {
+        if (destroyed) return;
+        if (
+          (status as unknown as string) === "CHANNEL_ERROR" ||
+          (status as unknown as string) === "TIMED_OUT" ||
+          err
+        ) {
+          console.warn(
+            "[useNotifications] Realtime channel status:",
+            status,
+            err ?? null,
+          );
+        }
+      });
+    } catch (realtimeError) {
+      console.error(
+        "[useNotifications] Failed to setup realtime channel — notifications will fall back to pull-only",
+        realtimeError,
+      );
+      channel = null;
+    }
 
     return () => {
       destroyed = true;
-      cancelled = true;
-      try {
-        window.clearTimeout(timeoutId);
-      } catch {
-        /* noop */
-      }
       if (channel) {
-        const ch = channel;
-        channel = null;
         try {
-          void Promise.resolve()
-            .then(() => supabase.removeChannel(ch))
-            .catch(() => {
-              /* noop: cleanup failures must not propagate */
-            });
+          void supabase.removeChannel(channel).catch(() => {
+            /* noop: cleanup failures must not propagate */
+          });
         } catch {
           /* noop */
         }

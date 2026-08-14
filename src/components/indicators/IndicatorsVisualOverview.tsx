@@ -1287,9 +1287,10 @@ export function IndicatorsVisualOverview({
   const headlineMetrics = dashboard.metrics
     ? (() => {
         const total = Math.max(1, dashboard.metrics.total ?? 0);
-        const approved = dashboard.metrics.published ?? 0;
+        const approved = (dashboard.metrics.published ?? 0) + (dashboard.metrics.approved ?? 0);
         const inAnalysis = (dashboard.metrics.in_review ?? 0) + (dashboard.metrics.pending_approval ?? 0);
-        const rejected = dashboard.metrics.obsolete ?? 0;
+        const rejected = (dashboard.metrics.rejected ?? 0);
+        const cancelled = (dashboard.metrics.cancelled ?? 0);
         const waitingSupplier = Math.max(0, (report.tramites.activeStepsWithoutDueDate ?? 0));
         const expiring30 = dashboard.metrics.expiring_30_days ?? 0;
         const pct = (n: number) => Math.round((n / total) * 100);

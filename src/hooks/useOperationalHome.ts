@@ -97,33 +97,31 @@ export function useOperationalHome() {
   }, [refreshIndicatorsProbe]);
 
   const summary = useMemo(() => {
-    const safeActiveInstances = workCenter.activeInstances ?? [];
-    const safeDocuments = workCenter.documents ?? [];
-    const safeWorkItems = workCenter.workItems ?? [];
-    const activeDocuments = safeDocuments.filter(
-      (document) => !["obsolete", "archived"].includes(document.status ?? ""),
+    const activeDocuments = workCenter.documents.filter(
+      (document) => !["obsolete", "archived"].includes(document.status),
     ).length;
-    const criticalItems = safeWorkItems.filter(
+    const criticalItems = workCenter.workItems.filter(
       (item) => item.priority === "critical",
     );
     const metrics: OperationalHomeMetrics = {
       activeDocuments,
       criticalPending: criticalItems.length,
-      activeTramites: safeActiveInstances.length,
-      upcomingReviews: safeWorkItems.filter(
+      activeTramites: workCenter.activeInstances.length,
+      upcomingReviews: workCenter.workItems.filter(
         (item) => item.type === "review_due",
       ).length,
-      drafts: safeWorkItems.filter((item) => item.type === "draft").length,
-      withoutNextStep: safeWorkItems.filter((item) =>
+      drafts: workCenter.workItems.filter((item) => item.type === "draft")
+        .length,
+      withoutNextStep: workCenter.workItems.filter((item) =>
         ["suggested_tramite", "formal_revision"].includes(item.type),
       ).length,
-      overdueReviews: safeWorkItems.filter(
+      overdueReviews: workCenter.workItems.filter(
         (item) => item.type === "review_due" && item.priority === "critical",
       ).length,
-      overdueTramiteSteps: safeWorkItems.filter(
+      overdueTramiteSteps: workCenter.workItems.filter(
         (item) => item.type === "tramite_step" && item.priority === "critical",
       ).length,
-      nearDueTramiteSteps: safeWorkItems.filter(
+      nearDueTramiteSteps: workCenter.workItems.filter(
         (item) =>
           item.type === "tramite_step" &&
           item.priority !== "critical" &&
@@ -132,71 +130,65 @@ export function useOperationalHome() {
           item.businessDaysRemaining >= 0 &&
           item.businessDaysRemaining <= 3,
       ).length,
-      documentsWithoutSlaPolicy: workCenter.documentsWithoutSlaPolicy ?? 0,
-      documentsWithoutCode: safeDocuments.filter(
+      documentsWithoutSlaPolicy: workCenter.documentsWithoutSlaPolicy,
+      documentsWithoutCode: workCenter.documents.filter(
         (document) => !document.code,
       ).length,
       legacyCodes:
         workCenter.codingStatus === "ready"
-          ? safeDocuments.filter(
+          ? workCenter.documents.filter(
               (document) => document.code_generation_mode === "legacy",
             ).length
           : 0,
-      suggestedNotStarted: safeWorkItems.filter(
+      suggestedNotStarted: workCenter.workItems.filter(
         (item) => item.type === "suggested_tramite",
       ).length,
-      stalledApprovals: safeWorkItems.filter(
+      stalledApprovals: workCenter.workItems.filter(
         (item) => item.type === "approval" && item.priority === "critical",
       ).length,
-      documentsWithoutProject: safeDocuments.filter(
+      documentsWithoutProject: workCenter.documents.filter(
         (document) => !document.project_id,
       ).length,
       codingInstalled: workCenter.codingStatus === "ready",
       codingAttention:
         workCenter.codingStatus === "restricted" || Boolean(coding.error),
-      codePatterns: (coding.patterns ?? []).length,
-      projectsInstalled: workCenter.projectsAvailable ?? false,
+      codePatterns: coding.patterns.length,
+      projectsInstalled: workCenter.projectsAvailable,
       projectsAttention: ["denied", "error"].includes(
-        workCenter.projectSchemaMode ?? "",
+        workCenter.projectSchemaMode,
       ),
-      projects: (workCenter.projects ?? []).length,
+      projects: workCenter.projects.length,
       policiesInstalled: policies.canUseTemplates || policies.canUseRules,
       policiesAttention: Boolean(policies.error),
-      policies:
-        (policies.templates ?? []).length + (policies.rules ?? []).length,
+      policies: policies.templates.length + policies.rules.length,
       tramiteModelingInstalled: ["ready", "empty"].includes(
-        workCenter.tramiteModelingStatus ?? "",
+        workCenter.tramiteModelingStatus,
       ),
       tramiteModelingAttention: ["restricted", "partial", "error"].includes(
-        workCenter.tramiteModelingStatus ?? "",
+        workCenter.tramiteModelingStatus,
       ),
-      publishedTramiteTemplates:
-        workCenter.publishedTramiteTemplatesCount ?? 0,
+      publishedTramiteTemplates: workCenter.publishedTramiteTemplatesCount,
       tramiteExecutionInstalled: ["ready", "empty"].includes(
-        workCenter.tramiteStatus ?? "",
+        workCenter.tramiteStatus,
       ),
       tramiteExecutionAttention: ["restricted", "error"].includes(
-        workCenter.tramiteStatus ?? "",
+        workCenter.tramiteStatus,
       ),
-      calendarInstalled: ["ready", "empty"].includes(
-        workCenter.calendarStatus ?? "",
-      ),
+      calendarInstalled: ["ready", "empty"].includes(workCenter.calendarStatus),
       calendarAttention: ["restricted", "error"].includes(
-        workCenter.calendarStatus ?? "",
+        workCenter.calendarStatus,
       ),
       availabilityInstalled: ["ready", "empty"].includes(
-        workCenter.availabilityStatus ?? "",
+        workCenter.availabilityStatus,
       ),
       availabilityAttention: ["restricted", "error"].includes(
-        workCenter.availabilityStatus ?? "",
+        workCenter.availabilityStatus,
       ),
-      absentWithoutSubstitute: workCenter.absentWithoutSubstitute ?? 0,
-      activeSubstitutions: workCenter.activeSubstitutions ?? 0,
-      deadlinesWithAbsentAssignee:
-        workCenter.deadlinesWithAbsentAssignee ?? 0,
-      criticalUnreadNotifications:
-        workCenter.criticalUnreadNotifications ?? 0,
-      openEscalations: workCenter.openEscalations ?? 0,
+      absentWithoutSubstitute: workCenter.absentWithoutSubstitute,
+      activeSubstitutions: workCenter.activeSubstitutions,
+      deadlinesWithAbsentAssignee: workCenter.deadlinesWithAbsentAssignee,
+      criticalUnreadNotifications: workCenter.criticalUnreadNotifications,
+      openEscalations: workCenter.openEscalations,
       notificationsInstalled: workCenter.notificationStatus === "enterprise",
       notificationsAttention: workCenter.notificationStatus === "unavailable",
       indicatorsInstalled: indicatorsProbe.installed,
@@ -215,7 +207,7 @@ export function useOperationalHome() {
     policies.error,
     policies.rules.length,
     policies.templates.length,
-    workCenter.activeInstances?.length ?? 0,
+    workCenter.activeInstances.length,
     workCenter.codingStatus,
     workCenter.calendarStatus,
     workCenter.availabilityStatus,
@@ -227,7 +219,7 @@ export function useOperationalHome() {
     workCenter.notificationStatus,
     workCenter.documents,
     workCenter.documentsWithoutSlaPolicy,
-    workCenter.projects?.length ?? 0,
+    workCenter.projects.length,
     workCenter.projectsAvailable,
     workCenter.projectSchemaMode,
     workCenter.publishedTramiteTemplatesCount,

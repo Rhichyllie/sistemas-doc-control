@@ -10,11 +10,14 @@ export const DOC_TYPES = [
 ] as const
 
 export const DOC_STATUS = [
-  { value: 'draft',      label: 'Rascunho',    color: '#475569' },
-  { value: 'in_review',  label: 'Em Revisão',  color: '#4A90D9' },
-  { value: 'pending_approval', label: 'Aprovação', color: '#F5A623' },
-  { value: 'published',  label: 'Publicado',   color: '#00C271' },
-  { value: 'obsolete',   label: 'Obsoleto',    color: '#F05454' },
+  { value: 'draft',            label: 'Rascunho',    color: '#475569' },
+  { value: 'in_review',        label: 'Em análise',  color: '#4A90D9' },
+  { value: 'pending_approval', label: 'Aprovação',   color: '#F5A623' },
+  { value: 'published',        label: 'Publicado',   color: '#00C271' },
+  { value: 'approved',         label: 'Aprovado',    color: '#10B981' },
+  { value: 'rejected',         label: 'Reprovado',   color: '#EF4444' },
+  { value: 'cancelled',        label: 'Cancelado',   color: '#6B7280' },
+  { value: 'obsolete',         label: 'Obsoleto',    color: '#F05454' },
 ] as const
 
 export const USER_ROLES = [

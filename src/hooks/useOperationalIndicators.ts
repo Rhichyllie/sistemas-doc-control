@@ -32,6 +32,9 @@ function buildFallbackReport(input: {
     withoutCode: number | null;
     withoutProject: number | null;
     total: number;
+    approved: number | null;
+    rejected: number | null;
+    cancelled: number | null;
     byType: Array<{ key: string; label: string; count: number }>;
     byArea: Array<{ key: string; label: string; count: number }>;
     byProject: Array<{ key: string; label: string; count: number }>;
@@ -246,6 +249,9 @@ function buildFallbackReport(input: {
     documents: {
       active_documents: input.documents.active,
       drafts: docDraft,
+      approved_documents: input.documents.approved,
+      rejected_documents: input.documents.rejected,
+      cancelled_documents: input.documents.cancelled,
       without_code: input.documents.withoutCode,
       without_project: input.documents.withoutProject,
       with_review_overdue: docOverdue,
@@ -333,11 +339,15 @@ function buildFallbackReport(input: {
         ...input.tramites.byResponsibleOverdue.map((i) => ({ value: i.key, label: i.label })),
       ],
       statuses: [
-        { value: "", label: "Todos" },
-        { value: "draft", label: "Rascunho" },
-        { value: "received", label: "Recebido" },
-        { value: "published", label: "Publicado" },
-        { value: "obsolete", label: "Obsoleto" },
+        { value: "",                label: "Todos" },
+        { value: "draft",           label: "Rascunho" },
+        { value: "in_review",       label: "Em análise" },
+        { value: "pending_approval", label: "Em aprovação" },
+        { value: "approved",        label: "Aprovado" },
+        { value: "rejected",        label: "Reprovado" },
+        { value: "cancelled",       label: "Cancelado" },
+        { value: "published",       label: "Publicado" },
+        { value: "obsolete",        label: "Obsoleto" },
       ],
     },
     recommendations,
@@ -490,7 +500,10 @@ export function useOperationalIndicators() {
 
       const [
         activeDocuments,
-        drafts,
+        draftDocs,
+        approvedDocs,
+        rejectedDocs,
+        cancelledDocs,
         overdueReviews,
         dueSoonReviews,
         withoutCode,
@@ -514,6 +527,9 @@ export function useOperationalIndicators() {
       ] = await Promise.all([
         documentsCount((query) => query.neq("status", "obsolete")),
         documentsCount((query) => query.eq("status", "draft")),
+        documentsCount((query) => query.eq("status", "approved")),
+        documentsCount((query) => query.eq("status", "rejected")),
+        documentsCount((query) => query.eq("status", "cancelled")),
         documentsCount((query) =>
           query.eq("status", "published").lt("next_review_at", today),
         ),
@@ -917,7 +933,10 @@ export function useOperationalIndicators() {
         filters: current,
         documents: {
           active: unwrapCount(activeDocuments),
-          drafts: unwrapCount(drafts),
+          drafts: unwrapCount(draftDocs),
+          approved: unwrapCount(approvedDocs),
+          rejected: unwrapCount(rejectedDocs),
+          cancelled: unwrapCount(cancelledDocs),
           overdue: unwrapCount(overdueReviews),
           dueSoon: unwrapCount(dueSoonReviews),
           withoutCode: unwrapCount(withoutCode),

@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import {
   Activity,
+  ChartNoAxesCombined,
   ClipboardList,
   FileCheck2,
   LayoutDashboard,
@@ -97,10 +98,10 @@ export function AuditExceptionsPage() {
                 Central
               </Link>
             </Button>
-            <Button asChild variant="outline" disabled>
-              <Link to="/authenticated/configuracoes" type="button" aria-disabled="true">
-                <ClipboardList className="mr-2 h-4 w-4" />
-                Diagnóstico (em breve)
+            <Button asChild variant="outline">
+              <Link to="/authenticated/indicadores">
+                <ChartNoAxesCombined className="mr-2 h-4 w-4" />
+                Indicadores Operacionais
               </Link>
             </Button>
           </div>

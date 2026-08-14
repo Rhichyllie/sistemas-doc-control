@@ -8,6 +8,9 @@ export interface DashboardMetrics {
   in_review: number
   pending_approval: number
   published: number
+  approved: number
+  rejected: number
+  cancelled: number
   obsolete: number
   expiring_30_days: number
   expiring_7_days: number
@@ -240,6 +243,9 @@ export function useDashboard() {
           reviewRes,
           pendingRes,
           publishedRes,
+          approvedRes,
+          rejectedRes,
+          cancelledRes,
           obsoleteRes,
           exp30Res,
           exp7Res,
@@ -261,6 +267,9 @@ export function useDashboard() {
           supabase.from('documents').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'in_review'),
           supabase.from('documents').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'pending_approval'),
           supabase.from('documents').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'published'),
+          supabase.from('documents').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'approved'),
+          supabase.from('documents').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'rejected'),
+          supabase.from('documents').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'cancelled'),
           supabase.from('documents').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'obsolete'),
           supabase.from('documents').select('id', { count: 'exact', head: true })
             .eq('org_id', orgId).eq('status', 'published')
@@ -309,6 +318,9 @@ export function useDashboard() {
             in_review: reviewRes.count ?? 0,
             pending_approval: pendingRes.count ?? 0,
             published: publishedRes.count ?? 0,
+            approved: approvedRes.count ?? 0,
+            rejected: rejectedRes.count ?? 0,
+            cancelled: cancelledRes.count ?? 0,
             obsolete: obsoleteRes.count ?? 0,
             expiring_30_days: exp30Res.count ?? 0,
             expiring_7_days: exp7Res.count ?? 0,
