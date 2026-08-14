@@ -1,6 +1,12 @@
 -- ================================================================
 -- Migration P30: Sincronia Automática de Status do Documento com Trâmite (P-12)
--- Data: 2026-08-14
+-- Data: 2026-08-14 (CORRIGIDA — NÃO TOCA em nenhuma RPC existente do P12/P25)
+--
+-- 🔥 CORREÇÃO CRÍTICA: A versão anterior desta migration quebrou as
+--    3 RPCs start_document_tramite_instance / complete_document_tramite_step /
+--    cancel_document_tramite_instance por ter CREATE OR REPLACE FUNCTION com
+--    corpo placeholder. ESTA VERSÃO NÃO FAZ ISSO — toca APENAS em objetos
+--    NOVOS (1 função de trigger + 2 triggers + 4 colunas + 1 check constraint).
 --
 -- Estratégia: TRIGGERS pós-transação (AFTER INSERT / AFTER UPDATE)
 -- nas tabelas do módulo de tramite. Assim:
@@ -80,15 +86,16 @@ ALTER TABLE public.documents
       'published',        -- 3. Publicado
       'obsolete',         -- 4. Obsoleto (ciclo de vida)
       'rejected',         -- 5. Reprovado no tramite (NOVO)
-      'cancelled'         -- 6. Trâmite cancelado (NOVO)
+      'cancelled',         -- 6. Trâmite cancelado (NOVO)
+      'approved'
     )
   );
 
 -- ──────────────────────────────────────────────────────────────────
--- PARTE 2: 3 FUNÇÕES de trigger (1 por evento de transição)
+-- PARTE 2: FUNÇÃO DE TRIGGER (NOVA — não existia, conflito ZERO)
 -- ──────────────────────────────────────────────────────────────────
 
--- Função 1: trigger rodada TANTO no INSERT quanto no UPDATE de
+-- Função única rodada TANTO no INSERT quanto no UPDATE de
 -- document_tramite_instances. Detecta mudanças de status da instância
 -- e sincroniza com documents do documento alvo.
 CREATE OR REPLACE FUNCTION public.fn_tramite_sync_document_status()
@@ -103,7 +110,6 @@ DECLARE
   v_new_status TEXT := NEW.status;
   v_was_active_before BOOLEAN := false;
   v_has_reject BOOLEAN := false;
-  v_current_doc_status TEXT;
 BEGIN
   -- Segurança básica: sem documento ou org, não faz nada
   IF v_doc_id IS NULL OR v_org_id IS NULL OR v_new_status IS NULL THEN
@@ -195,7 +201,7 @@ END;
 $$;
 
 -- ──────────────────────────────────────────────────────────────────
--- PARTE 3: TRIGGERS (AFTER INSERT + AFTER UPDATE em instances)
+-- PARTE 3: TRIGGERS (NOVOS — não existiam, conflito ZERO)
 -- ──────────────────────────────────────────────────────────────────
 
 DROP TRIGGER IF EXISTS trig_tramite_instance_sync_status_insert
