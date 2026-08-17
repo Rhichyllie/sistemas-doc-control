@@ -1,5 +1,5 @@
 import type { ReactNode, AnchorHTMLAttributes } from "react";
-import { Link, createLink } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
 
 type CommonProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
@@ -11,9 +11,16 @@ type CommonProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
   showExternalIcon?: boolean;
 };
 
-const InternalDocumentLink = createLink({
-  to: "/authenticated/documents/$documentId",
-});
+// FIX: o código anterior usava `createLink({ to: "..." })`, mas createLink()
+// do @tanstack/react-router não aceita um objeto de opções de rota — ele
+// espera um COMPONENTE (tipicamente um forwardRef) para "envolver" com
+// capacidades de roteamento. Passar `{ to: ... }` fazia createLink devolver
+// algo que não é um componente React válido, o que quebrava a renderização
+// com "Element type is invalid ... but got: object. Check the render method
+// of `ForwardRef`." sempre que este link era renderizado (Dashboard e
+// Central Documental, via WorkItemCard). O <Link> padrão do tanstack-router
+// já aceita to/params/hash/className/onClick diretamente, então não havia
+// necessidade de createLink aqui.
 
 export function DocumentRouterLink({
   documentId,
@@ -56,7 +63,8 @@ export function DocumentRouterLink({
   }
 
   return (
-    <InternalDocumentLink
+    <Link
+      to="/authenticated/documents/$documentId"
       params={{ documentId }}
       hash={hash}
       className={className ?? "text-inherit underline-offset-2 hover:underline"}
@@ -64,6 +72,6 @@ export function DocumentRouterLink({
       {...(rest as any)}
     >
       {children}
-    </InternalDocumentLink>
+    </Link>
   );
 }

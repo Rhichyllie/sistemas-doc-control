@@ -46,7 +46,7 @@ export interface DashboardDisciplineRow {
 
 interface TypeRow { doc_type: string }
 interface AreaRow { area: string }
-interface DisciplineRow { discipline_id: string | null; status: string | null }
+interface DisciplineRow { discipline_id: string | null; status: string | null; created_at?: string | null; approved_at?: string | null; rejected_at?: string | null; cancelled_at?: string | null; published_at?: string | null; next_review_at?: string | null; due_at?: string | null; sent_to_analysis_at?: string | null }
 interface CreatedRow { created_at: string }
 interface PublishedRow { published_at: string | null }
 interface ReviewRow { next_review_at: string | null }
@@ -121,7 +121,8 @@ function buildByDiscipline(
   rows: DisciplineRow[],
   disciplineMap: Map<string | null, string>,
 ): DashboardDisciplineRow[] {
-  const agg = new Map<string | null, DashboardDisciplineRow>()
+  const agg = new Map<string | null, DashboardDisciplineRow & { sla_on_time: number; sla_total: number }>()
+  const nowTs = Date.now()
 
   for (const row of rows) {
     const key = row.discipline_id ?? null
@@ -137,22 +138,56 @@ function buildByDiscipline(
         approved_pct: 0,
         in_analysis_pct: 0,
         rejected_pct: 0,
+        sla_on_time: 0,
+        sla_total: 0,
       })
     }
     const current = agg.get(key)!
     current.total += 1
+
     const status = (row.status ?? "").toLowerCase()
-    if (status === "published" || status === "approved" || status === "aprovado") current.approved += 1
-    else if (
+    if (status === "published" || status === "approved" || status === "aprovado") {
+      current.approved += 1
+    } else if (
       status === "in_review" ||
       status === "in_analysis" ||
+      status === "pending_approval" ||
       status === "review" ||
       status === "analise" ||
       status === "análise"
-    )
+    ) {
       current.in_analysis += 1
-    else if (status === "obsolete" || status === "rejected" || status === "reprovado")
+    } else if (
+      status === "obsolete" ||
+      status === "rejected" ||
+      status === "reprovado" ||
+      status === "cancelled" ||
+      status === "cancelado"
+    ) {
       current.rejected += 1
+    }
+
+    if (row.due_at) {
+      const dueTs = new Date(row.due_at).getTime()
+      if (!Number.isNaN(dueTs)) {
+        current.sla_total += 1
+        let resolvedAt: number | null = null
+        if (row.approved_at) resolvedAt = new Date(row.approved_at).getTime()
+        else if (row.rejected_at) resolvedAt = new Date(row.rejected_at).getTime()
+        else if (row.cancelled_at) resolvedAt = new Date(row.cancelled_at).getTime()
+        else if (row.published_at) resolvedAt = new Date(row.published_at).getTime()
+        if (status === "draft") {
+          if (!Number.isNaN(dueTs)) {
+            current.sla_total += 1
+            if (nowTs <= dueTs) current.sla_on_time += 1
+          }
+        } else if (resolvedAt !== null && !Number.isNaN(resolvedAt)) {
+          if (resolvedAt <= dueTs) current.sla_on_time += 1
+        } else if (nowTs <= dueTs) {
+          current.sla_on_time += 1
+        }
+      }
+    }
   }
 
   const result: DashboardDisciplineRow[] = []
@@ -161,9 +196,14 @@ function buildByDiscipline(
     row.approved_pct = Math.round((row.approved / base) * 100)
     row.in_analysis_pct = Math.round((row.in_analysis / base) * 100)
     row.rejected_pct = Math.round((row.rejected / base) * 100)
-    const done = row.approved + row.in_analysis || 1
-    row.sla = Math.round((row.approved / done) * 100)
-    result.push(row)
+    if (row.sla_total > 0) {
+      row.sla = Math.round((row.sla_on_time / row.sla_total) * 100)
+    } else {
+      const done = row.approved + row.in_analysis || 1
+      row.sla = Math.round((row.approved / done) * 100)
+    }
+    const { sla_on_time: _on, sla_total: _tot, ...rest } = row
+    result.push(rest)
   }
 
   result.sort((a, b) => b.total - a.total)
@@ -286,7 +326,7 @@ export function useDashboard() {
             .eq('org_id', orgId).gte('created_at', ago30.toISOString()),
           supabase.from('documents').select('doc_type').eq('org_id', orgId),
           supabase.from('documents').select('area').eq('org_id', orgId),
-          supabase.from('documents').select('discipline_id,status').eq('org_id', orgId),
+          supabase.from('documents').select('discipline_id,status,created_at,approved_at,rejected_at,cancelled_at,published_at,next_review_at,due_at,sent_to_analysis_at').eq('org_id', orgId),
           supabase.from('disciplines').select('id,name').eq('org_id', orgId),
           supabase.from('documents').select('created_at').eq('org_id', orgId).gte('created_at', lastSixMonths.toISOString()),
           supabase.from('documents').select('published_at').eq('org_id', orgId).not('published_at', 'is', null).gte('published_at', lastSixMonths.toISOString()),
@@ -297,12 +337,29 @@ export function useDashboard() {
           .map(({ value, count }) => ({ doc_type: value, count }))
         const byArea = aggregate((byAreaRes.data ?? []) as AreaRow[], 'area')
           .map(({ value, count }) => ({ area: value, count }))
+
+        if (disciplinesRes.error) {
+          console.warn('[useDashboard] Erro ao carregar tabela disciplines:', disciplinesRes.error)
+        }
+        if (byDisciplineRes.error) {
+          console.warn('[useDashboard] Erro ao carregar documentos por disciplina:', byDisciplineRes.error)
+        }
+
         const disciplineNameMap = new Map<string | null, string>()
         for (const discipline of (disciplinesRes.data ?? []) as Array<{ id: string; name: string }>) {
-          disciplineNameMap.set(discipline.id, discipline.name)
+          if (!discipline?.id || !discipline?.name) continue
+          disciplineNameMap.set(String(discipline.id).trim(), String(discipline.name).trim())
+        }
+        if (disciplineNameMap.size === 0 && (disciplinesRes.data ?? []).length === 0) {
+          for (const row of (byDisciplineRes.data ?? []) as DisciplineRow[]) {
+            if (row.discipline_id) disciplineNameMap.set(String(row.discipline_id).trim(), "Sem disciplina")
+          }
         }
         const byDiscipline = buildByDiscipline(
-          (byDisciplineRes.data ?? []) as DisciplineRow[],
+          ((byDisciplineRes.data ?? []) as DisciplineRow[]).map((r) => ({
+            ...r,
+            discipline_id: r.discipline_id ? String(r.discipline_id).trim() : null,
+          })),
           disciplineNameMap,
         )
         const monthlyTrend = buildMonthlyTrend(
