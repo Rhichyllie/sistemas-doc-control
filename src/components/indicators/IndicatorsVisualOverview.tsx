@@ -1289,8 +1289,7 @@ export function IndicatorsVisualOverview({
         const total = Math.max(1, dashboard.metrics.total ?? 0);
         const approved = (dashboard.metrics.published ?? 0) + (dashboard.metrics.approved ?? 0);
         const inAnalysis = (dashboard.metrics.in_review ?? 0) + (dashboard.metrics.pending_approval ?? 0);
-        const rejected = (dashboard.metrics.rejected ?? 0);
-        const cancelled = (dashboard.metrics.cancelled ?? 0);
+        const rejected = (dashboard.metrics.rejected ?? 0) + (dashboard.metrics.cancelled ?? 0);
         const waitingSupplier = Math.max(0, (report.tramites.activeStepsWithoutDueDate ?? 0));
         const expiring30 = dashboard.metrics.expiring_30_days ?? 0;
         const pct = (n: number) => Math.round((n / total) * 100);
@@ -1350,7 +1349,7 @@ export function IndicatorsVisualOverview({
             delta: -4,
             deltaInverted: true,
             percentageOfTotal: pct(rejected),
-            sparkline: toSpark("obsolete", rejected / 12 || 1),
+            sparkline: toSpark("published", rejected / 12 || 1),
           },
           {
             label: "Aguardando fornecedor",
@@ -1411,9 +1410,9 @@ export function IndicatorsVisualOverview({
           <>
             <StatusDistributionCard
               total={dashboard.metrics?.total ?? 0}
-              approved={dashboard.metrics?.published ?? 0}
+              approved={(dashboard.metrics?.published ?? 0) + (dashboard.metrics?.approved ?? 0)}
               inAnalysis={(dashboard.metrics?.in_review ?? 0) + (dashboard.metrics?.pending_approval ?? 0)}
-              rejected={dashboard.metrics?.obsolete ?? 0}
+              rejected={(dashboard.metrics?.rejected ?? 0) + (dashboard.metrics?.cancelled ?? 0)}
               waiting={Math.max(0, report.tramites.activeStepsWithoutDueDate ?? 0)}
             />
             <PeriodPerformanceCard
